@@ -1,0 +1,15 @@
+{
+  // Make Pyright/basedpyright use backend venv (fixes "cannot resolve import fastapi", etc.)
+  "venvPath": "backend",
+  "venv": "venv",
+  "pythonVersion": "3.14",
+  "typeCheckingMode": "basic",
+  "reportMissingImports": true,
+  "exclude": [
+    "**/node_modules",
+    "**/frontend/dist",
+    "**/backend/venv",
+    "**/__pycache__"
+  ]
+}
+

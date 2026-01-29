@@ -1,0 +1,23 @@
+# Web Framework
+fastapi>=0.115.0
+uvicorn[standard]>=0.30.0
+
+# HTTP Client
+httpx>=0.26.0,<0.28
+aiohttp>=3.9.0
+
+# Supabase
+supabase>=2.10.0
+
+# Environment
+python-dotenv>=1.0.0
+
+# Scheduling
+apscheduler>=3.10.0
+
+# Data Processing
+pandas>=2.1.0
+
+# Validation
+pydantic>=2.5.0
+pydantic-settings>=2.1.0
