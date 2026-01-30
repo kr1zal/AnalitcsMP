@@ -15,15 +15,24 @@ router = APIRouter()
 async def get_summary(
     date_from: Optional[str] = Query(None, description="Дата начала (YYYY-MM-DD)"),
     date_to: Optional[str] = Query(None, description="Дата окончания (YYYY-MM-DD)"),
-    marketplace: Optional[str] = Query(None, description="Фильтр по МП: wb, ozon")
+    marketplace: Optional[str] = Query(None, description="Фильтр по МП: wb, ozon"),
+    include_prev_period: bool = Query(False, description="Включить данные предыдущего периода"),
+    include_ozon_truth: bool = Query(False, description="Использовать 'истинную' выручку Ozon из costs-tree")
 ):
     """
-    Сводка по продажам за период
+    Сводка по продажам за период (использует RPC для оптимизации).
 
     Возвращает агрегированные данные:
     - Общее количество заказов, выкупов, возвратов
     - Выручка
     - Средний процент выкупа
+
+    При include_prev_period=true также возвращает:
+    - Данные предыдущего периода
+    - Процент изменения выручки
+
+    При include_ozon_truth=true:
+    - Выручка Ozon берётся из costs-tree (как в ЛК)
     """
     supabase = get_supabase_client()
 
@@ -34,128 +43,29 @@ async def get_summary(
         date_to = datetime.now().strftime("%Y-%m-%d")
 
     try:
-        query = supabase.table("mp_sales").select("*").gte("date", date_from).lte("date", date_to)
-
-        # Фильтр по маркетплейсу (только если не "all")
-        if marketplace and marketplace != "all":
-            query = query.eq("marketplace", marketplace)
-
-        result = query.execute()
-        sales = result.data
-
-        # Агрегация
-        total_orders = sum(s.get("orders_count", 0) for s in sales)
-        total_sales = sum(s.get("sales_count", 0) for s in sales)
-        total_returns = sum(s.get("returns_count", 0) for s in sales)
-        total_revenue = sum(float(s.get("revenue", 0)) for s in sales)
-
-        avg_buyout = round(total_sales / total_orders * 100, 2) if total_orders > 0 else 0
-
-        # Получаем удержания для чистой прибыли (с детализацией)
-        # Фильтруем costs только по product_id, у которых есть продажи в периоде
-        # Это исключает orphan-затраты (хранение без продаж)
-        product_ids_with_sales = list(set(s["product_id"] for s in sales if s.get("product_id")))
-
-        costs_result_data = []
-        # Для WB "истина" включает начисления/удержания вне продаж (например, хранение).
-        # Поэтому для marketplace=wb НЕ фильтруем orphan-costs по product_id с продажами.
-        if marketplace == "wb":
-            costs_query = supabase.table("mp_costs").select("*").gte("date", date_from).lte("date", date_to).eq("marketplace", "wb")
-            costs_result = costs_query.execute()
-            costs_result_data = costs_result.data
-        elif product_ids_with_sales:
-            costs_query = supabase.table("mp_costs").select("*").gte("date", date_from).lte("date", date_to)
-            if marketplace and marketplace != "all":
-                costs_query = costs_query.eq("marketplace", marketplace)
-            costs_query = costs_query.in_("product_id", product_ids_with_sales)
-            costs_result = costs_query.execute()
-            costs_result_data = costs_result.data
-
-        total_costs = sum(float(c.get("total_costs", 0)) for c in costs_result_data)
-
-        # Детализация расходов
-        costs_commission = sum(float(c.get("commission", 0)) for c in costs_result_data)
-        costs_logistics = sum(float(c.get("logistics", 0)) for c in costs_result_data)
-        costs_storage = sum(float(c.get("storage", 0)) for c in costs_result_data)
-        costs_penalties = sum(float(c.get("penalties", 0)) for c in costs_result_data)
-        costs_acquiring = sum(float(c.get("acquiring", 0)) for c in costs_result_data)
-        costs_other = sum(float(c.get("other_costs", 0)) for c in costs_result_data)
-
-        # Получаем рекламные расходы
-        ads_query = supabase.table("mp_ad_costs").select("cost").gte("date", date_from).lte("date", date_to)
-        if marketplace and marketplace != "all":
-            ads_query = ads_query.eq("marketplace", marketplace)
-        ads_result = ads_query.execute()
-        total_ad_cost = sum(float(a.get("cost", 0)) for a in ads_result.data)
-
-        # Закупочные расходы
-        products_result = supabase.table("mp_products").select("id, purchase_price").execute()
-        purchase_prices = {p["id"]: float(p.get("purchase_price", 0)) for p in products_result.data}
-        total_purchase = sum(
-            purchase_prices.get(s["product_id"], 0) * s.get("sales_count", 0)
-            for s in sales
-        )
-
-        # Чистая прибыль = выручка - удержания МП - реклама - закупка
-        net_profit = total_revenue - total_costs - total_ad_cost - total_purchase
-
-        # ДРР = рекламные расходы / выручка * 100
-        drr = round(total_ad_cost / total_revenue * 100, 2) if total_revenue > 0 else 0
-
-        # Средний чек
-        avg_check = round(total_revenue / total_sales, 2) if total_sales > 0 else 0
-
-        # === Данные за ПРЕДЫДУЩИЙ период (для сравнения) ===
-        from_date = datetime.strptime(date_from, "%Y-%m-%d")
-        to_date = datetime.strptime(date_to, "%Y-%m-%d")
-        period_days = (to_date - from_date).days + 1
-        prev_from = (from_date - timedelta(days=period_days)).strftime("%Y-%m-%d")
-        prev_to = (from_date - timedelta(days=1)).strftime("%Y-%m-%d")
-
-        prev_query = supabase.table("mp_sales").select("*").gte("date", prev_from).lte("date", prev_to)
-        if marketplace and marketplace != "all":
-            prev_query = prev_query.eq("marketplace", marketplace)
-        prev_result = prev_query.execute()
-        prev_sales = prev_result.data
-
-        prev_revenue = sum(float(s.get("revenue", 0)) for s in prev_sales)
-        prev_total_sales = sum(s.get("sales_count", 0) for s in prev_sales)
-        prev_orders = sum(s.get("orders_count", 0) for s in prev_sales)
-
-        # Прошлый/Настоящий % (рост выручки)
-        revenue_change = round((total_revenue - prev_revenue) / prev_revenue * 100, 1) if prev_revenue > 0 else 0
-
-        return {
-            "status": "success",
-            "period": {"from": date_from, "to": date_to},
-            "marketplace": marketplace or "all",
-            "summary": {
-                "orders": total_orders,
-                "sales": total_sales,
-                "returns": total_returns,
-                "revenue": round(total_revenue, 2),
-                "buyout_percent": avg_buyout,
-                "net_profit": round(net_profit, 2),
-                "drr": drr,
-                "ad_cost": round(total_ad_cost, 2),
-                "total_costs": round(total_costs, 2),
-                "avg_check": avg_check,
-                "costs_breakdown": {
-                    "commission": round(costs_commission, 2),
-                    "logistics": round(costs_logistics, 2),
-                    "storage": round(costs_storage, 2),
-                    "penalties": round(costs_penalties, 2),
-                    "acquiring": round(costs_acquiring, 2),
-                    "other": round(costs_other, 2)
+        # Используем оптимизированную RPC если нужен prev-period
+        if include_prev_period:
+            result = supabase.rpc(
+                "get_dashboard_summary_with_prev",
+                {
+                    "p_date_from": date_from,
+                    "p_date_to": date_to,
+                    "p_marketplace": marketplace,
+                    "p_include_costs_tree_revenue": include_ozon_truth
                 }
-            },
-            "previous_period": {
-                "revenue": round(prev_revenue, 2),
-                "sales": prev_total_sales,
-                "orders": prev_orders,
-                "revenue_change_percent": revenue_change
-            }
-        }
+            ).execute()
+        else:
+            # Стандартный запрос без prev-period
+            result = supabase.rpc(
+                "get_dashboard_summary",
+                {
+                    "p_date_from": date_from,
+                    "p_date_to": date_to,
+                    "p_marketplace": marketplace
+                }
+            ).execute()
+
+        return result.data
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -437,19 +347,12 @@ async def get_costs_tree(
     date_from: Optional[str] = Query(None, description="Дата начала (YYYY-MM-DD)"),
     date_to: Optional[str] = Query(None, description="Дата окончания (YYYY-MM-DD)"),
     marketplace: Optional[str] = Query(None, description="Фильтр по МП: wb, ozon"),
-    product_id: Optional[str] = Query(None, description="Фильтр по товару (UUID)")
+    product_id: Optional[str] = Query(None, description="Фильтр по товару (UUID)"),
+    include_children: bool = Query(True, description="Включать подкатегории (детализацию) в дереве")
 ):
     """
     Иерархическое дерево удержаний (tree-view как в ЛК Ozon).
-
-    Возвращает дерево:
-    - Начислено за период (итого)
-      - Продажи (Выручка, Баллы, Партнёры)
-      - Вознаграждение Ozon (Витамины, Прочее) — наша группировка
-      - Услуги доставки (Логистика, Возвраты)
-      - Услуги агентов (Эквайринг, Звёздные товары)
-      - Услуги FBO (Размещение товаров)
-      - Продвижение и реклама (Бонусы продавца)
+    Использует RPC функцию для оптимизации.
     """
     supabase = get_supabase_client()
 
@@ -459,227 +362,62 @@ async def get_costs_tree(
         date_to = datetime.now().strftime("%Y-%m-%d")
 
     try:
-        query = supabase.table("mp_costs_details").select("*") \
-            .gte("date", date_from).lte("date", date_to)
-
-        if marketplace and marketplace != "all":
-            query = query.eq("marketplace", marketplace)
-        if product_id:
-            query = query.eq("product_id", product_id)
-
-        result = query.execute()
-        details = result.data
-
-        # Fallback: если детализация не синхронизирована, собираем best-effort дерево из mp_sales/mp_costs,
-        # чтобы UI не был пустым (и можно было увидеть хоть какие-то числа).
-        # Для WB это критично: mp_costs_details появляется только после sync_costs_wb новой версии.
-        warnings: list[str] = []
-        source = "mp_costs_details"
-        if not details and marketplace in ["wb", "ozon"]:
-            source = "fallback_mp_sales_mp_costs"
-            warnings.append("Нет mp_costs_details за период — показаны агрегаты (без точного 'К перечислению'). Запусти sync/costs для полной детализации.")
-
-            # Sales total (mp_sales.revenue)
-            sales_total = total_revenue
-
-            # Costs totals (mp_costs)
-            costs_query = supabase.table("mp_costs").select("*").gte("date", date_from).lte("date", date_to).eq("marketplace", marketplace)
-            if product_id:
-                costs_query = costs_query.eq("product_id", product_id)
-            costs_result = costs_query.execute()
-            costs_rows = costs_result.data
-
-            def ssum(field: str) -> float:
-                return sum(float(c.get(field, 0) or 0) for c in costs_rows)
-
-            comm = ssum("commission")
-            logi = ssum("logistics")
-            stor = ssum("storage")
-            acq = ssum("acquiring")
-            pen = ssum("penalties")
-            other = ssum("other_costs")
-
-            # Собираем pseudo-details (с знаками для дерева)
-            pseudo = []
-            if sales_total:
-                pseudo.append({"category": "Продажи", "subcategory": "Выручка", "amount": sales_total})
-
-            if marketplace == "wb":
-                if comm:
-                    pseudo.append({"category": "Вознаграждение WB", "subcategory": "Комиссия WB (агрегат)", "amount": -comm})
-                if logi:
-                    pseudo.append({"category": "Логистика", "subcategory": "Логистика (агрегат)", "amount": -logi})
-                if acq:
-                    pseudo.append({"category": "Эквайринг", "subcategory": "Эквайринг (агрегат)", "amount": -acq})
-                if stor:
-                    pseudo.append({"category": "Хранение", "subcategory": "Хранение (агрегат)", "amount": -stor})
-                if pen:
-                    pseudo.append({"category": "Штрафы", "subcategory": "Штрафы (агрегат)", "amount": -pen})
-                if other:
-                    pseudo.append({"category": "Прочее", "subcategory": "Прочее (агрегат)", "amount": -other})
-            else:
-                # ozon fallback (на случай)
-                if comm:
-                    pseudo.append({"category": "Вознаграждение Ozon", "subcategory": "Комиссия (агрегат)", "amount": -comm})
-                if logi:
-                    pseudo.append({"category": "Услуги доставки", "subcategory": "Логистика (агрегат)", "amount": -logi})
-                if acq:
-                    pseudo.append({"category": "Услуги агентов", "subcategory": "Эквайринг (агрегат)", "amount": -acq})
-                if stor:
-                    pseudo.append({"category": "Услуги FBO", "subcategory": "Складские услуги (агрегат)", "amount": -stor})
-                if other:
-                    pseudo.append({"category": "Прочее", "subcategory": "Прочее (агрегат)", "amount": -other})
-
-            details = pseudo
-
-        # Также получаем выручку (mp_sales.revenue) — оставляем в ответе, но для мэтчинга с ЛК Ozon
-        # проценты должны считаться от "Продажи" (внутри дерева), а не от mp_sales.revenue.
-        sales_query = supabase.table("mp_sales").select("revenue, marketplace") \
-            .gte("date", date_from).lte("date", date_to)
-        if marketplace and marketplace != "all":
-            sales_query = sales_query.eq("marketplace", marketplace)
-        if product_id:
-            sales_query = sales_query.eq("product_id", product_id)
-        sales_result = sales_query.execute()
-        total_revenue = sum(float(s.get("revenue", 0)) for s in sales_result.data)
-
-        # Агрегируем по category → subcategory
-        # Используем Decimal, чтобы не ловить плавающие ошибки округления (копейки)
-        from decimal import Decimal, ROUND_HALF_UP
-
-        def d(x) -> Decimal:
-            try:
-                return Decimal(str(x or "0"))
-            except Exception:
-                return Decimal("0")
-
-        tree: dict[str, dict[str, Decimal]] = {}  # {category: {subcategory: amount}}
-        for row in details:
-            cat = row.get("category", "Прочее")
-            sub = row.get("subcategory", "")
-            amount = d(row.get("amount", 0))
-
-            if cat not in tree:
-                tree[cat] = {}
-            if sub not in tree[cat]:
-                tree[cat][sub] = Decimal("0")
-            tree[cat][sub] += amount
-
-        # База для % как в ЛК Ozon: "Продажи" (а не mp_sales.revenue).
-        sales_base = Decimal("0")
-        if "Продажи" in tree:
-            sales_base = sum(tree["Продажи"].values(), Decimal("0"))
-        sales_base_abs = abs(sales_base)
-        total_revenue_abs = abs(d(total_revenue))
-
-        # Формируем иерархию для frontend
-        # Порядок категорий как в ЛК (Ozon / WB)
-        if marketplace == "wb":
-            category_order = [
-                "Продажи",
-                "Возмещения",
-                "Вознаграждение Вайлдберриз (ВВ)",
-                "Эквайринг/Комиссии за организацию платежей",
-                "Услуги по доставке товара покупателю",
-                "Стоимость хранения",
-                "Стоимость операций при приемке",
-                "Прочие удержания/выплаты",
-                "Общая сумма штрафов",
-                "Корректировка Вознаграждения Вайлдберриз (ВВ)",
-                "Стоимость участия в программе лояльности",
-                "Компенсация скидки по программе лояльности",
-                "Разовое изменение срока перечисления денежных средств",
-            ]
-        else:
-            category_order = [
-                "Продажи",
-                "Вознаграждение Ozon",
-                "Услуги доставки",
-                "Услуги агентов",
-                "Услуги FBO",
-                "Продвижение и реклама",
-                "Прочее",
-            ]
-
-        tree_items = []
-        total_accrued = Decimal("0")
-
-        def _sorted_children(category: str, items: dict[str, Decimal]) -> list[tuple[str, Decimal]]:
-            """
-            Сортировка подкатегорий:
-            - где известен порядок ЛК — фиксируем его
-            - иначе — по убыванию |amount| (чтобы крупное было сверху), затем по имени (детерминизм)
-            """
-            preferred: dict[str, list[str]] = {
-                # OZON (как в ЛК начислений)
-                "Продажи": ["Выручка", "Баллы за скидки", "Программы партнёров"],
-                "Возвраты": ["Возврат выручки", "Баллы за скидки", "Программы партнёров"],
-                "Вознаграждение Ozon": ["Вознаграждение за продажу", "Возврат вознаграждения", "Витамины", "Прочее"],
-                "Услуги доставки": ["Логистика", "Обратная логистика", "Возвраты"],
-                "Услуги агентов": ["Эквайринг", "Звёздные товары", "Доставка до места выдачи"],
-                "Услуги FBO": [
-                    "Складские услуги",
-                    "Размещение товаров",
-                    "Размещение товаров на складах Ozon",
-                    "Размещение товаров на складах",
-                ],
-                "Продвижение и реклама": ["Бонусы продавца"],
+        # Вызываем RPC функцию — один запрос вместо нескольких
+        result = supabase.rpc(
+            "get_costs_tree",
+            {
+                "p_date_from": date_from,
+                "p_date_to": date_to,
+                "p_marketplace": marketplace,
+                "p_product_id": product_id,
+                "p_include_children": include_children
             }
+        ).execute()
 
-            pref = preferred.get(category, [])
-            rank = {name: i for i, name in enumerate(pref)}
+        return result.data
 
-            def key(kv: tuple[str, Decimal]) -> tuple[int, float, str]:
-                name, amount = kv
-                if name in rank:
-                    return (rank[name], 0.0, name)
-                return (999, -float(abs(amount)), name)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
-            return sorted(items.items(), key=key)
 
-        for cat in category_order:
-            if cat not in tree:
-                continue
+@router.get("/dashboard/costs-tree-combined")
+async def get_costs_tree_combined(
+    date_from: Optional[str] = Query(None, description="Дата начала (YYYY-MM-DD)"),
+    date_to: Optional[str] = Query(None, description="Дата окончания (YYYY-MM-DD)"),
+    product_id: Optional[str] = Query(None, description="Фильтр по товару (UUID)"),
+    include_children: bool = Query(True, description="Включать подкатегории (детализацию) в дереве")
+):
+    """
+    Объединённое дерево удержаний для Ozon и WB в одном запросе.
+    Экономит 1 HTTP запрос при marketplace=all.
 
-            subcategories = tree[cat]
-            cat_total = sum(subcategories.values(), Decimal("0"))
-            total_accrued += cat_total
+    Возвращает:
+    {
+      "ozon": { costs-tree для Ozon },
+      "wb": { costs-tree для WB },
+      "period": { "from": "...", "to": "..." }
+    }
+    """
+    supabase = get_supabase_client()
 
-            # % как в ЛК: от "Продажи" (только для расходных категорий)
-            denom = sales_base_abs if sales_base_abs > 0 else total_revenue_abs
-            pct = (
-                float((abs(cat_total) / denom * Decimal("100")).quantize(Decimal("0.1"), rounding=ROUND_HALF_UP))
-                if denom > 0 and cat != "Продажи"
-                else None
-            )
+    if not date_from:
+        date_from = (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d")
+    if not date_to:
+        date_to = datetime.now().strftime("%Y-%m-%d")
 
-            children = []
-            for sub, amount in _sorted_children(cat, subcategories):
-                children.append({
-                    "name": sub,
-                    "amount": float(amount.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)),
-                })
+    try:
+        # Вызываем RPC функцию — один запрос вместо двух
+        result = supabase.rpc(
+            "get_costs_tree_combined",
+            {
+                "p_date_from": date_from,
+                "p_date_to": date_to,
+                "p_product_id": product_id,
+                "p_include_children": include_children
+            }
+        ).execute()
 
-            tree_items.append({
-                "name": cat,
-                "amount": float(cat_total.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)),
-                "percent": pct,
-                "children": children,
-            })
-
-        resp = {
-            "status": "success",
-            "period": {"from": date_from, "to": date_to},
-            "marketplace": marketplace or "all",
-            "total_accrued": float(total_accrued.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)),
-            "total_revenue": round(total_revenue, 2),
-            "percent_base_sales": float(sales_base_abs.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)),
-            "tree": tree_items,
-        }
-        if warnings:
-            resp["warnings"] = warnings
-            resp["source"] = source
-        return resp
+        return result.data
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

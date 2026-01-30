@@ -1,10 +1,13 @@
 /**
  * Таблица остатков на складах
+ * Mobile: карточный вид с аккордеоном
+ * Desktop: классическая таблица
  */
-import { ChevronDown, ChevronRight } from 'lucide-react';
+import { ChevronDown, ChevronRight, Package } from 'lucide-react';
 import { Fragment, useMemo, useState } from 'react';
 import { LoadingSpinner } from '../Shared/LoadingSpinner';
 import { getMarketplaceName, cn } from '../../lib/utils';
+import { useIsMobile } from '../../hooks/useMediaQuery';
 import type { StockItem } from '../../types';
 
 interface StocksTableProps {
@@ -13,6 +16,7 @@ interface StocksTableProps {
 }
 
 export const StocksTable = ({ stocks, isLoading = false }: StocksTableProps) => {
+  const isMobile = useIsMobile();
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
   const [filter, setFilter] = useState<'all' | 'oos_wb' | 'oos_ozon' | 'low'>('all');
 
@@ -30,18 +34,17 @@ export const StocksTable = ({ stocks, isLoading = false }: StocksTableProps) => 
     return `${days} д назад`;
   };
 
-  const getMpStockStatus = (quantity: number): { label: string; color: string; rank: number } => {
-    // rank: меньше = хуже (для сортировки)
+  const getMpStockStatus = (quantity: number): { label: string; color: string; bgColor: string; rank: number } => {
     if (quantity <= 0) {
-      return { label: 'OOS', color: 'text-red-700 bg-red-50', rank: 0 };
+      return { label: 'OOS', color: 'text-red-700', bgColor: 'bg-red-50', rank: 0 };
     }
     if (quantity < 20) {
-      return { label: 'Критичный', color: 'text-red-700 bg-red-50', rank: 1 };
+      return { label: 'Крит.', color: 'text-red-700', bgColor: 'bg-red-50', rank: 1 };
     }
     if (quantity < 100) {
-      return { label: 'Низкий', color: 'text-yellow-700 bg-yellow-50', rank: 2 };
+      return { label: 'Низкий', color: 'text-yellow-700', bgColor: 'bg-yellow-50', rank: 2 };
     }
-    return { label: 'Достаточно', color: 'text-green-700 bg-green-50', rank: 3 };
+    return { label: 'OK', color: 'text-green-700', bgColor: 'bg-green-50', rank: 3 };
   };
 
   const latestUpdatedAt = useMemo((): string | null => {
@@ -59,7 +62,6 @@ export const StocksTable = ({ stocks, isLoading = false }: StocksTableProps) => 
     return best;
   }, [stocks]);
 
-  // IMPORTANT: hooks must run before any early returns.
   const totalsByBarcode = useMemo(() => {
     const m = new Map<string, { wbTotal: number; ozonTotal: number; total: number }>();
     for (const stock of stocks || []) {
@@ -91,30 +93,10 @@ export const StocksTable = ({ stocks, isLoading = false }: StocksTableProps) => 
       const aRank = Math.min(getMpStockStatus(at.wbTotal).rank, getMpStockStatus(at.ozonTotal).rank);
       const bRank = Math.min(getMpStockStatus(bt.wbTotal).rank, getMpStockStatus(bt.ozonTotal).rank);
       if (aRank !== bRank) return aRank - bRank;
-      // secondary: меньше total выше (операционно важнее)
       if (at.total !== bt.total) return at.total - bt.total;
       return a.product_name.localeCompare(b.product_name, 'ru');
     });
   }, [filteredStocks, totalsByBarcode]);
-
-  if (isLoading) {
-    return (
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-5">
-        <LoadingSpinner text="Загрузка остатков..." />
-      </div>
-    );
-  }
-
-  if (!stocks || stocks.length === 0) {
-    return (
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-5">
-        <h2 className="text-base font-semibold text-gray-900 mb-3">Остатки на складах</h2>
-        <div className="flex items-center justify-center h-32 text-gray-500">
-          <p>Нет данных об остатках</p>
-        </div>
-      </div>
-    );
-  }
 
   const toggleRow = (barcode: string) => {
     const newExpanded = new Set(expandedRows);
@@ -126,68 +108,183 @@ export const StocksTable = ({ stocks, isLoading = false }: StocksTableProps) => 
     setExpandedRows(newExpanded);
   };
 
+  if (isLoading) {
+    return (
+      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
+        <LoadingSpinner text="Загрузка остатков..." />
+      </div>
+    );
+  }
+
+  if (!stocks || stocks.length === 0) {
+    return (
+      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
+        <h2 className="text-sm font-semibold text-gray-900 mb-3">Остатки на складах</h2>
+        <div className="flex items-center justify-center h-24 text-gray-500">
+          <p className="text-sm">Нет данных об остатках</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Фильтры (общие для mobile и desktop)
+  const FilterButtons = () => (
+    <div className="flex items-center gap-1.5 flex-wrap">
+      {[
+        { key: 'all', label: 'Все', activeClass: 'bg-gray-900 text-white border-gray-900' },
+        { key: 'oos_wb', label: 'OOS WB', activeClass: 'bg-red-600 text-white border-red-600' },
+        { key: 'oos_ozon', label: 'OOS Ozon', activeClass: 'bg-red-600 text-white border-red-600' },
+        { key: 'low', label: 'Low', activeClass: 'bg-yellow-500 text-white border-yellow-500' },
+      ].map((f) => (
+        <button
+          key={f.key}
+          type="button"
+          onClick={() => setFilter(f.key as typeof filter)}
+          className={cn(
+            'px-2.5 py-1 text-xs rounded-full border transition-all active:scale-95',
+            filter === f.key ? f.activeClass : 'bg-white text-gray-600 border-gray-200'
+          )}
+        >
+          {f.label}
+        </button>
+      ))}
+    </div>
+  );
+
+  // Mobile: карточный вид
+  if (isMobile) {
+    return (
+      <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+        {/* Header */}
+        <div className="p-3 border-b border-gray-100">
+          <div className="flex items-center justify-between mb-2">
+            <h2 className="text-sm font-semibold text-gray-900 flex items-center gap-2">
+              <Package className="w-4 h-4 text-gray-400" />
+              Остатки
+            </h2>
+            {(() => {
+              const rel = formatUpdatedAt(latestUpdatedAt);
+              return rel ? <span className="text-[10px] text-gray-400">{rel}</span> : null;
+            })()}
+          </div>
+          <FilterButtons />
+        </div>
+
+        {/* Cards */}
+        <div className="divide-y divide-gray-100 max-h-[60vh] overflow-y-auto">
+          {sortedStocks.map((stock) => {
+            const isExpanded = expandedRows.has(stock.barcode);
+            const { wbTotal, ozonTotal, total } = totalsByBarcode.get(stock.barcode) ?? { wbTotal: 0, ozonTotal: 0, total: 0 };
+            const wbStatus = getMpStockStatus(wbTotal);
+            const ozonStatus = getMpStockStatus(ozonTotal);
+
+            return (
+              <div key={stock.barcode} className="bg-white">
+                {/* Card Header */}
+                <button
+                  type="button"
+                  onClick={() => toggleRow(stock.barcode)}
+                  className="w-full p-3 flex items-center gap-3 active:bg-gray-50 transition-colors"
+                >
+                  {/* Expand icon */}
+                  <div className="flex-shrink-0">
+                    {isExpanded ? (
+                      <ChevronDown className="w-4 h-4 text-gray-400" />
+                    ) : (
+                      <ChevronRight className="w-4 h-4 text-gray-400" />
+                    )}
+                  </div>
+
+                  {/* Product info */}
+                  <div className="flex-1 min-w-0 text-left">
+                    <p className="text-sm font-medium text-gray-900 truncate">
+                      {stock.product_name}
+                    </p>
+                    <div className="flex items-center gap-3 mt-1">
+                      {/* WB */}
+                      <div className="flex items-center gap-1">
+                        <span className={cn('text-xs font-semibold', wbStatus.color)}>
+                          WB: {wbTotal}
+                        </span>
+                        <span className={cn('text-[9px] px-1 py-0.5 rounded', wbStatus.bgColor, wbStatus.color)}>
+                          {wbStatus.label}
+                        </span>
+                      </div>
+                      {/* Ozon */}
+                      <div className="flex items-center gap-1">
+                        <span className={cn('text-xs font-semibold', ozonStatus.color)}>
+                          Oz: {ozonTotal}
+                        </span>
+                        <span className={cn('text-[9px] px-1 py-0.5 rounded', ozonStatus.bgColor, ozonStatus.color)}>
+                          {ozonStatus.label}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Total */}
+                  <div className="flex-shrink-0 text-right">
+                    <p className="text-lg font-bold text-gray-900">{total}</p>
+                    <p className="text-[10px] text-gray-400">всего</p>
+                  </div>
+                </button>
+
+                {/* Expanded Details */}
+                {isExpanded && (
+                  <div className="px-3 pb-3 pt-0">
+                    <div className="bg-gray-50 rounded-lg p-2.5 space-y-2">
+                      {(['wb', 'ozon'] as const).map((mp) => {
+                        const rows = stock.warehouses
+                          .filter((w) => w.marketplace === mp)
+                          .slice()
+                          .sort((a, b) => b.quantity - a.quantity || a.warehouse.localeCompare(b.warehouse, 'ru'));
+                        if (rows.length === 0) return null;
+                        return (
+                          <div key={mp}>
+                            <p className="text-[10px] font-semibold text-gray-500 uppercase mb-1">
+                              {getMarketplaceName(mp)}
+                            </p>
+                            <div className="space-y-1">
+                              {rows.map((warehouse) => (
+                                <div
+                                  key={`${warehouse.marketplace}|${warehouse.warehouse}`}
+                                  className="flex items-center justify-between bg-white rounded-lg px-2.5 py-1.5 border border-gray-200"
+                                >
+                                  <span className="text-xs text-gray-700 truncate flex-1 mr-2">
+                                    {warehouse.warehouse}
+                                  </span>
+                                  <span className="text-xs font-semibold text-gray-900 flex-shrink-0">
+                                    {warehouse.quantity}
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    );
+  }
+
+  // Desktop: классическая таблица
   return (
-    <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+    <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
       <div className="p-5 pb-4">
         <div className="flex items-baseline justify-between gap-4">
           <div className="flex items-baseline gap-4">
             <h2 className="text-base font-semibold text-gray-900">Остатки на складах</h2>
-            <div className="hidden sm:flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => setFilter('all')}
-                className={cn(
-                  'px-2 py-1 text-xs rounded-full border',
-                  filter === 'all'
-                    ? 'bg-gray-900 text-white border-gray-900'
-                    : 'bg-white text-gray-700 border-gray-200'
-                )}
-              >
-                Все
-              </button>
-              <button
-                type="button"
-                onClick={() => setFilter('oos_wb')}
-                className={cn(
-                  'px-2 py-1 text-xs rounded-full border',
-                  filter === 'oos_wb'
-                    ? 'bg-red-600 text-white border-red-600'
-                    : 'bg-white text-gray-700 border-gray-200'
-                )}
-              >
-                OOS WB
-              </button>
-              <button
-                type="button"
-                onClick={() => setFilter('oos_ozon')}
-                className={cn(
-                  'px-2 py-1 text-xs rounded-full border',
-                  filter === 'oos_ozon'
-                    ? 'bg-red-600 text-white border-red-600'
-                    : 'bg-white text-gray-700 border-gray-200'
-                )}
-              >
-                OOS Ozon
-              </button>
-              <button
-                type="button"
-                onClick={() => setFilter('low')}
-                className={cn(
-                  'px-2 py-1 text-xs rounded-full border',
-                  filter === 'low'
-                    ? 'bg-yellow-500 text-white border-yellow-500'
-                    : 'bg-white text-gray-700 border-gray-200'
-                )}
-              >
-                Low
-              </button>
-            </div>
+            <FilterButtons />
           </div>
           {(() => {
             const rel = formatUpdatedAt(latestUpdatedAt);
-            return rel ? (
-              <span className="text-xs text-gray-500">Обновлено {rel}</span>
-            ) : null;
+            return rel ? <span className="text-xs text-gray-500">Обновлено {rel}</span> : null;
           })()}
         </div>
       </div>
@@ -209,7 +306,7 @@ export const StocksTable = ({ stocks, isLoading = false }: StocksTableProps) => 
                 Ozon
               </th>
               <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Всего
+                Σ
               </th>
               <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
                 Статус
@@ -226,7 +323,6 @@ export const StocksTable = ({ stocks, isLoading = false }: StocksTableProps) => 
 
               return (
                 <Fragment key={stock.barcode}>
-                  {/* Основная строка */}
                   <tr
                     className="hover:bg-gray-50 transition-colors cursor-pointer"
                     onClick={() => toggleRow(stock.barcode)}
@@ -237,11 +333,15 @@ export const StocksTable = ({ stocks, isLoading = false }: StocksTableProps) => 
                     <td className="px-6 py-4 text-sm text-gray-600 font-mono">
                       {stock.barcode}
                     </td>
-                    <td className="px-6 py-4 text-sm text-center text-gray-900 font-semibold">
-                      {wbTotal}
+                    <td className="px-6 py-4 text-sm text-center font-semibold">
+                      <span className={wbTotal <= 0 ? 'text-red-600' : wbTotal < 20 ? 'text-yellow-600' : 'text-gray-900'}>
+                        {wbTotal}
+                      </span>
                     </td>
-                    <td className="px-6 py-4 text-sm text-center text-gray-900 font-semibold">
-                      {ozonTotal}
+                    <td className="px-6 py-4 text-sm text-center font-semibold">
+                      <span className={ozonTotal <= 0 ? 'text-red-600' : ozonTotal < 20 ? 'text-yellow-600' : 'text-gray-900'}>
+                        {ozonTotal}
+                      </span>
                     </td>
                     <td className="px-6 py-4 text-sm text-center text-gray-900 font-bold">
                       {total}
@@ -249,22 +349,14 @@ export const StocksTable = ({ stocks, isLoading = false }: StocksTableProps) => 
                     <td className="px-6 py-4 text-center">
                       <div className="inline-flex items-center gap-2">
                         <span
-                          className={cn(
-                            'inline-flex px-2 py-1 text-[11px] font-semibold rounded-full',
-                            wbStatus.color
-                          )}
-                          title="Статус по WB"
+                          className={cn('inline-flex px-2 py-1 text-[11px] font-semibold rounded-full', wbStatus.bgColor, wbStatus.color)}
                         >
                           WB: {wbStatus.label}
                         </span>
                         <span
-                          className={cn(
-                            'inline-flex px-2 py-1 text-[11px] font-semibold rounded-full',
-                            ozonStatus.color
-                          )}
-                          title="Статус по Ozon"
+                          className={cn('inline-flex px-2 py-1 text-[11px] font-semibold rounded-full', ozonStatus.bgColor, ozonStatus.color)}
                         >
-                          Ozon: {ozonStatus.label}
+                          Oz: {ozonStatus.label}
                         </span>
                       </div>
                     </td>
@@ -277,12 +369,11 @@ export const StocksTable = ({ stocks, isLoading = false }: StocksTableProps) => 
                     </td>
                   </tr>
 
-                  {/* Развёрнутая строка с деталями по складам */}
                   {isExpanded && (
                     <tr className="bg-gray-50">
                       <td colSpan={7} className="px-6 py-4">
-                        <div className="ml-8 space-y-2">
-                          <p className="text-xs font-semibold text-gray-700 uppercase tracking-wide mb-3">
+                        <div className="ml-8 space-y-3">
+                          <p className="text-xs font-semibold text-gray-700 uppercase tracking-wide">
                             Детализация по складам:
                           </p>
                           {(['wb', 'ozon'] as const).map((mp) => {
@@ -301,9 +392,7 @@ export const StocksTable = ({ stocks, isLoading = false }: StocksTableProps) => 
                                     key={`${warehouse.marketplace}|${warehouse.warehouse}`}
                                     className="flex items-center justify-between bg-white rounded px-4 py-2 border border-gray-200"
                                   >
-                                    <div className="flex items-center gap-3">
-                                      <span className="text-sm text-gray-700">{warehouse.warehouse}</span>
-                                    </div>
+                                    <span className="text-sm text-gray-700">{warehouse.warehouse}</span>
                                     <span className="text-sm font-semibold text-gray-900">
                                       {warehouse.quantity} шт
                                     </span>

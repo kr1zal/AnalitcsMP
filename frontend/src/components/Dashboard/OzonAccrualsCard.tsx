@@ -1,12 +1,14 @@
 /**
  * OZON Accruals summary card (как блок "Продажи и возвраты / Начисления / Итого" в ЛК).
  * Источник данных: /dashboard/costs-tree (marketplace=ozon)
+ *
+ * ОПТИМИЗАЦИЯ: данные передаются через props из DashboardPage,
+ * чтобы избежать дублирования запросов.
  */
 import { useMemo, useState } from 'react';
 import { AlertTriangle, ChevronDown, ChevronUp } from 'lucide-react';
-import { useCostsTree } from '../../hooks/useDashboard';
 import { formatCurrency } from '../../lib/utils';
-import type { CostsTreeItem, DashboardFilters } from '../../types';
+import type { CostsTreeItem, CostsTreeResponse, DashboardFilters } from '../../types';
 
 interface OzonAccrualsCardProps {
   filters: DashboardFilters;
@@ -21,6 +23,12 @@ interface OzonAccrualsCardProps {
    * По умолчанию выключено (в ЛК у подкатегорий % обычно не показываются).
    */
   showLeafPercents?: boolean;
+  /**
+   * ОПТИМИЗАЦИЯ: данные costs-tree передаются из родителя (DashboardPage),
+   * чтобы избежать дублирования запросов.
+   */
+  costsTreeData?: CostsTreeResponse | null;
+  isLoading?: boolean;
 }
 
 type ColorToken =
@@ -100,7 +108,16 @@ function pickSalesColor(subcategory: string, idx: number): ColorToken {
   return idx === 0 ? 'salesRevenue' : idx === 1 ? 'salesDiscount' : 'salesPartners';
 }
 
-export const OzonAccrualsCard = ({ filters, showLeafPercents, detailsOpen, onToggleDetails }: OzonAccrualsCardProps) => {
+export const OzonAccrualsCard = ({
+  filters: _filters,
+  showLeafPercents,
+  detailsOpen,
+  onToggleDetails,
+  costsTreeData,
+  isLoading: isLoadingProp,
+}: OzonAccrualsCardProps) => {
+  // _filters зарезервирован для будущего использования
+  void _filters;
   const [showDetailsLocal, setShowDetailsLocal] = useState(false);
   const [showLeafPercentsLocal, setShowLeafPercentsLocal] = useState(false);
 
@@ -111,10 +128,10 @@ export const OzonAccrualsCard = ({ filters, showLeafPercents, detailsOpen, onTog
   const leafPercentsExternallyControlled = typeof showLeafPercents === 'boolean';
   const leafPercentsEnabled = leafPercentsExternallyControlled ? showLeafPercents : showLeafPercentsLocal;
 
-  const { data, isLoading, error } = useCostsTree({
-    ...filters,
-    marketplace: 'ozon',
-  });
+  // ОПТИМИЗАЦИЯ: данные передаются через props из DashboardPage
+  const data = costsTreeData;
+  const isLoading = isLoadingProp ?? false;
+  const error = null; // ошибки обрабатываются в DashboardPage
 
   const computed = useMemo(() => {
     const tree = data?.tree ?? [];
@@ -186,23 +203,20 @@ export const OzonAccrualsCard = ({ filters, showLeafPercents, detailsOpen, onTog
 
   const salesAbs = Math.abs(computed.salesTotal);
   const costsAbs = Math.abs(computed.costsTotal);
-  const denomAbs = Math.abs(
-    typeof computed.percentBaseSales === 'number' ? computed.percentBaseSales : computed.salesTotal
-  );
 
   return (
-    <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-5">
-      <div className="flex items-center justify-between mb-4">
-        <h3 className="text-lg font-bold" style={{ color: '#005BFF' }}>
+    <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-3 sm:p-5">
+      <div className="flex items-center justify-between mb-2 sm:mb-4">
+        <h3 className="text-base sm:text-lg font-bold" style={{ color: '#005BFF' }}>
           OZON
         </h3>
         <button
           type="button"
           onClick={toggleDetails}
-          className="text-sm text-blue-600 hover:text-blue-700 font-medium flex items-center gap-1"
+          className="text-xs sm:text-sm text-blue-600 hover:text-blue-700 font-medium flex items-center gap-0.5 sm:gap-1"
         >
-          {showDetails ? 'Свернуть' : 'Детализация'}
-          {showDetails ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+          {showDetails ? 'Свернуть' : 'Детали'}
+          {showDetails ? <ChevronUp size={14} className="sm:w-4 sm:h-4" /> : <ChevronDown size={14} className="sm:w-4 sm:h-4" />}
         </button>
       </div>
 
@@ -221,76 +235,48 @@ export const OzonAccrualsCard = ({ filters, showLeafPercents, detailsOpen, onTog
         </div>
       ) : null}
 
-      {/* 
-        В ЛК этот блок широкий. У нас он часто рендерится в половину экрана (в паре с WB),
-        поэтому на md делаем 2 колонки + "Итого" на всю ширину, чтобы числа не упирались в разделители.
-        Вертикальные разделители включаем только на lg.
-      */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 lg:gap-0 lg:divide-x lg:divide-gray-200 md:min-h-[280px]">
-        {/* Column 1: Revenue */}
-        <div className="lg:pr-6 min-w-0">
-          <div
-            className="text-sm font-semibold text-gray-900 mb-2"
-            title="Продажи = Выручка + Баллы за скидки + Программы партнёров (как в ЛК Ozon)"
-          >
-            Продажи
-          </div>
-          <div className="text-3xl font-bold tabular-nums tracking-tight text-gray-900 mb-4 whitespace-nowrap">
-            <span title={`Точно: ${formatExactSigned(computed.salesTotal)}`}>
+      {/* Compact layout for 50% width on mobile */}
+      <div className="space-y-3 sm:space-y-4">
+        {/* Row 1: Sales + Total */}
+        <div className="flex justify-between items-start gap-2">
+          <div className="min-w-0 flex-1">
+            <div className="text-[10px] sm:text-xs font-semibold text-gray-500 mb-0.5">Продажи</div>
+            <div className="text-lg sm:text-2xl font-bold tabular-nums text-gray-900" title={`Точно: ${formatExactSigned(computed.salesTotal)}`}>
               {formatOzonAmount(computed.salesTotal)}
-            </span>
+            </div>
           </div>
-
-          {/* Sales bar */}
-          <div className="h-2 rounded bg-gray-100 overflow-hidden flex mb-4">
-            {computed.salesChildren.length ? (
-              computed.salesChildren.map((c, idx) => {
-                const w = pct(Math.abs(c.amount), salesAbs);
-                const token = pickSalesColor(c.name, idx);
-                return <div key={c.name} className={COLORS[token].bar} style={{ width: `${w}%` }} />;
-              })
-            ) : (
-              <div className={COLORS.salesRevenue.bar} style={{ width: '100%' }} />
-            )}
-          </div>
-
-          <div className="space-y-2">
-            {(computed.salesChildren.length ? computed.salesChildren : [{ name: 'Выручка', amount: computed.salesTotal }]).map(
-              (row, idx) => {
-                const token = pickSalesColor(row.name, idx);
-                return (
-                  <div key={row.name} className="flex items-center justify-between text-sm">
-                    <div className="flex items-center gap-2 min-w-0">
-                      <span className={`w-3 h-3 rounded ${COLORS[token].dot} flex-shrink-0`} />
-                      <span className="text-gray-700 truncate">{row.name}</span>
-                    </div>
-                    <span className="tabular-nums text-gray-900 ml-4 flex-shrink-0">
-                      <span title={`Точно: ${formatExactSigned(row.amount)}`}>
-                        {formatOzonAmount(row.amount)}
-                      </span>
-                    </span>
-                  </div>
-                );
-              }
-            )}
-          </div>
-
-          <div className="mt-3 text-xs text-gray-400">
-            Сумма = Выручка + Баллы + Партнёры (как в ЛК)
+          <div className="text-right min-w-0">
+            <div className="text-[10px] sm:text-xs font-semibold text-gray-500 mb-0.5">Начислено</div>
+            <div className="text-lg sm:text-2xl font-bold tabular-nums text-teal-600" title={`Точно: ${formatExactSigned(computed.totalAccrued)}`}>
+              {formatOzonAmount(computed.totalAccrued)}
+            </div>
           </div>
         </div>
 
-        {/* Column 2: Costs */}
-        <div className="lg:px-6 min-w-0">
-          <div className="text-sm font-semibold text-gray-900 mb-2">Удержания</div>
-          <div className="text-3xl font-bold tabular-nums tracking-tight text-gray-900 mb-4 whitespace-nowrap">
-            <span title={`Точно: ${formatExactSigned(computed.costsTotal)}`}>
+        {/* Sales bar */}
+        <div className="h-1.5 sm:h-2 rounded bg-gray-100 overflow-hidden flex">
+          {computed.salesChildren.length ? (
+            computed.salesChildren.map((c, idx) => {
+              const w = pct(Math.abs(c.amount), salesAbs);
+              const token = pickSalesColor(c.name, idx);
+              return <div key={c.name} className={COLORS[token].bar} style={{ width: `${w}%` }} />;
+            })
+          ) : (
+            <div className={COLORS.salesRevenue.bar} style={{ width: '100%' }} />
+          )}
+        </div>
+
+        {/* Row 2: Costs */}
+        <div>
+          <div className="flex justify-between items-center mb-1.5">
+            <span className="text-[10px] sm:text-xs font-semibold text-gray-500">Удержания</span>
+            <span className="text-sm sm:text-base font-bold tabular-nums text-gray-900" title={`Точно: ${formatExactSigned(computed.costsTotal)}`}>
               {formatOzonAmount(computed.costsTotal)}
             </span>
           </div>
 
           {/* Costs bar */}
-          <div className="h-2 rounded bg-gray-100 overflow-hidden flex mb-4">
+          <div className="h-1.5 sm:h-2 rounded bg-gray-100 overflow-hidden flex mb-2">
             {computed.costItems.map((c) => {
               const w = pct(Math.abs(c.amount), costsAbs);
               const token = pickCostColor(c.name);
@@ -298,45 +284,22 @@ export const OzonAccrualsCard = ({ filters, showLeafPercents, detailsOpen, onTog
             })}
           </div>
 
-          {/* Costs list (2 columns like LK) */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2">
+          {/* Costs list - compact */}
+          <div className="space-y-1">
             {computed.costsForList.map((c) => {
               const token = pickCostColor(c.name);
               return (
-                <div key={c.name} className="flex items-center justify-between text-sm">
-                  <div className="flex items-center gap-2 min-w-0">
-                    <span className={`w-3 h-3 rounded ${COLORS[token].dot} flex-shrink-0`} />
-                    <span className="text-gray-700 truncate">{c.name}</span>
+                <div key={c.name} className="flex items-center justify-between text-[11px] sm:text-xs">
+                  <div className="flex items-center gap-1.5 min-w-0">
+                    <span className={`w-2 h-2 rounded ${COLORS[token].dot} flex-shrink-0`} />
+                    <span className="text-gray-600 truncate">{c.name}</span>
                   </div>
-                  <span className="tabular-nums text-gray-900 ml-4 flex-shrink-0">
-                    <span title={`Точно: ${formatExactSigned(c.amount)}`}>{formatOzonAmount(c.amount)}</span>
+                  <span className="tabular-nums text-gray-900 ml-2 flex-shrink-0" title={`Точно: ${formatExactSigned(c.amount)}`}>
+                    {formatOzonAmount(c.amount)}
                   </span>
                 </div>
               );
             })}
-          </div>
-
-          {/* Percent base note (only when backend provides it) */}
-          <div
-            className="mt-3 text-xs text-gray-400"
-            title={`База для %: Продажи за период. Точно: ${formatCurrency(denomAbs)}`}
-          >
-            % считаются от продаж: {formatOzonAmount(denomAbs)}
-          </div>
-
-          <div className="mt-2 text-xs text-gray-400">В карточке суммы округлены до ₽ (как в ЛК).</div>
-        </div>
-
-        {/* Column 3: Total */}
-        <div className="md:col-span-2 lg:col-span-1 lg:pl-6 min-w-0">
-          <div className="text-sm font-semibold text-gray-900 mb-2">Итого</div>
-          <div className="text-3xl font-bold tabular-nums tracking-tight text-gray-900 mb-4 whitespace-nowrap">
-            <span title={`Точно: ${formatExactSigned(computed.totalAccrued)}`}>
-              {formatOzonAmount(computed.totalAccrued)}
-            </span>
-          </div>
-          <div className="text-sm text-gray-500">
-            Начислено за период
           </div>
         </div>
       </div>

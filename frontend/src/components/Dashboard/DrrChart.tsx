@@ -16,29 +16,37 @@ export const DrrChart = ({ data, isLoading = false }: DrrChartProps) => {
     return (data ?? []).map((item) => ({
       ...item,
       dateFormatted: formatDate(item.date, 'dd.MM'),
-      drr: item.drr || 0, // Защита от undefined/null
+      drr: item.drr || 0,
       ad_cost: item.ad_cost || 0,
       revenue: item.revenue || 0,
     }));
   }, [data]);
 
+  // Если нет данных - показываем пустой график с нулями
+  const displayData = useMemo(() => {
+    if (!chartData || chartData.length === 0) {
+      const today = new Date();
+      return Array.from({ length: 7 }, (_, i) => {
+        const d = new Date(today);
+        d.setDate(d.getDate() - (6 - i));
+        return {
+          date: d.toISOString().split('T')[0],
+          dateFormatted: formatDate(d.toISOString().split('T')[0], 'dd.MM'),
+          drr: 0,
+          ad_cost: 0,
+          revenue: 0,
+        };
+      });
+    }
+    return chartData;
+  }, [chartData]);
+
   if (isLoading) {
     return (
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-5">
+      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-2 sm:p-3">
         <div className="animate-pulse">
-          <div className="h-5 bg-gray-200 rounded w-1/4 mb-6"></div>
-          <div className="h-48 bg-gray-100 rounded"></div>
-        </div>
-      </div>
-    );
-  }
-
-  if (!chartData || chartData.length === 0) {
-    return (
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-5">
-        <h3 className="text-base font-semibold text-gray-900 mb-4">ДРР</h3>
-        <div className="flex items-center justify-center h-48 text-gray-500 text-sm">
-          Нет данных за выбранный период
+          <div className="h-4 bg-gray-200 rounded w-12 mb-2" />
+          <div className="h-[80px] sm:h-[100px] bg-gray-100 rounded" />
         </div>
       </div>
     );
@@ -66,23 +74,25 @@ export const DrrChart = ({ data, isLoading = false }: DrrChartProps) => {
   };
 
   return (
-    <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-5">
-      <h3 className="text-base font-semibold text-gray-900 mb-3">ДРР</h3>
-      <ResponsiveContainer width="100%" height={200}>
-        <AreaChart data={chartData} margin={{ top: 5, right: 10, left: 10, bottom: 5 }}>
+    <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-2 sm:p-3">
+      <h3 className="text-xs sm:text-sm font-semibold text-gray-900 mb-1.5 sm:mb-2">ДРР</h3>
+      <ResponsiveContainer width="100%" height={80} className="sm:!h-[100px]">
+        <AreaChart data={displayData} margin={{ top: 2, right: 2, left: -15, bottom: 2 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" vertical={false} />
           <XAxis
             dataKey="dateFormatted"
-            stroke="#6b7280"
-            style={{ fontSize: '11px' }}
+            stroke="#9ca3af"
+            style={{ fontSize: '9px' }}
             tickLine={false}
+            interval="preserveStartEnd"
           />
           <YAxis
-            stroke="#6b7280"
-            style={{ fontSize: '11px' }}
+            stroke="#9ca3af"
+            style={{ fontSize: '9px' }}
             tickFormatter={(v) => `${v}%`}
             tickLine={false}
             axisLine={false}
+            width={35}
           />
           <Tooltip content={<CustomTooltip />} />
           <Area
@@ -90,7 +100,7 @@ export const DrrChart = ({ data, isLoading = false }: DrrChartProps) => {
             dataKey="drr"
             stroke="#f59e0b"
             fill="#fef3c7"
-            strokeWidth={2}
+            strokeWidth={1.5}
           />
         </AreaChart>
       </ResponsiveContainer>

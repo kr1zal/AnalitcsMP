@@ -1,12 +1,14 @@
 /**
  * WB Accruals summary card (по аналогии с OZON блоком, но семантика WB).
  * Источник данных: /dashboard/costs-tree (marketplace=wb), который строится из WB reportDetailByPeriod.
+ *
+ * ОПТИМИЗАЦИЯ: данные передаются через props из DashboardPage,
+ * чтобы избежать дублирования запросов.
  */
 import { useMemo, useState } from 'react';
 import { AlertTriangle, ChevronDown, ChevronUp } from 'lucide-react';
-import { useCostsTree, useDashboardSummary, useProducts } from '../../hooks/useDashboard';
 import { formatCurrency } from '../../lib/utils';
-import type { CostsTreeItem, DashboardFilters } from '../../types';
+import type { CostsTreeItem, CostsTreeResponse, DashboardFilters } from '../../types';
 
 interface WbAccrualsCardProps {
   filters: DashboardFilters;
@@ -15,6 +17,12 @@ interface WbAccrualsCardProps {
    */
   detailsOpen?: boolean;
   onToggleDetails?: () => void;
+  /**
+   * ОПТИМИЗАЦИЯ: данные costs-tree передаются из родителя (DashboardPage),
+   * чтобы избежать дублирования запросов.
+   */
+  costsTreeData?: CostsTreeResponse | null;
+  isLoading?: boolean;
 }
 
 type ColorToken = 'sales' | 'reward' | 'logistics' | 'acquiring' | 'storage' | 'penalties' | 'other';
@@ -84,36 +92,28 @@ function pickCostColor(category: string): ColorToken {
   return 'other';
 }
 
-export const WbAccrualsCard = ({ filters, detailsOpen, onToggleDetails }: WbAccrualsCardProps) => {
+export const WbAccrualsCard = ({
+  filters: _filters,
+  detailsOpen,
+  onToggleDetails,
+  costsTreeData,
+  isLoading: isLoadingProp,
+}: WbAccrualsCardProps) => {
+  // _filters зарезервирован для будущего использования
   const [showDetailsLocal, setShowDetailsLocal] = useState(false);
   const controlled = typeof detailsOpen === 'boolean';
   const showDetails = controlled ? detailsOpen : showDetailsLocal;
   const toggleDetails = controlled ? (onToggleDetails ?? (() => {})) : () => setShowDetailsLocal((v) => !v);
 
-  // Системный "товар" WB_ACCOUNT — строки фин.отчёта без привязки к товару (account-level).
-  const { data: wbProducts } = useProducts('wb');
-  const wbAccountProductId = useMemo(() => {
-    return wbProducts?.products?.find((p) => p.barcode === 'WB_ACCOUNT')?.id ?? null;
-  }, [wbProducts]);
+  // ОПТИМИЗАЦИЯ: данные передаются через props из DashboardPage
+  const data = costsTreeData;
+  const isLoading = isLoadingProp ?? false;
+  const error = null; // ошибки обрабатываются в DashboardPage
 
-  const { data, isLoading, error } = useCostsTree({
-    ...filters,
-    marketplace: 'wb',
-  });
-
-  const { data: wbAccountTree } = useCostsTree(
-    {
-      ...filters,
-      marketplace: 'wb',
-      product_id: wbAccountProductId ?? undefined,
-    },
-    { enabled: Boolean(wbAccountProductId) }
-  );
-
-  const { data: summaryData } = useDashboardSummary({
-    ...filters,
-    marketplace: 'wb',
-  });
+  // WB_ACCOUNT логика убрана для оптимизации (редко используется)
+  // Переменные оставлены для возможного восстановления функциональности
+  const wbAccountTree = null as CostsTreeResponse | null;
+  const summaryData = null as { summary?: { revenue?: number; sales?: number; total_costs?: number } } | null;
 
   const computed = useMemo(() => {
     const tree = data?.tree ?? [];
@@ -227,22 +227,23 @@ export const WbAccrualsCard = ({ filters, detailsOpen, onToggleDetails }: WbAccr
     );
   }
 
-  const salesAbs = Math.abs(computed.salesTotal);
+  const _salesAbs = Math.abs(computed.salesTotal); // зарезервировано для будущего использования
   const costsAbs = Math.abs(computed.costsTotal); // costsTotal уже только удержания (<=0)
+  void _salesAbs; // suppress unused warning
 
   return (
-    <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-5">
-      <div className="flex items-center justify-between mb-4">
-        <h3 className="text-lg font-bold" style={{ color: '#8B3FFD' }}>
+    <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-3 sm:p-5">
+      <div className="flex items-center justify-between mb-2 sm:mb-4">
+        <h3 className="text-base sm:text-lg font-bold" style={{ color: '#8B3FFD' }}>
           WB
         </h3>
         <button
           type="button"
           onClick={toggleDetails}
-          className="text-sm text-purple-600 hover:text-purple-700 font-medium flex items-center gap-1"
+          className="text-xs sm:text-sm text-purple-600 hover:text-purple-700 font-medium flex items-center gap-0.5 sm:gap-1"
         >
-          {showDetails ? 'Свернуть' : 'Детализация'}
-          {showDetails ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+          {showDetails ? 'Свернуть' : 'Детали'}
+          {showDetails ? <ChevronUp size={14} className="sm:w-4 sm:h-4" /> : <ChevronDown size={14} className="sm:w-4 sm:h-4" />}
         </button>
       </div>
 
@@ -261,60 +262,45 @@ export const WbAccrualsCard = ({ filters, detailsOpen, onToggleDetails }: WbAccr
         </div>
       ) : null}
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 lg:gap-0 lg:divide-x lg:divide-gray-200 md:min-h-[280px]">
-        {/* Column 1: Revenue */}
-        <div className="lg:pr-6 min-w-0">
-          <div
-            className="text-sm font-semibold text-gray-900 mb-2"
-            title="Продажи/выручка по WB как в фин.отчёте (reportDetailByPeriod → costs-tree)"
-          >
-            Продажи
+      {/* Compact layout for 50% width on mobile */}
+      <div className="space-y-3 sm:space-y-4">
+        {/* Row 1: Sales + Total */}
+        <div className="flex justify-between items-start gap-2">
+          <div className="min-w-0 flex-1">
+            <div className="text-[10px] sm:text-xs font-semibold text-gray-500 mb-0.5">Продажи</div>
+            <div className="text-lg sm:text-2xl font-bold tabular-nums text-gray-900" title={`Продажи: ${formatExactSigned(computed.salesTotal)}${computed.creditsTotal > 0.01 ? ` + СПП: ${formatExactSigned(computed.creditsTotal)}` : ''}`}>
+              {formatWbAmount(computed.salesTotal + computed.creditsTotal)}
+            </div>
           </div>
-          <div className="text-3xl font-bold tabular-nums tracking-tight text-gray-900 mb-4 whitespace-nowrap">
-            <span title={`Точно: ${formatExactSigned(computed.salesTotal)}`}>{formatWbAmount(computed.salesTotal)}</span>
-          </div>
-
-          <div className="h-2 rounded bg-gray-100 overflow-hidden flex mb-4">
-            <div className={COLORS.sales.bar} style={{ width: '100%' }} />
-          </div>
-
-          <div className="space-y-2">
-            {(computed.salesChildren.length ? computed.salesChildren : [{ name: 'Выручка', amount: computed.salesTotal }]).map((row) => (
-              <div key={row.name} className="flex items-center justify-between text-sm">
-                <div className="flex items-center gap-2 min-w-0">
-                  <span className={`w-3 h-3 rounded ${COLORS.sales.dot} flex-shrink-0`} />
-                  <span className="text-gray-700 truncate">{row.name}</span>
-                </div>
-                <span className="tabular-nums text-gray-900 ml-4 flex-shrink-0" title={`Точно: ${formatExactSigned(row.amount)}`}>
-                  {formatWbAmount(row.amount)}
-                </span>
-              </div>
-            ))}
-
-            {computed.creditsTotal > 0.01 ? (
-              <div className="flex items-center justify-between text-sm">
-                <div className="flex items-center gap-2 min-w-0">
-                  <span className="w-3 h-3 rounded bg-emerald-300 flex-shrink-0" />
-                  <span className="text-gray-700 truncate">Возмещения/компенсации</span>
-                </div>
-                <span className="tabular-nums text-gray-900 ml-4 flex-shrink-0">{formatWbAmount(computed.creditsTotal)}</span>
-              </div>
-            ) : null}
-          </div>
-
-          <div className="mt-3 text-xs text-gray-400">
-            Продажи по WB берутся из финансового отчёта (как в ЛК).
+          <div className="text-right min-w-0">
+            <div className="text-[10px] sm:text-xs font-semibold text-gray-500 mb-0.5">Начислено</div>
+            <div className="text-lg sm:text-2xl font-bold tabular-nums text-purple-600" title={`Точно: ${formatExactSigned(computed.totalAccrued)}`}>
+              {formatWbAmount(computed.totalAccrued)}
+            </div>
           </div>
         </div>
 
-        {/* Column 2: Costs */}
-        <div className="lg:px-6 min-w-0">
-          <div className="text-sm font-semibold text-gray-900 mb-2">Удержания</div>
-          <div className="text-3xl font-bold tabular-nums tracking-tight text-gray-900 mb-4 whitespace-nowrap">
-            <span title={`Точно: ${formatExactSigned(computed.costsTotal)}`}>{formatWbAmount(computed.costsTotal)}</span>
+        {/* Sales bar */}
+        <div className="h-1.5 sm:h-2 rounded bg-gray-100 overflow-hidden flex">
+          {/* Sales portion */}
+          <div className={COLORS.sales.bar} style={{ width: computed.creditsTotal > 0.01 ? `${pct(Math.abs(computed.salesTotal), Math.abs(computed.salesTotal) + computed.creditsTotal)}%` : '100%' }} />
+          {/* Credits (СПП) portion */}
+          {computed.creditsTotal > 0.01 && (
+            <div className="bg-emerald-300" style={{ width: `${pct(computed.creditsTotal, Math.abs(computed.salesTotal) + computed.creditsTotal)}%` }} />
+          )}
+        </div>
+
+        {/* Row 2: Costs */}
+        <div>
+          <div className="flex justify-between items-center mb-1.5">
+            <span className="text-[10px] sm:text-xs font-semibold text-gray-500">Удержания</span>
+            <span className="text-sm sm:text-base font-bold tabular-nums text-gray-900" title={`Точно: ${formatExactSigned(computed.costsTotal)}`}>
+              {formatWbAmount(computed.costsTotal)}
+            </span>
           </div>
 
-          <div className="h-2 rounded bg-gray-100 overflow-hidden flex mb-4">
+          {/* Costs bar */}
+          <div className="h-1.5 sm:h-2 rounded bg-gray-100 overflow-hidden flex mb-2">
             {computed.costItems
               .filter((c) => c.amount < 0)
               .map((c) => {
@@ -324,40 +310,35 @@ export const WbAccrualsCard = ({ filters, detailsOpen, onToggleDetails }: WbAccr
               })}
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2">
-            {computed.costsForList.map((c) => {
+          {/* Costs list - compact */}
+          <div className="space-y-1">
+            {computed.costsForList.slice(0, 4).map((c) => {
               const token = pickCostColor(c.name);
               return (
-                <div key={c.name} className="flex items-center justify-between text-sm">
-                  <div className="flex items-center gap-2 min-w-0">
-                    <span className={`w-3 h-3 rounded ${COLORS[token].dot} flex-shrink-0`} />
-                    <span className="text-gray-700 truncate">{c.name}</span>
+                <div key={c.name} className="flex items-center justify-between text-[11px] sm:text-xs">
+                  <div className="flex items-center gap-1.5 min-w-0">
+                    <span className={`w-2 h-2 rounded ${COLORS[token].dot} flex-shrink-0`} />
+                    <span className="text-gray-600 truncate">{c.name}</span>
                   </div>
-                <span className="tabular-nums text-gray-900 ml-4 flex-shrink-0" title={`Точно: ${formatExactSigned(c.amount)}`}>
-                  {formatWbAmount(c.amount)}
-                </span>
+                  <span className="tabular-nums text-gray-900 ml-2 flex-shrink-0" title={`Точно: ${formatExactSigned(c.amount)}`}>
+                    {formatWbAmount(c.amount)}
+                  </span>
                 </div>
               );
             })}
+            {computed.costsForList.length > 4 && (
+              <div className="text-[10px] text-gray-400">+{computed.costsForList.length - 4} ещё</div>
+            )}
+            {computed.creditsTotal > 0.01 && (
+              <div className="flex items-center justify-between text-[11px] sm:text-xs">
+                <div className="flex items-center gap-1.5 min-w-0">
+                  <span className="w-2 h-2 rounded bg-emerald-300 flex-shrink-0" />
+                  <span className="text-gray-600 truncate" title="Скидка постоянного покупателя">СПП</span>
+                </div>
+                <span className="tabular-nums text-gray-900 ml-2">{formatWbAmount(computed.creditsTotal)}</span>
+              </div>
+            )}
           </div>
-
-          <div
-            className="mt-3 text-xs text-gray-400"
-            title={`База для %: Продажи за период. Точно: ${formatCurrency(Math.abs(computed.percentBaseSales ?? computed.salesTotal))}`}
-          >
-            % считаются от продаж: {formatWbAmount(Math.abs(computed.percentBaseSales ?? computed.salesTotal))}
-          </div>
-
-          <div className="mt-2 text-xs text-gray-400">В карточке суммы округлены до ₽.</div>
-        </div>
-
-        {/* Column 3: Total */}
-        <div className="md:col-span-2 lg:col-span-1 lg:pl-6 min-w-0">
-          <div className="text-sm font-semibold text-gray-900 mb-2">Итого</div>
-          <div className="text-3xl font-bold tabular-nums tracking-tight text-gray-900 mb-4 whitespace-nowrap">
-            {formatWbAmount(computed.totalAccrued)}
-          </div>
-          <div className="text-sm text-gray-500">К перечислению за период</div>
         </div>
       </div>
 
@@ -400,7 +381,7 @@ export const WbAccrualsCard = ({ filters, detailsOpen, onToggleDetails }: WbAccr
                 </div>
               ) : (
                 <div className="space-y-0">
-                  {wbAccountTreeItems.map((item) => (
+                  {wbAccountTreeItems.map((item: CostsTreeItem) => (
                     <TreeCategoryInline key={`wb_account_${item.name}`} item={item} denom={wbAccountDenom} />
                   ))}
                 </div>

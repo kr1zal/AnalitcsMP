@@ -22,46 +22,66 @@ export const useDashboardSummary = (filters?: DashboardFilters, opts?: QueryOpts
 };
 
 /**
+ * Hook для получения сводки с данными предыдущего периода.
+ * Экономит 3-4 HTTP запроса при marketplace=all.
+ */
+export const useDashboardSummaryWithPrev = (
+  filters?: DashboardFilters & { include_ozon_truth?: boolean },
+  opts?: QueryOpts
+) => {
+  return useQuery({
+    queryKey: ['dashboard', 'summary-with-prev', filters],
+    queryFn: () => dashboardApi.getSummaryWithPrev(filters),
+    staleTime: 1000 * 60 * 5,
+    enabled: opts?.enabled ?? true,
+  });
+};
+
+/**
  * Hook для получения unit-экономики
  */
-export const useUnitEconomics = (filters?: DashboardFilters) => {
+export const useUnitEconomics = (filters?: DashboardFilters, opts?: QueryOpts) => {
   return useQuery({
     queryKey: ['dashboard', 'unit-economics', filters],
     queryFn: () => dashboardApi.getUnitEconomics(filters),
     staleTime: 1000 * 60 * 5,
+    enabled: opts?.enabled ?? true,
   });
 };
 
 /**
  * Hook для получения данных графика продаж
  */
-export const useSalesChart = (filters?: DashboardFilters) => {
+export const useSalesChart = (filters?: DashboardFilters, opts?: QueryOpts) => {
   return useQuery({
     queryKey: ['dashboard', 'sales-chart', filters],
     queryFn: () => dashboardApi.getSalesChart(filters),
     staleTime: 1000 * 60 * 5,
+    enabled: opts?.enabled ?? true,
   });
 };
 
 /**
  * Hook для получения остатков на складах
  */
-export const useStocks = (marketplace?: Marketplace) => {
+export const useStocks = (marketplace?: Marketplace, opts?: QueryOpts) => {
   return useQuery({
     queryKey: ['dashboard', 'stocks', marketplace],
     queryFn: () => dashboardApi.getStocks(marketplace === 'all' ? undefined : marketplace),
     staleTime: 1000 * 60 * 10, // 10 минут (остатки меняются реже)
+    enabled: opts?.enabled ?? true,
   });
 };
 
 /**
  * Hook для получения рекламных расходов и ДРР
  */
-export const useAdCosts = (filters?: DashboardFilters) => {
+export const useAdCosts = (filters?: DashboardFilters, opts?: QueryOpts) => {
   return useQuery({
     queryKey: ['dashboard', 'ad-costs', filters],
     queryFn: () => dashboardApi.getAdCosts(filters),
     staleTime: 1000 * 60 * 5,
+    enabled: opts?.enabled ?? true,
   });
 };
 
@@ -78,12 +98,29 @@ export const useCostsTree = (filters?: DashboardFilters, opts?: QueryOpts) => {
 };
 
 /**
+ * Hook для получения объединённого дерева удержаний (Ozon + WB).
+ * Экономит 1 HTTP запрос при marketplace=all.
+ */
+export const useCostsTreeCombined = (
+  filters?: Omit<DashboardFilters, 'marketplace'>,
+  opts?: QueryOpts
+) => {
+  return useQuery({
+    queryKey: ['dashboard', 'costs-tree-combined', filters],
+    queryFn: () => dashboardApi.getCostsTreeCombined(filters),
+    staleTime: 1000 * 60 * 5,
+    enabled: opts?.enabled ?? true,
+  });
+};
+
+/**
  * Hook для получения списка товаров
  */
-export const useProducts = (marketplace?: Marketplace) => {
+export const useProducts = (marketplace?: Marketplace, opts?: QueryOpts) => {
   return useQuery({
     queryKey: ['products', marketplace],
     queryFn: () => productsApi.getAll(marketplace === 'all' ? undefined : marketplace),
     staleTime: 1000 * 60 * 30, // 30 минут (товары меняются редко)
+    enabled: opts?.enabled ?? true,
   });
 };

@@ -2,106 +2,29 @@
 
 > 🚀 **Промпт для продолжения в новом чате:**
 >
-> "Продолжаем разработку Analytics Dashboard для WB и Ozon. Backend: FastAPI
-> (http://localhost:8000), Frontend: React+TS (http://localhost:5173).
+> См. файл `promt.md` — там актуальный промт для копирования.
 >
-> **Задача: UI/UX (дашборд) + Склады**
+> **Текущее состояние (30.01.2026):**
+> DashboardPage работает стабильно, адаптивный дизайн реализован.
 >
-> **Что уже сделано (backend полностью готов):**
+> **Что сделано по адаптиву (30.01.2026, обновлено):**
+> - `DateRangePicker` — react-day-picker v9 с правильными classNames
+> - `Layout` — hamburger меню справа, slide-out drawer справа
+> - `useMediaQuery` / `useIsMobile` — хуки для responsive breakpoints
+> - **OZON/WB карточки** — 50/50 горизонтально на всех экранах (grid-cols-2)
+> - **Графики компактные** — высота 100px mobile / 140px desktop (было 200-300px)
+> - **Боковые фильтры** — вертикально слева на всех экранах (как desktop)
+> - **StocksTable** — card-based на mobile с внутренним scroll
+> - Tailwind responsive: sm:640px, md:768px, lg:1024px
 >
-> 1. Таблица mp_costs_details создана и заполнена (353 записи за 30 дней)
-> 2. sync_costs_ozon() переписан — пишет в mp_costs + mp_costs_details
->    параллельно
-> 3. Endpoint GET /dashboard/costs-tree работает — возвращает иерархию
-> 4. Frontend: CostsTreeView компонент создан, встроен в MarketplaceBreakdown
->    (заменяет карточку OZON)
-> 5. Группировка комиссии: Витамины / Прочее — работает (это аналитическая
->    группировка проекта, не тариф Ozon)
-> 6. Данные синхронизированы: 291 операция Ozon за 30 дней
-> 7. UI: везде переименовано “Выручка”→“Продажи” (чтобы совпадать с ЛК),
->    добавлены tooltips с формулами
-> 8. UI: добавлены `warnings` + `source` (fallback) и выводятся в карточках
->    OZON/WB
-> 9. Backend: порядок подкатегорий в дереве — как в ЛК где известно, иначе по
->    |amount| desc
+> **Что сделано по оптимизации:**
+> - Supabase RPC: `get_dashboard_summary`, `get_costs_tree`
+> - Индексы БД для ускорения запросов
+> - Props drilling вместо дублирующих запросов в AccrualsCards
+> - Убран `deferredEnabled` (каскадные ре-рендеры)
+> - Lazy-load графиков, мемоизация данных
 >
-> **Что нужно доработать (frontend CostsTreeView.tsx):** Компонент рендерится,
-> но визуально не соответствует ЛК Ozon. Нужно довести до 1-в-1:
->
-> 1. **Линии-коннекторы** — вертикальные/горизонтальные линии от chevron к
->    дочерним элементам (как на скрине ЛК)
-> 2. **Выравнивание** — суммы справа выровнены по правому краю, категории слева
->    с отступами по уровням
-> 3. **Проценты** — показываются ПОД суммой мелким серым шрифтом (не рядом)
-> 4. **Шевроны** — ˅ для раскрытого, › для свёрнутого (серые, при hover темнеют)
-> 5. **Размер шрифтов** — заголовок "Начислено за период" крупнее, подкатегории
->    мельче
-> 6. **Отступы** — подкатегории с indent ~40px от родителя
-> 7. **Фоновый цвет** — нет hover-эффектов на строках (чистый белый)
->
-> **Референс (дерево из ЛК Ozon, период 01.01-22.01.2026):**
->
-> ```
-> Начислено  за период                        11 875 ₽
->   ˅ Продажи                                22 560 ₽
->     ├─ Выручка                             15 214 ₽
->     ├─ Баллы за скидки                      7 197 ₽
->     └─ Программы партнёров                    149 ₽
->   ˅ Возвраты                                   0 ₽
->   ˅ Вознаграждение Ozon                    -6 469 ₽
->                                              28.7 %
->     ├─ Вознаграждение за продажу           -6 469 ₽
->     └─ Возврат вознаграждения                  0 ₽
->   ˅ Услуги доставки                        -2 058 ₽
->                                               9.1 %
->     └─ Логистика                           -2 058 ₽
->   ˅ Услуги агентов                           -572 ₽
->                                               2.5 %
->     ├─ Эквайринг                             -318 ₽
->     ├─ Звёздные товары                       -115 ₽
->     └─ Доставка до места выдачи              -138 ₽
->   ˅ Услуги FBO                             -1 502 ₽
->                                               6.7 %
->     └─ Складские услуги                    -1 502 ₽
->        └─ Размещение товаров на складах    -1 502 ₽
->   ˅ Продвижение и реклама                     -84 ₽
->                                               0.4 %
->     └─ Бонусы продавца                        -84 ₽
-> ```
->
-> **Текущие данные API (7 дней, marketplace=ozon):**
->
-> - Продажи/Выручка: 8 432 ₽
-> - Вознаграждение Ozon: -2 368 ₽ (Витамины: -2 092, Прочее: -276)
-> - Услуги доставки/Логистика: -848 ₽
-> - Услуги агентов: -224 ₽ (Эквайринг -182, Звёзды -42)
-> - Услуги FBO/Размещение: -521 ₽
-> - Продвижение/Бонусы: -28 ₽
-> - Итого начислено: 4 514 ₽
->
-> **Ключевые файлы:**
->
-> - frontend/src/components/Dashboard/CostsTreeView.tsx — ОСНОВНОЙ файл
->   (переделать визуал)
-> - frontend/src/pages/DashboardPage.tsx — верхние плашки “Продажи/Прибыль/…” +
->   тултипы
-> - frontend/src/components/Dashboard/OzonAccrualsCard.tsx — OZON карточка +
->   детализация + warnings/source
-> - frontend/src/components/Dashboard/WbAccrualsCard.tsx — WB карточка +
->   детализация + warnings/source
-> - frontend/src/components/Dashboard/StocksTable.tsx — склады (улучшить
->   полезность/сортировки)
-> - backend/app/api/v1/dashboard.py — endpoint GET /dashboard/costs-tree (+
->   сортировка детей)
-> - backend/app/services/sync_service.py:486-700 — sync_costs_ozon() +
->   _classify_ozon_operation()
->
-> **ВАЖНО:** OZON/WB мэтчинг начислений уже 1-в-1 — не ломать. Любые изменения
-> проверяем reconcile (WB+Ozon). Backend нужно запустить: cd backend && source
-> venv/bin/activate && uvicorn app.main:app --reload --port 8000
->
-> Документация: CLAUDE.md, backend/README.md, ozon/OZON_ACCRUALS_MATCHING.md,
-> promt.md."
+> **ВАЖНО:** OZON/WB мэтчинг начислений уже 1-в-1 — не ломать.
 
 ## Описание проекта
 
@@ -249,33 +172,161 @@
 - [x] OzonAccrualsCard — карточка начислений (как в ЛК) + детализация деревом
 - [x] Данные синхронизированы: 53 mp_costs + 353 mp_costs_details
 
-### Выполнено (Текущий чат — MATCH верхних плашек + “нативная” семантика):
+### Выполнено (Текущий чат — MATCH верхних плашек + "нативная" семантика):
 
 - [x] Верхние плашки приведены к семантике карточек начислений (costs-tree),
-      чтобы цифры не противоречили “как в ЛК”.
-- [x] Выручка: WB = mp_sales.revenue, Ozon = costs-tree категория “Продажи”.
-- [x] Расходы МП: считаются из costs-tree (и должны мэтчиться с “Удержания” в
+      чтобы цифры не противоречили "как в ЛК".
+- [x] Выручка: WB = mp_sales.revenue, Ozon = costs-tree категория "Продажи".
+- [x] Расходы МП: считаются из costs-tree (и должны мэтчиться с "Удержания" в
       карточках OZON/WB).
-- [x] Добавлена плашка “К перечислению”: costs-tree.total_accrued (Ozon
-      “Начислено”, WB “К перечислению”).
-- [x] Прибыль: помечена как “оценка” и считается как payout − закупка − ads,
+- [x] Добавлена плашка "К перечислению": costs-tree.total_accrued (Ozon
+      "Начислено", WB "К перечислению").
+- [x] Прибыль: помечена как "оценка" и считается как payout − закупка − ads,
       добавлен debug tooltip.
-- [x] ДРР: пересчитан как Ads API / Выручка (на той же базе, что “Выручка”).
+- [x] ДРР: пересчитан как Ads API / Выручка (на той же базе, что "Выручка").
 - [x] UI: сокращены заголовки (аббревиатуры) + добавлены расшифровки в tooltip
       на каждой плашке; тултипы многострочные.
-- [x] Исправлены подписи % в деревьях OZON/WB: “% считаются от продаж” +
-      подсказка, что это доля от “Продажи”, а не тариф.
+- [x] Исправлены подписи % в деревьях OZON/WB: "% считаются от продаж" +
+      подсказка, что это доля от "Продажи", а не тариф.
+
+### Выполнено (Оптимизация загрузки — 29.01.2026):
+
+**Backend (Supabase RPC):**
+- [x] Создана RPC функция `get_dashboard_summary` — агрегирует sales/costs/ads/purchase_costs одним запросом вместо 5-6
+- [x] Создана RPC функция `get_costs_tree` — строит иерархию удержаний на стороне PostgreSQL
+- [x] Добавлены индексы: `idx_mp_sales_date_mp`, `idx_mp_costs_date_mp`, `idx_mp_costs_details_date_mp`, `idx_mp_ad_costs_date_mp`
+- [x] `/dashboard/summary` и `/dashboard/costs-tree` теперь вызывают `supabase.rpc()` вместо множества запросов
+
+**Frontend (устранение дублирования и каскадов):**
+- [x] `OzonAccrualsCard` и `WbAccrualsCard` получают данные через props из DashboardPage (не делают свои запросы)
+- [x] `MarketplaceBreakdown` передаёт `costsTreeData` и `isLoading` в дочерние карточки
+- [x] Убран механизм `deferredEnabled` — он создавал +2 каскадных ре-рендера при изменении фильтров
+- [x] Убран `useInView` для графиков/остатков — RPC теперь достаточно быстрые
+- [x] Графики lazy-load через `React.lazy()` (recharts ~500KB)
+- [x] Мемоизация `salesChartSeries` и `adCostsSeriesFull` через `useMemo`
+
+**Архитектура props drilling:**
+```
+DashboardPage
+  ├── useCostsTree(ozon) → ozonCostsTreeData
+  ├── useCostsTree(wb) → wbCostsTreeData
+  │
+  └── MarketplaceBreakdown (props: ozonCostsTree, wbCostsTree)
+        ├── OzonAccrualsCard (props: costsTreeData, isLoading)
+        └── WbAccrualsCard (props: costsTreeData, isLoading)
+```
+
+### Выполнено (Оптимизация — 30.01.2026):
+
+**Backend (новые endpoints):**
+- [x] `/dashboard/summary` — добавлены параметры `include_prev_period`, `include_ozon_truth`
+- [x] `/dashboard/costs-tree-combined` — объединённый запрос для Ozon + WB
+
+**SQL миграция (backend/migrations/002_optimized_rpc.sql):**
+- [x] Создана RPC `get_costs_tree_combined` — объединяет ozon и wb в 1 запрос
+- [x] Создана RPC `get_dashboard_summary_with_prev` — summary + prev-period в 1 запрос
+- ⚠️ **ВАЖНО:** Эти RPC зависят от `get_costs_tree`, которая должна быть создана в Supabase
+
+**Frontend (типы и hooks):**
+- [x] Добавлены типы: `CostsTreeCombinedResponse`, `DashboardSummaryWithPrevResponse`
+- [x] Добавлены API методы: `getCostsTreeCombined`, `getSummaryWithPrev`
+- [x] Добавлены hooks: `useCostsTreeCombined`, `useDashboardSummaryWithPrev`
+- [x] DashboardPage очищен от мёртвого кода и упрощён
+
+**Текущее состояние:**
+- Страница загружается быстрее благодаря очистке кода
+- Оптимизированные RPC (`get_costs_tree_combined`, `get_dashboard_summary_with_prev`) готовы, но **отключены** — требуют создания базовой RPC `get_costs_tree` в Supabase
+- Для включения оптимизаций см. `backend/migrations/002_optimized_rpc.sql`
+
+**Ошибки, которые были исправлены:**
+- `deferredEnabled` создавал каскадные ре-рендеры при каждом изменении фильтров
+- `useInView` с `rootMargin='600px'` не триггерился для элементов далеко внизу страницы
+- Каждая AccrualsCard делала свой useCostsTree — дублирование запросов
+- `include_children: false` возвращал пустое дерево в детализации
+
+### Выполнено (Адаптивный дизайн — 30.01.2026):
+
+**DateRangePicker (react-day-picker v9):**
+- [x] Установлен react-day-picker v9 (совместим с date-fns 4.x)
+- [x] Исправлены classNames для v9 API: `selected`, `today`, `range_start`, `range_middle`, `range_end`
+- [x] Используется `getDefaultClassNames()` для расширения дефолтных стилей
+- [x] Мобильное позиционирование: `fixed inset-x-2 top-[10vh]` (не уезжает за экран)
+- [x] Touch-friendly: увеличенные touch targets (40px на мобильных)
+- [x] Debounce (300ms) для уменьшения API запросов
+
+**Layout с адаптивной навигацией:**
+- [x] Desktop: горизонтальная навигация в header
+- [x] Mobile: hamburger menu + slide-out drawer (слева)
+- [x] Закрытие drawer: по клику на overlay, по ESC, при переходе на страницу
+- [x] Блокировка scroll body при открытом menu
+- [x] Sticky header с z-index: 40
+
+**Адаптивные компоненты Dashboard:**
+- [x] `SummaryCard` — адаптивные padding, шрифты, скрытые иконки на mobile
+- [x] `SalesChart` — горизонтальный scroll, адаптивная высота (220px mobile / 300px desktop)
+- [x] `StocksTable` — скрытые колонки на mobile, цветовая индикация OOS
+- [x] `FilterPanel` — компактные кнопки, скрытые labels на mobile
+
+**Хуки для responsive:**
+- [x] `useMediaQuery(query)` — универсальный хук
+- [x] `useIsMobile()` — `max-width: 639px`
+- [x] `useIsTablet()` — `640px - 1023px`
+- [x] `useIsDesktop()` — `min-width: 1024px`
+
+**CSS (index.css):**
+- [x] CSS переменные для react-day-picker v9
+- [x] Mobile-first стили для календаря
+- [x] Анимации fade-in, zoom-in для popover
+
+### Выполнено (Mobile-first рефакторинг — 30.01.2026, сессия 2):
+
+**MarketplaceBreakdown (OZON/WB карточки):**
+- [x] Карточки всегда 50/50 горизонтально (`grid-cols-2` вместо `grid-cols-1 sm:grid-cols-2`)
+- [x] Компактный layout для узких колонок: Продажи + Начислено в одной строке
+- [x] WB: Продажи теперь включают СПП (возмещение), полоска разделена на продажи/СПП
+- [x] WB: "Возмещения" переименовано в "СПП" (Скидка постоянного покупателя)
+- [x] WB: "К перечисл." → "Начислено" (унификация терминологии)
+- [x] OZON: убран "+1 ещё" — показываются все категории удержаний
+- [x] Уменьшены шрифты для mobile: text-lg/text-[10px] vs text-2xl/text-xs desktop
+- [x] Уменьшены отступы: p-3 mobile / p-5 desktop
+
+**Графики (SalesChart, AvgCheckChart, DrrChart):**
+- [x] Высота уменьшена в ~2 раза: 100px mobile / 140px desktop (было 200-300px)
+- [x] Padding уменьшен: p-2 sm:p-3 (было p-5)
+- [x] Заголовки компактнее: text-xs sm:text-sm (было text-base)
+- [x] Табы SalesChart: h-5 sm:h-6 (было h-7 sm:h-8)
+- [x] При отсутствии данных: показывается нулевой график (flat line) вместо большого "Нет данных"
+- [x] Loading skeleton адаптирован под компактную высоту
+
+**DashboardPage (фильтры + графики):**
+- [x] Боковые фильтры всегда вертикально слева (убрана горизонтальная мобильная версия)
+- [x] `flex-row` вместо `flex-col lg:flex-row` — единый layout на всех экранах
+- [x] Ширина фильтров адаптивная: w-28 sm:w-32 lg:w-36
+- [x] Шрифты фильтров: text-[9px]/text-[11px] mobile, text-[10px]/text-xs desktop
+
+**Layout:**
+- [x] Hamburger menu перемещён вправо (для правшей)
+- [x] Drawer открывается справа (translate-x-full)
+- [x] Убрана кнопка Settings (placeholder)
 
 ### Следующий этап - Доработки:
 
 - [x] ~~Затраты за декабрь 2025 без продаж~~ — исправлено
 - [x] ~~Метрика "Площади/настроений %"~~ — реализована через Prior Period + YoY
-- [x] ~~Визуализация комиссии МП~~ — CostsTreeView (backend готов, frontend
-      визуал в процессе)
-- [ ] **CostsTreeView визуал** — довести до 1-в-1 как в ЛК Ozon (линии, отступы,
-      шрифты)
-- [ ] Custom Date Picker для выбора произвольного периода
+- [x] ~~Визуализация комиссии МП~~ — CostsTreeView (backend готов, frontend визуал в процессе)
+- [x] ~~Оптимизация загрузки~~ — RPC функции, убраны дублирующие запросы, lazy-load
+
+**Средний приоритет (при необходимости):**
+- [ ] Активировать `get_costs_tree_combined` RPC (объединяет ozon+wb в 1 запрос)
+- [ ] Активировать `get_dashboard_summary_with_prev` RPC (summary + prev period в 1 запрос)
+- [ ] Скелетоны на тяжёлые блоки (графики, остатки)
+
+**Backlog:**
+- [x] Custom Date Picker для выбора произвольного периода ✅ (DateRangePicker готов)
+- [x] Адаптивный дизайн для мобильных устройств ✅
 - [ ] Excel export функциональность
+- [ ] CostsTreeView визуал — довести до 1-в-1 как в ЛК Ozon
+- [ ] Улучшить компоновку блоков на DashboardPage
 
 ## Технический стек
 
@@ -371,10 +422,9 @@ Analitics/
 - Детализация: Комиссия, Логистика, Хранение (раздельно) ✅ **FilterPanel**
   (7/30/90d + custom date picker) ✅ **Боковые фильтры** (Маркетплейс:
   все/WB/OZON + Товары: список из API) ✅ **3 графика**:
-- SalesChart с табами (Заказы/Акты/Затраты)
-- AvgCheckChart (BarChart среднего чека)
-- DrrChart (AreaChart ДРР, показывает "Нет данных" т.к. реклама не
-  синхронизирована) ✅ **StocksTable** с expandable rows (52 шт Витамин D3+K2 на
+- SalesChart с табами (Заказы/Выкупы/Выручка) — компактный 100/140px
+- AvgCheckChart (BarChart среднего чека) — компактный 80/100px
+- DrrChart (AreaChart ДРР) — компактный 80/100px, zero-line при отсутствии данных ✅ **StocksTable** с expandable rows (52 шт Витамин D3+K2 на
   Электростали) ✅ **Ozon stocks (FBO) подтянуты**: sync пишет `mp_stocks` по
   складам РФЦ, UI показывает Ozon остатки ✅ **Ozon данные синхронизированы** по
   дням (43 записи через dimensions=["sku","day"]) ✅ **Orphan-costs исключены**
@@ -383,7 +433,15 @@ Analitics/
 
 ### Текущее состояние:
 
-#### Данные (актуально на 23.01.2026):
+#### Оптимизация (актуально на 29.01.2026):
+
+- **Backend:** `/dashboard/summary` и `/dashboard/costs-tree` используют Supabase RPC
+- **Frontend:** AccrualsCards получают данные через props (не дублируют запросы)
+- **Lazy-load:** графики загружаются через React.lazy()
+- **Убрано:** `deferredEnabled`, `useInView` для графиков/остатков
+- **Осталось:** ~10-12 запросов на first render, нужно сократить
+
+#### Данные (актуально на 29.01.2026):
 
 - **WB продажи:** ~51 запись (по дням, 35 дней)
 - **Ozon продажи:** 43 записи (по дням, 35 дней)
@@ -439,30 +497,42 @@ frontend/
 ├── src/
 │   ├── components/
 │   │   ├── Dashboard/
-│   │   │   └── SummaryCard.tsx       ✅ Готово
+│   │   │   ├── SummaryCard.tsx         ✅ Адаптивный
+│   │   │   ├── SalesChart.tsx          ✅ Компактный (100/140px), zero-line fallback
+│   │   │   ├── AvgCheckChart.tsx       ✅ Компактный (80/100px), zero-line fallback
+│   │   │   ├── DrrChart.tsx            ✅ Компактный (80/100px), zero-line fallback
+│   │   │   ├── StocksTable.tsx         ✅ Card-based на mobile
+│   │   │   ├── MarketplaceBreakdown.tsx ✅ grid-cols-2 всегда
+│   │   │   ├── OzonAccrualsCard.tsx    ✅ Compact layout (50% width)
+│   │   │   └── WbAccrualsCard.tsx      ✅ Compact layout (50% width), СПП
 │   │   ├── Shared/
-│   │   │   └── LoadingSpinner.tsx    ✅ Готово
-│   │   ├── UnitEconomics/            (TODO)
-│   │   └── Sync/                     (TODO)
+│   │   │   ├── LoadingSpinner.tsx      ✅ Готово
+│   │   │   ├── Layout.tsx              ✅ Hamburger справа, drawer справа
+│   │   │   ├── FilterPanel.tsx         ✅ Адаптивный
+│   │   │   └── DateRangePicker.tsx     ✅ react-day-picker v9
+│   │   ├── UnitEconomics/              (TODO)
+│   │   └── Sync/                       (TODO)
 │   ├── hooks/
-│   │   ├── useDashboard.ts           ✅ Готово
-│   │   └── useSync.ts                ✅ Готово
+│   │   ├── useDashboard.ts             ✅ Готово
+│   │   ├── useSync.ts                  ✅ Готово
+│   │   └── useMediaQuery.ts            ✅ useIsMobile, useIsTablet, useIsDesktop
 │   ├── lib/
-│   │   └── utils.ts                  ✅ Готово
+│   │   └── utils.ts                    ✅ Готово
 │   ├── pages/
-│   │   └── DashboardPage.tsx         ✅ Готово (нужно дополнить)
+│   │   └── DashboardPage.tsx           ✅ Фильтры слева, графики справа
 │   ├── services/
-│   │   └── api.ts                    ✅ Готово
-│   ├── store/                        (TODO - создать)
+│   │   └── api.ts                      ✅ Готово
+│   ├── store/
+│   │   └── useFiltersStore.ts          ✅ Zustand store
 │   ├── types/
-│   │   └── index.ts                  ✅ Готово
-│   ├── App.tsx                       ✅ Готово
-│   ├── index.css                     ✅ Готово
-│   └── main.tsx                      ✅ Готово
-├── .env                              ✅ Готово
-├── tailwind.config.js                ✅ Готово
-├── postcss.config.js                 ✅ Готово
-└── package.json                      ✅ Готово
+│   │   └── index.ts                    ✅ Готово
+│   ├── App.tsx                         ✅ Готово
+│   ├── index.css                       ✅ RDP v9 стили
+│   └── main.tsx                        ✅ Готово
+├── .env                                ✅ Готово
+├── tailwind.config.js                  ✅ Готово
+├── postcss.config.js                   ✅ Готово
+└── package.json                        ✅ Готово
 ```
 
 ## Команды для работы

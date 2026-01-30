@@ -4,7 +4,6 @@
 import { useMemo, useState } from 'react';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { formatCurrency, formatDate, cn } from '../../lib/utils';
-import { LoadingSpinner } from '../Shared/LoadingSpinner';
 import type { SalesChartDataPoint } from '../../types';
 
 type ChartTab = 'orders' | 'sales' | 'revenue';
@@ -66,20 +65,35 @@ export const SalesChart = ({ data, isLoading = false }: SalesChartProps) => {
     }
   }, [activeTab]);
 
+  // Если нет данных - показываем пустой график с нулями
+  const displayData = useMemo(() => {
+    if (!chartData || chartData.length === 0) {
+      // Генерируем 7 дней с нулями для пустого графика
+      const today = new Date();
+      return Array.from({ length: 7 }, (_, i) => {
+        const d = new Date(today);
+        d.setDate(d.getDate() - (6 - i));
+        return {
+          date: d.toISOString().split('T')[0],
+          dateFormatted: formatDate(d.toISOString().split('T')[0], 'dd.MM'),
+          orders: 0,
+          sales: 0,
+          revenue: 0,
+          ordersPlot: 0,
+          salesPlot: 0,
+          revenuePlot: 0,
+        };
+      });
+    }
+    return chartData;
+  }, [chartData]);
+
   if (isLoading) {
     return (
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-5">
-        <LoadingSpinner text="Загрузка графика..." />
-      </div>
-    );
-  }
-
-  if (!chartData || chartData.length === 0) {
-    return (
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-5">
-        <h2 className="text-base font-semibold text-gray-900 mb-3">График продаж</h2>
-        <div className="flex items-center justify-center h-64 text-gray-500">
-          <p>Нет данных за выбранный период</p>
+      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-2 sm:p-3">
+        <div className="animate-pulse">
+          <div className="h-4 bg-gray-200 rounded w-20 mb-2" />
+          <div className="h-[100px] sm:h-[140px] bg-gray-100 rounded" />
         </div>
       </div>
     );
@@ -89,18 +103,18 @@ export const SalesChart = ({ data, isLoading = false }: SalesChartProps) => {
     if (!active || !payload || !payload.length) return null;
     const d = payload[0].payload;
     return (
-      <div className="bg-white border border-gray-200 rounded-lg shadow-lg p-3">
-        <p className="text-sm font-semibold text-gray-900 mb-2">
+      <div className="bg-white border border-gray-200 rounded-lg shadow-lg p-2 sm:p-3 text-xs sm:text-sm">
+        <p className="font-semibold text-gray-900 mb-1.5 sm:mb-2">
           {formatDate(d.date, 'dd.MM.yyyy')}
         </p>
-        <div className="space-y-1">
-          <p className="text-sm text-gray-700">
+        <div className="space-y-0.5 sm:space-y-1">
+          <p className="text-gray-700">
             <span className="font-medium">Заказы:</span> {d.orders} шт
           </p>
-          <p className="text-sm text-gray-700">
+          <p className="text-gray-700">
             <span className="font-medium">Выкупы:</span> {d.sales} шт
           </p>
-          <p className="text-sm text-gray-700">
+          <p className="text-gray-700">
             <span className="font-medium">Выручка:</span> {formatCurrency(d.revenue)}
           </p>
         </div>
@@ -109,63 +123,66 @@ export const SalesChart = ({ data, isLoading = false }: SalesChartProps) => {
   };
 
   return (
-    <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-5">
-      {/* Заголовок с табами */}
-      <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center gap-2">
-          <span className="text-sm text-gray-600">Показать:</span>
-          <div className="flex gap-1">
-            {TABS.map((tab) => (
-              <button
-                key={tab.value}
-                onClick={() => setActiveTab(tab.value)}
-                className={cn(
-                  'h-8 px-3 text-xs font-medium rounded-md transition-colors',
-                  activeTab === tab.value
-                    ? 'bg-green-600 text-white'
-                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                )}
-              >
-                {tab.label}
-              </button>
-            ))}
-          </div>
+    <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-2 sm:p-3">
+      {/* Заголовок с табами - компактный */}
+      <div className="flex items-center justify-between gap-2 mb-1.5 sm:mb-2">
+        <h3 className="text-xs sm:text-sm font-semibold text-gray-900">
+          {TABS.find(t => t.value === activeTab)?.label}
+        </h3>
+        <div className="flex gap-0.5 sm:gap-1">
+          {TABS.map((tab) => (
+            <button
+              key={tab.value}
+              onClick={() => setActiveTab(tab.value)}
+              className={cn(
+                'h-5 sm:h-6 px-1.5 sm:px-2 text-[10px] sm:text-xs font-medium rounded transition-colors',
+                activeTab === tab.value
+                  ? 'bg-green-600 text-white'
+                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+              )}
+            >
+              {tab.label}
+            </button>
+          ))}
         </div>
       </div>
 
-      {/* Название активного таба */}
-      <h3 className="text-base font-semibold text-gray-900 mb-3">
-        {TABS.find(t => t.value === activeTab)?.label}
-      </h3>
-
-      <ResponsiveContainer width="100%" height={300}>
-        <AreaChart data={chartData} margin={{ top: 5, right: 10, left: 10, bottom: 5 }}>
-          <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" vertical={false} />
-          <XAxis
-            dataKey="dateFormatted"
-            stroke="#6b7280"
-            style={{ fontSize: '11px' }}
-            tickLine={false}
-          />
-          <YAxis
-            stroke="#6b7280"
-            style={{ fontSize: '11px' }}
-            tickFormatter={config.formatter}
-            tickLine={false}
-            axisLine={false}
-          />
-          <Tooltip content={<CustomTooltip />} />
-          <Area
-            type="monotone"
-            dataKey={config.dataKey}
-            stroke={config.stroke}
-            fill={config.fill}
-            strokeWidth={2}
-            name={config.name}
-            connectNulls={false}
-          />
-        </AreaChart>
-      </ResponsiveContainer>
+      {/* График компактный */}
+      <div className="overflow-x-auto -mx-2 sm:mx-0 px-2 sm:px-0">
+        <div className="min-w-[300px] sm:min-w-0">
+          <ResponsiveContainer width="100%" height={100} className="sm:!h-[140px]">
+            <AreaChart data={displayData} margin={{ top: 2, right: 2, left: -15, bottom: 2 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" vertical={false} />
+              <XAxis
+                dataKey="dateFormatted"
+                stroke="#9ca3af"
+                style={{ fontSize: '9px' }}
+                tickLine={false}
+                interval="preserveStartEnd"
+                tick={{ dy: 3 }}
+              />
+              <YAxis
+                stroke="#9ca3af"
+                style={{ fontSize: '9px' }}
+                tickFormatter={config.formatter}
+                tickLine={false}
+                axisLine={false}
+                width={45}
+              />
+              <Tooltip content={<CustomTooltip />} />
+              <Area
+                type="monotone"
+                dataKey={config.dataKey}
+                stroke={config.stroke}
+                fill={config.fill}
+                strokeWidth={1.5}
+                name={config.name}
+                connectNulls={false}
+              />
+            </AreaChart>
+          </ResponsiveContainer>
+        </div>
+      </div>
     </div>
   );
 };

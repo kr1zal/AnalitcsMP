@@ -122,68 +122,68 @@ export const SummaryCard = ({
 
   if (loading) {
     return (
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-3 sm:p-4 lg:p-5">
         <div className="animate-pulse">
-          <div className="h-4 bg-gray-200 rounded w-1/2 mb-4"></div>
-          <div className="h-8 bg-gray-200 rounded w-3/4 mb-2"></div>
-          <div className="h-4 bg-gray-200 rounded w-1/3"></div>
+          <div className="h-3 sm:h-4 bg-gray-200 rounded w-1/2 mb-3 sm:mb-4"></div>
+          <div className="h-6 sm:h-8 bg-gray-200 rounded w-3/4 mb-2"></div>
+          <div className="h-3 sm:h-4 bg-gray-200 rounded w-1/3"></div>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-5">
+    <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-3 sm:p-4 lg:p-5">
       {/* Заголовок */}
-      <div className="flex items-start justify-between mb-1 gap-2">
+      <div className="flex items-start justify-between mb-1 gap-1 sm:gap-2">
         <div className="flex items-center gap-1 flex-1 min-w-0">
-          <span className="text-xs font-semibold text-gray-500 whitespace-nowrap truncate flex-1 min-w-0">
+          <span className="text-[10px] sm:text-xs font-semibold text-gray-500 whitespace-nowrap truncate flex-1 min-w-0">
             {title}
           </span>
           {tooltip && (
             <div className="group relative flex-shrink-0">
-              <HelpCircle className="w-3.5 h-3.5 text-gray-400 cursor-help" />
-              <div className="invisible group-hover:visible absolute z-50 left-0 top-5 w-64 p-3 bg-gray-900 text-white text-xs rounded-lg shadow-2xl leading-relaxed whitespace-pre-line">
+              <HelpCircle className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-gray-400 cursor-help" />
+              {/* Tooltip - адаптивная ширина и позиция */}
+              <div className="invisible group-hover:visible absolute z-50 top-5 w-44 sm:w-64 p-2 sm:p-3 bg-gray-900 text-white text-[10px] sm:text-xs rounded-lg shadow-2xl leading-relaxed whitespace-pre-line -left-2 sm:left-0">
                 {tooltip}
-                {/* Стрелка */}
-                <div className="absolute -top-1 left-2 w-2 h-2 bg-gray-900 rotate-45"></div>
+                <div className="absolute -top-1 left-3 sm:left-2 w-2 h-2 bg-gray-900 rotate-45"></div>
               </div>
             </div>
           )}
         </div>
-        {Icon && <Icon className="w-[18px] h-[18px] text-gray-500 flex-shrink-0 mt-0.5" />}
+        {Icon && <Icon className="w-4 h-4 sm:w-[18px] sm:h-[18px] text-gray-500 flex-shrink-0 mt-0.5 hidden sm:block" />}
       </div>
 
       {/* Значение */}
       <div className="overflow-hidden min-w-0">
         <p className="font-bold text-gray-900 tabular-nums leading-tight flex items-baseline whitespace-nowrap min-w-0">
           {format === 'currency' ? renderCurrencyValue(value) : (
-            <span className="text-2xl">{formatValue(value)}</span>
+            <span className="text-xl sm:text-2xl">{formatValue(value)}</span>
           )}
         </p>
         {subtitle && (
-          <p className="text-xs text-gray-500 mt-1 break-words truncate">{subtitle}</p>
+          <p className="text-[10px] sm:text-xs text-gray-500 mt-0.5 sm:mt-1 break-words truncate">{subtitle}</p>
         )}
       </div>
 
       {/* Тренд */}
       {change !== undefined && (
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-1 mt-1">
           {isPositive ? (
-            <TrendingUp className="w-4 h-4 text-green-600" />
+            <TrendingUp className="w-3 h-3 sm:w-4 sm:h-4 text-green-600" />
           ) : (
-            <TrendingDown className="w-4 h-4 text-red-600" />
+            <TrendingDown className="w-3 h-3 sm:w-4 sm:h-4 text-red-600" />
           )}
           <span
             className={cn(
-              'text-sm font-medium',
+              'text-xs sm:text-sm font-medium',
               isPositive ? 'text-green-600' : 'text-red-600'
             )}
           >
             {change > 0 ? '+' : ''}
             {formatPercent(Math.abs(change))}
           </span>
-          <span className="text-sm text-gray-500 ml-1">за период</span>
+          <span className="text-xs sm:text-sm text-gray-500 ml-1 hidden sm:inline">за период</span>
         </div>
       )}
     </div>

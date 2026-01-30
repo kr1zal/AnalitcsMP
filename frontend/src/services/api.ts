@@ -5,6 +5,7 @@ import axios from 'axios';
 import type {
   ProductsResponse,
   DashboardSummaryResponse,
+  DashboardSummaryWithPrevResponse,
   UnitEconomicsResponse,
   SalesChartResponse,
   StocksResponse,
@@ -13,6 +14,7 @@ import type {
   DashboardFilters,
   AdCostsResponse,
   CostsTreeResponse,
+  CostsTreeCombinedResponse,
 } from '../types';
 
 // Создаём axios instance с базовыми настройками
@@ -150,6 +152,32 @@ export const dashboardApi = {
   getCostsTree: async (filters?: DashboardFilters) => {
     const { data } = await api.get<CostsTreeResponse>('/dashboard/costs-tree', {
       params: filters,
+    });
+    return data;
+  },
+
+  /**
+   * Получить объединённое дерево удержаний для Ozon и WB.
+   * Экономит 1 HTTP запрос при marketplace=all.
+   */
+  getCostsTreeCombined: async (filters?: Omit<DashboardFilters, 'marketplace'>) => {
+    const { data } = await api.get<CostsTreeCombinedResponse>('/dashboard/costs-tree-combined', {
+      params: filters,
+    });
+    return data;
+  },
+
+  /**
+   * Получить сводку с данными предыдущего периода.
+   * Экономит 3-4 HTTP запроса при marketplace=all.
+   */
+  getSummaryWithPrev: async (filters?: DashboardFilters & { include_ozon_truth?: boolean }) => {
+    const { data } = await api.get<DashboardSummaryWithPrevResponse>('/dashboard/summary', {
+      params: {
+        ...filters,
+        include_prev_period: true,
+        include_ozon_truth: filters?.include_ozon_truth ?? true,
+      },
     });
     return data;
   },

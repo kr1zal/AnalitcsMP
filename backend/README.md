@@ -31,7 +31,7 @@ backend/
 │   └── main.py                  # Точка входа FastAPI
 ├── migrations/
 │   ├── 001_initial.sql          # SQL схема базы данных
-│   └── 002_costs_details.sql    # Детализация удержаний (планируется)
+│   └── 002_optimized_rpc.sql    # RPC функции для оптимизации (get_dashboard_summary, get_costs_tree)
 ├── tests/
 ├── venv/                        # Виртуальное окружение
 ├── requirements.txt             # Зависимости
@@ -86,7 +86,7 @@ SECRET_KEY=your-secret-key
 
 ```bash
 # Выполните migrations/001_initial.sql в Supabase SQL Editor
-# Затем migrations/002_costs_details.sql для детализации удержаний
+# Опционально: 002_optimized_rpc.sql для RPC функций оптимизации
 ```
 
 ### 4. Запуск сервера
@@ -529,6 +529,23 @@ Unique: `(product_id, marketplace, date, campaign_id)`.
 - `/api/client/campaign` — кампании
 - `/api/client/statistics` — статистика (UUID-based async + CSV)
 
+### Supabase RPC (оптимизация)
+
+Для ускорения загрузки дашборда используются RPC функции:
+
+| Функция                 | Описание                                          |
+| ----------------------- | ------------------------------------------------- |
+| `get_dashboard_summary` | Агрегирует sales/costs/ads одним запросом         |
+| `get_costs_tree`        | Строит иерархию удержаний на стороне PostgreSQL   |
+
+**Индексы:**
+- `idx_mp_sales_date_mp` — для быстрой фильтрации продаж
+- `idx_mp_costs_date_mp` — для быстрой фильтрации удержаний
+- `idx_mp_costs_details_date_mp` — для tree-view
+- `idx_mp_ad_costs_date_mp` — для рекламных расходов
+
+SQL миграция: `migrations/002_optimized_rpc.sql`
+
 ### Поток данных удержаний
 
 ```
@@ -566,15 +583,18 @@ Dashboard API:
 
 ---
 
-## Данные (актуально на 23.01.2026)
+## Данные (актуально на 30.01.2026)
 
-| Таблица     | WB                   | Ozon                                          |
-| ----------- | -------------------- | --------------------------------------------- |
-| mp_products | 5 товаров            | 5 товаров                                     |
-| mp_sales    | ~51 запись (35 дней) | 43 записи (35 дней)                           |
-| mp_stocks   | 2 склада             | FBO склады (из Analytics stock_on_warehouses) |
-| mp_costs    | ~46 записей          | 0 (finance API пуст)                          |
-| mp_ad_costs | 1 запись (0.18₽)     | 0                                             |
+| Таблица          | WB                   | Ozon                                          |
+| ---------------- | -------------------- | --------------------------------------------- |
+| mp_products      | 5 товаров            | 5 товаров                                     |
+| mp_sales         | ~51 запись (35 дней) | 43 записи (35 дней)                           |
+| mp_stocks        | 2 склада             | FBO склады (из Analytics stock_on_warehouses) |
+| mp_costs         | ~46 записей          | 53 записи (30 дней)                           |
+| mp_costs_details | Детализация WB       | 353 записи (детализация удержаний)            |
+| mp_ad_costs      | 1 запись (0.18₽)     | 0 (кампании неактивны)                        |
+
+**Ozon finance API:** 291 операция за 30 дней (5 типов: Доставка, Звёздные товары, Бонусы, Эквайринг, Хранение)
 
 ---
 
@@ -588,9 +608,12 @@ Dashboard API:
 
 API обновлён: v2→v3 (products), v3→v4 (stocks). Клиент актуален.
 
-### Ozon costs = 0
+### Ozon costs = 0 (устаревшая проблема)
 
-Finance API не возвращает транзакций. Проверить в ЛК Ozon раздел "Начисления".
+Ранее Finance API не возвращал транзакций. Сейчас синхронизация работает корректно:
+- 53 записи в `mp_costs` (агрегация)
+- 353 записи в `mp_costs_details` (детализация)
+- Если всё равно 0 — проверить в ЛК Ozon раздел "Начисления".
 
 ### Ozon FBO остатки не видны (в ЛК есть “Склад Ozon”, а API stocks пустые)
 

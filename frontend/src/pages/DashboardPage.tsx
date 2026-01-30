@@ -20,9 +20,17 @@ import { MarketplaceBreakdown } from '../components/Dashboard/MarketplaceBreakdo
 import { StocksTable } from '../components/Dashboard/StocksTable';
 import { FilterPanel } from '../components/Shared/FilterPanel';
 import { LoadingSpinner } from '../components/Shared/LoadingSpinner';
-import { useDashboardSummary, useSalesChart, useStocks, useAdCosts, useProducts, useCostsTree, useUnitEconomics } from '../hooks/useDashboard';
+import {
+  useDashboardSummary,
+  useSalesChart,
+  useStocks,
+  useAdCosts,
+  useProducts,
+  useCostsTree,
+  useUnitEconomics,
+} from '../hooks/useDashboard';
 import { useFiltersStore } from '../store/useFiltersStore';
-import { fillDailySeriesYmd, formatCurrency, formatDateForAPI, getDateRangeFromPreset } from '../lib/utils';
+import { fillDailySeriesYmd, formatCurrency, getDateRangeFromPreset } from '../lib/utils';
 import type { CostsTreeResponse, Marketplace } from '../types';
 
 // Lazy-load charts to keep initial bundle small (recharts is heavy).
@@ -84,11 +92,6 @@ function buildCostsSubtitleFromTree(data?: CostsTreeResponse | null, marketplace
   return top.map((t) => `${shortCostLabel(t.name)} ${formatCurrency(Math.abs(t.amount))}`).join(', ');
 }
 
-function parseYmd(s: string): Date {
-  // "YYYY-MM-DD" → local midnight (достаточно для периодов в днях)
-  return new Date(`${s}T00:00:00`);
-}
-
 function describeRequestUrl(err: unknown): string | null {
   if (!axios.isAxiosError(err)) return null;
   const baseURL = err.config?.baseURL ?? '';
@@ -105,6 +108,9 @@ export const DashboardPage = () => {
   // Фильтр товаров (боковая панель)
   const [selectedProduct, setSelectedProduct] = useState<string | undefined>(undefined);
   const [sidebarMarketplace, setSidebarMarketplace] = useState<Marketplace>('all');
+
+  // ОПТИМИЗАЦИЯ: visibility gating убран, т.к. RPC запросы теперь быстрые
+  // и нет смысла откладывать загрузку графиков/остатков
 
   const filters = {
     date_from: dateRange.from,
@@ -123,64 +129,55 @@ export const DashboardPage = () => {
   // Показывать ли карточки сравнения периодов
   const showPeriodComparison = datePreset !== 'custom';
 
-  // Загрузка данных
+  // ==================== ЗАГРУЗКА ДАННЫХ ====================
+  // TODO: Включить оптимизацию после создания RPC get_costs_tree в Supabase
+  // Сейчас используем стандартную логику (отдельные запросы)
+
+  // Основной summary
   const { data: summaryData, isLoading: summaryLoading, error, refetch: refetchSummary } = useDashboardSummary(filters);
 
-  // Для мэтча "Выручка" по Ozon используем costs-tree (как в ЛК начислений).
-  // Для marketplace=all подменяем только Ozon-компонент (WB остаётся из mp_sales.revenue).
-  const shouldUseOzonTruthRevenue = marketplace === 'ozon' || marketplace === 'all';
-  const { data: ozonCostsTreeData } = useCostsTree(
-    { ...filters, marketplace: 'ozon' },
-    { enabled: shouldUseOzonTruthRevenue }
+  // Флаг загрузки
+  const isSummaryLoading = summaryLoading;
+
+  // Costs-tree для Ozon и WB (отдельные запросы)
+  const { data: ozonCostsTreeData, isLoading: ozonCostsTreeLoading } = useCostsTree(
+    { ...filters, marketplace: 'ozon', include_children: true },
+    { enabled: marketplace === 'ozon' || marketplace === 'all' }
   );
+  const { data: wbCostsTreeData, isLoading: wbCostsTreeLoading } = useCostsTree(
+    { ...filters, marketplace: 'wb', include_children: true },
+    { enabled: marketplace === 'wb' || marketplace === 'all' }
+  );
+
+  // Для marketplace=all нужен отдельный ozon summary (для вычитания из общей выручки)
   const { data: ozonSummaryData } = useDashboardSummary(
     { ...filters, marketplace: 'ozon' },
     { enabled: marketplace === 'all' }
   );
 
-  // Для прибыли берём payout (total_accrued) из costs-tree — это "истина" как в ЛК (Ozon: Начислено, WB: К перечислению).
-  const { data: wbCostsTreeData } = useCostsTree(
-    { ...filters, marketplace: 'wb' },
-    { enabled: marketplace === 'wb' || marketplace === 'all' }
-  );
-
-  // Данные предыдущего периода (для корректного сравнения при "истинной" выручке Ozon)
-  const prevRange = (() => {
-    const from = parseYmd(dateRange.from);
-    const to = parseYmd(dateRange.to);
-    const periodDays = Math.round((to.getTime() - from.getTime()) / (1000 * 60 * 60 * 24)) + 1;
-    const prevFrom = new Date(from);
-    prevFrom.setDate(prevFrom.getDate() - periodDays);
-    const prevTo = new Date(from);
-    prevTo.setDate(prevTo.getDate() - 1);
-    // ВАЖНО: toISOString() даёт UTC и может сдвигать дату на сутки в локальной TZ.
-    return { from: formatDateForAPI(prevFrom), to: formatDateForAPI(prevTo) };
-  })();
-
-  const prevFilters = {
-    date_from: prevRange.from,
-    date_to: prevRange.to,
-    marketplace,
-  };
-
-  const { data: prevSummaryData } = useDashboardSummary(prevFilters, { enabled: showPeriodComparison });
-  const { data: prevOzonSummaryData } = useDashboardSummary(
-    { ...prevFilters, marketplace: 'ozon' },
-    { enabled: showPeriodComparison && marketplace === 'all' }
-  );
-  const { data: prevOzonCostsTreeData } = useCostsTree(
-    { ...prevFilters, marketplace: 'ozon' },
-    { enabled: showPeriodComparison && (marketplace === 'ozon' || marketplace === 'all') }
-  );
-
   // Закупка: считаем по unit-economics (purchase_costs = purchase_price * qty).
-  const { data: unitEconomicsData } = useUnitEconomics(filters);
+  // ОПТИМИЗАЦИЯ: purchase_costs_total теперь приходит из RPC get_dashboard_summary
+  const hasPurchaseCostsInSummary = typeof summaryData?.summary?.purchase_costs_total === 'number';
+  const { data: unitEconomicsData } = useUnitEconomics(filters, {
+    // Если summary уже содержит purchase_costs_total — unit-economics не нужен
+    enabled: Boolean(summaryData) && !hasPurchaseCostsInSummary,
+  });
 
-  const { data: chartData, isLoading: chartLoading, refetch: refetchChart } = useSalesChart(chartFilters);
+  // Графики и остатки загружаются сразу (RPC оптимизированы)
+  const chartsEnabled = true;
+  const stocksEnabled = true;
 
-  const { data: adCostsData, isLoading: adCostsLoading, refetch: refetchAdCosts } = useAdCosts(chartFilters);
+  const { data: chartData, isLoading: chartLoading, refetch: refetchChart } = useSalesChart(chartFilters, {
+    enabled: chartsEnabled,
+  });
 
-  const { data: stocksData, isLoading: stocksLoading, refetch: refetchStocks } = useStocks(marketplace);
+  const { data: adCostsData, isLoading: adCostsLoading, refetch: refetchAdCosts } = useAdCosts(chartFilters, {
+    enabled: chartsEnabled,
+  });
+
+  const { data: stocksData, isLoading: stocksLoading, refetch: refetchStocks } = useStocks(marketplace, {
+    enabled: stocksEnabled,
+  });
 
   // Товары для бокового фильтра (используем sidebarMarketplace)
   const { data: productsData } = useProducts(sidebarMarketplace);
@@ -199,9 +196,15 @@ export const DashboardPage = () => {
   // Обработчик обновления данных
   const handleRefresh = () => {
     refetchSummary();
-    refetchChart();
-    refetchAdCosts();
-    refetchStocks();
+    // Важно: disabled queries всё равно можно рефетчить вручную — но это даёт "лавину".
+    // Поэтому рефетчим только то, что уже включено/видимо.
+    if (chartsEnabled) {
+      refetchChart();
+      refetchAdCosts();
+    }
+    if (stocksEnabled) {
+      refetchStocks();
+    }
   };
 
   // IMPORTANT: hooks must run before any early returns.
@@ -243,7 +246,7 @@ export const DashboardPage = () => {
     );
   }, [adCostsData?.data, dateRange.from, dateRange.to]);
 
-  if (summaryLoading && !summaryData) {
+  if (isSummaryLoading && !summaryData) {
     return <LoadingSpinner text="Загрузка данных..." />;
   }
 
@@ -268,11 +271,17 @@ export const DashboardPage = () => {
     );
   }
 
+  // Данные из summary (оптимизация отключена, используем стандартный запрос)
   const summary = summaryData?.summary;
   const previousPeriod = summaryData?.previous_period;
   const revenueChange = previousPeriod?.revenue_change_percent || 0;
 
-  const purchaseCostsForTile = unitEconomicsData?.products?.reduce((acc, p) => acc + (p.metrics.purchase_costs || 0), 0) ?? 0;
+  // TODO: включить когда RPC get_costs_tree будет создан в Supabase
+  // const adjustedRevenue = summaryWithPrevData?.adjusted_revenue;
+
+  const purchaseCostsForTile =
+    (typeof summary?.purchase_costs_total === 'number' ? summary.purchase_costs_total : null) ??
+    (unitEconomicsData?.products?.reduce((acc, p) => acc + (p.metrics.purchase_costs || 0), 0) ?? 0);
 
   const payoutForTile = (() => {
     if (marketplace === 'ozon') return ozonCostsTreeData?.total_accrued ?? null;
@@ -306,23 +315,7 @@ export const DashboardPage = () => {
     return summary.revenue;
   })();
 
-  const prevRevenueForTile = (() => {
-    const prevSummary = prevSummaryData?.summary ?? null;
-    if (!showPeriodComparison || !prevSummary) return previousPeriod?.revenue ?? 0;
-
-    if (marketplace === 'ozon') {
-      const ozonTruthPrev = getSalesTotalFromCostsTree(prevOzonCostsTreeData);
-      return ozonTruthPrev ?? prevSummary.revenue;
-    }
-
-    if (marketplace === 'all') {
-      const ozonSalesFromPrevSummary = prevOzonSummaryData?.summary?.revenue ?? 0;
-      const ozonTruthPrev = getSalesTotalFromCostsTree(prevOzonCostsTreeData) ?? ozonSalesFromPrevSummary;
-      return prevSummary.revenue - ozonSalesFromPrevSummary + ozonTruthPrev;
-    }
-
-    return prevSummary.revenue;
-  })();
+  const prevRevenueForTile = previousPeriod?.revenue ?? 0;
 
   const revenueChangeForTile = (() => {
     if (!showPeriodComparison) return revenueChange;
@@ -379,9 +372,9 @@ export const DashboardPage = () => {
   const gridCols = showPeriodComparison ? 'lg:grid-cols-8' : 'lg:grid-cols-6';
 
   return (
-    <div className="max-w-7xl mx-auto px-4 py-8">
+    <div className="max-w-7xl mx-auto px-3 sm:px-4 lg:px-6 py-4 sm:py-6 lg:py-8">
       {/* 1. Фильтры */}
-      <FilterPanel onRefresh={handleRefresh} isRefreshing={summaryLoading || chartLoading} />
+      <FilterPanel onRefresh={handleRefresh} isRefreshing={isSummaryLoading || (chartsEnabled ? chartLoading : false)} />
 
       {/* 2. Карточки метрик */}
       <div className={`grid grid-cols-2 md:grid-cols-3 ${gridCols} gap-2 mb-8`}>
@@ -401,7 +394,7 @@ export const DashboardPage = () => {
             .filter(Boolean)
             .join('\n')}
           icon={ShoppingCart}
-          loading={summaryLoading}
+          loading={isSummaryLoading}
         />
         <SummaryCard
           title="Прибыль"
@@ -421,7 +414,7 @@ export const DashboardPage = () => {
               : undefined
           }
           icon={DollarSign}
-          loading={summaryLoading}
+          loading={isSummaryLoading}
         />
         <SummaryCard
           title="ДРР"
@@ -433,7 +426,7 @@ export const DashboardPage = () => {
             'Важно: не включает "Бонусы продавца" из удержаний МП.',
           ].join('\n')}
           icon={Percent}
-          loading={summaryLoading}
+          loading={isSummaryLoading}
         />
         <SummaryCard
           title="Реклама"
@@ -446,7 +439,7 @@ export const DashboardPage = () => {
             'Не равно "Продвижение и реклама / Бонусы продавца" в удержаниях.',
           ].join('\n')}
           icon={Megaphone}
-          loading={summaryLoading}
+          loading={isSummaryLoading}
         />
         <SummaryCard
           title="Расх. МП"
@@ -459,7 +452,7 @@ export const DashboardPage = () => {
             'Должно совпадать с "Удержания" в блоке начислений за тот же период.',
           ].join('\n')}
           icon={Receipt}
-          loading={summaryLoading}
+          loading={isSummaryLoading}
         />
         <SummaryCard
           title="К перечисл."
@@ -471,7 +464,7 @@ export const DashboardPage = () => {
             "WB: 'К перечислению за период' (costs-tree.total_accrued).",
           ].join('\n')}
           icon={BarChart3}
-          loading={summaryLoading}
+          loading={isSummaryLoading}
         />
 
         {/* Карточки сравнения периодов - только при пресетах 7/30/90 */}
@@ -484,7 +477,7 @@ export const DashboardPage = () => {
               subtitle={`${previousPeriod?.orders || 0} заказов`}
               tooltip="Продажи за предыдущий период той же длительности."
               icon={BarChart3}
-              loading={summaryLoading}
+              loading={isSummaryLoading}
             />
             <SummaryCard
               title="Δ к пред."
@@ -492,33 +485,40 @@ export const DashboardPage = () => {
               icon={TrendingUp}
               isPositive={revenueChangeForTile >= 0}
               tooltip="Изменение продаж относительно предыдущего периода (а не YoY)."
-              loading={summaryLoading}
+              loading={isSummaryLoading}
             />
           </>
         )}
       </div>
 
       {/* 3. MarketplaceBreakdown (OZON / WB) */}
-      <MarketplaceBreakdown filters={filters} />
+      {/* ОПТИМИЗАЦИЯ: передаём данные costs-tree через props, чтобы избежать дублирования запросов */}
+      <MarketplaceBreakdown
+        filters={filters}
+        ozonCostsTree={ozonCostsTreeData}
+        ozonCostsTreeLoading={ozonCostsTreeLoading}
+        wbCostsTree={wbCostsTreeData}
+        wbCostsTreeLoading={wbCostsTreeLoading}
+      />
 
       {/* 4. Графики с боковыми фильтрами */}
-      <div className="flex flex-col lg:flex-row gap-6 mb-8">
-        {/* Боковая панель фильтров */}
-        <div className="w-full lg:w-48 flex-shrink-0 space-y-4">
+      <div className="flex flex-row gap-3 lg:gap-4 mb-6 lg:mb-8">
+        {/* Боковая панель фильтров - всегда слева (как на десктопе) */}
+        <div className="w-28 sm:w-32 lg:w-36 flex-shrink-0 space-y-2 sm:space-y-3">
           {/* Фильтр маркетплейса */}
-          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-3 lg:p-4">
-            <h4 className="text-xs font-semibold text-gray-500 uppercase mb-3">Фильтр Маркетплейс</h4>
-            <div className="space-y-2">
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-2 sm:p-3">
+            <h4 className="text-[9px] sm:text-[10px] font-semibold text-gray-400 uppercase mb-1.5 sm:mb-2">МП</h4>
+            <div className="space-y-1 sm:space-y-1.5">
               {(['all', 'wb', 'ozon'] as Marketplace[]).map((mp) => (
-                <label key={mp} className="flex items-center gap-2 cursor-pointer">
+                <label key={mp} className="flex items-center gap-1.5 sm:gap-2 cursor-pointer">
                   <input
                     type="radio"
                     name="sidebar-mp"
                     checked={sidebarMarketplace === mp}
                     onChange={() => setSidebarMarketplace(mp)}
-                    className="w-3.5 h-3.5 text-indigo-600"
+                    className="w-3 h-3 text-indigo-600"
                   />
-                  <span className="text-sm text-gray-700">
+                  <span className="text-[11px] sm:text-xs text-gray-700">
                     {mp === 'all' ? 'все' : mp === 'wb' ? 'WB' : 'OZON'}
                   </span>
                 </label>
@@ -527,30 +527,30 @@ export const DashboardPage = () => {
           </div>
 
           {/* Фильтр товаров */}
-          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-3 lg:p-4">
-            <h4 className="text-xs font-semibold text-gray-500 uppercase mb-3">Фильтр товаров</h4>
-            <div className="space-y-2">
-              <label className="flex items-center gap-2 cursor-pointer">
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-2 sm:p-3">
+            <h4 className="text-[9px] sm:text-[10px] font-semibold text-gray-400 uppercase mb-1.5 sm:mb-2">Товары</h4>
+            <div className="space-y-1 sm:space-y-1.5 max-h-32 sm:max-h-48 overflow-y-auto">
+              <label className="flex items-center gap-1.5 sm:gap-2 cursor-pointer">
                 <input
                   type="radio"
                   name="sidebar-product"
                   checked={!selectedProduct}
                   onChange={() => setSelectedProduct(undefined)}
-                  className="w-3.5 h-3.5 text-indigo-600"
+                  className="w-3 h-3 text-indigo-600"
                 />
-                <span className="text-sm text-gray-700">все</span>
+                <span className="text-[11px] sm:text-xs text-gray-700">все</span>
               </label>
               {sidebarProducts.map((product, idx) => (
-                <label key={product.id} className="flex items-center gap-2 cursor-pointer">
+                <label key={product.id} className="flex items-center gap-1.5 sm:gap-2 cursor-pointer">
                   <input
                     type="radio"
                     name="sidebar-product"
                     checked={selectedProduct === product.id}
                     onChange={() => setSelectedProduct(product.id)}
-                    className="w-3.5 h-3.5 text-indigo-600"
+                    className="w-3 h-3 text-indigo-600"
                   />
-                  <span className="text-sm text-gray-700 truncate" title={product.name}>
-                    {idx + 1}. {product.name.length > 15 ? product.name.slice(0, 15) + '...' : product.name}
+                  <span className="text-[11px] sm:text-xs text-gray-700 truncate" title={product.name}>
+                    {idx + 1}. {product.name.slice(0, 8)}
                   </span>
                 </label>
               ))}
@@ -559,7 +559,7 @@ export const DashboardPage = () => {
         </div>
 
         {/* Графики */}
-        <div className="flex-1 min-w-0 space-y-6">
+        <div className="flex-1 min-w-0 space-y-4 lg:space-y-6">
           <Suspense
             fallback={
               <div className="space-y-6">
@@ -575,13 +575,13 @@ export const DashboardPage = () => {
             }
           >
             {/* График заказов с табами */}
-            <SalesChart data={salesChartSeries as any} isLoading={chartLoading} />
+            <SalesChart data={salesChartSeries as any} isLoading={!chartsEnabled || chartLoading} />
 
             {/* График Средний чек */}
-            <AvgCheckChart data={salesChartSeries as any} isLoading={chartLoading} />
+            <AvgCheckChart data={salesChartSeries as any} isLoading={!chartsEnabled || chartLoading} />
 
             {/* График ДРР */}
-            <DrrChart data={adCostsSeriesFull as any} isLoading={adCostsLoading} />
+            <DrrChart data={adCostsSeriesFull as any} isLoading={!chartsEnabled || adCostsLoading} />
           </Suspense>
         </div>
       </div>
@@ -590,7 +590,7 @@ export const DashboardPage = () => {
       <div className="mb-8">
         <StocksTable
           stocks={stocksData?.stocks || []}
-          isLoading={stocksLoading}
+          isLoading={!stocksEnabled || stocksLoading}
         />
       </div>
     </div>

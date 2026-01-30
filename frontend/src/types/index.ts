@@ -50,6 +50,11 @@ export interface SalesSummary {
   net_profit: number;
   drr: number;
   ad_cost: number;
+  /**
+   * Закупка за период (purchase_price * sales_count), агрегат.
+   * Используется для быстрой оценки прибыли на Dashboard без запроса unit-economics.
+   */
+  purchase_costs_total?: number;
   total_costs: number;
   avg_check: number;
   costs_breakdown: CostsBreakdown;
@@ -71,6 +76,32 @@ export interface DashboardSummaryResponse {
   marketplace: Marketplace;
   summary: SalesSummary;
   previous_period: PreviousPeriod;
+}
+
+/**
+ * Расширенный ответ summary с prev-period и "истинной" выручкой Ozon.
+ * Экономит 3-4 HTTP запроса при marketplace=all.
+ */
+export interface DashboardSummaryWithPrevResponse {
+  summary: SalesSummary;
+  previous_period: PreviousPeriod;
+  period: {
+    from: string;
+    to: string;
+  };
+  prev_period: {
+    from: string;
+    to: string;
+  };
+  /**
+   * Скорректированная выручка с учётом "истинной" Ozon выручки из costs-tree.
+   */
+  adjusted_revenue: {
+    current: number;
+    previous: number;
+    ozon_truth_current: number;
+    ozon_truth_previous: number;
+  };
 }
 
 // ==================== UNIT-ЭКОНОМИКА ====================
@@ -192,6 +223,19 @@ export interface CostsTreeResponse {
   tree: CostsTreeItem[];
 }
 
+/**
+ * Объединённый ответ costs-tree для Ozon и WB.
+ * Экономит 1 HTTP запрос при marketplace=all.
+ */
+export interface CostsTreeCombinedResponse {
+  ozon: CostsTreeResponse | null;
+  wb: CostsTreeResponse | null;
+  period: {
+    from: string;
+    to: string;
+  };
+}
+
 // ==================== ОСТАТКИ ====================
 
 export interface WarehouseStock {
@@ -276,6 +320,11 @@ export interface DashboardFilters {
   date_to?: string; // YYYY-MM-DD
   marketplace?: Marketplace;
   product_id?: string;
+  /**
+   * Для /dashboard/costs-tree: если false, backend вернёт только верхние категории без children.
+   * Остальные эндпоинты этот параметр игнорируют.
+   */
+  include_children?: boolean;
 }
 
 export type DateRangePreset = '7d' | '30d' | '90d' | 'custom';
