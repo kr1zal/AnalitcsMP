@@ -10,6 +10,7 @@ interface SummaryCardProps {
   value: number | string;
   subtitle?: string; // дополнительный текст под значением (мелким шрифтом)
   tooltip?: string; // подсказка при наведении на иконку (?)
+  tooltipAlign?: 'left' | 'right'; // позиция tooltip: left = слева от иконки, right = справа (для правых колонок)
   change?: number; // процент изменения
   isPositive?: boolean;
   icon?: LucideIcon;
@@ -22,6 +23,7 @@ export const SummaryCard = ({
   value,
   subtitle,
   tooltip,
+  tooltipAlign = 'left',
   change,
   isPositive = true,
   icon: Icon,
@@ -143,10 +145,22 @@ export const SummaryCard = ({
           {tooltip && (
             <div className="group relative flex-shrink-0">
               <HelpCircle className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-gray-400 cursor-help" />
-              {/* Tooltip - адаптивная ширина и позиция */}
-              <div className="invisible group-hover:visible absolute z-50 top-5 w-44 sm:w-64 p-2 sm:p-3 bg-gray-900 text-white text-[10px] sm:text-xs rounded-lg shadow-2xl leading-relaxed whitespace-pre-line -left-2 sm:left-0">
+              {/* Tooltip - позиция зависит от tooltipAlign (left/right) */}
+              <div
+                className={cn(
+                  'invisible group-hover:visible absolute z-50 top-5 w-44 sm:w-64 p-2 sm:p-3 bg-gray-900 text-white text-[10px] sm:text-xs rounded-lg shadow-2xl leading-relaxed whitespace-pre-line',
+                  tooltipAlign === 'right'
+                    ? 'right-0 left-auto'
+                    : 'left-0 right-auto sm:left-0'
+                )}
+              >
                 {tooltip}
-                <div className="absolute -top-1 left-3 sm:left-2 w-2 h-2 bg-gray-900 rotate-45"></div>
+                <div
+                  className={cn(
+                    'absolute -top-1 w-2 h-2 bg-gray-900 rotate-45',
+                    tooltipAlign === 'right' ? 'right-2' : 'left-2'
+                  )}
+                />
               </div>
             </div>
           )}

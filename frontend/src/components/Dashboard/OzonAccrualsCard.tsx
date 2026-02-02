@@ -8,25 +8,13 @@
 import { useMemo, useState } from 'react';
 import { AlertTriangle, ChevronDown, ChevronUp } from 'lucide-react';
 import { formatCurrency } from '../../lib/utils';
-import type { CostsTreeItem, CostsTreeResponse, DashboardFilters } from '../../types';
+import type { CostsTreeItem, CostsTreeResponse } from '../../types';
 
 interface OzonAccrualsCardProps {
-  filters: DashboardFilters;
-  /**
-   * Если задано — детализация контролируется снаружи (синхронизация с WB карточкой).
-   */
+  /** Если задано — детализация контролируется снаружи (синхронизация с WB карточкой). */
   detailsOpen?: boolean;
   onToggleDetails?: () => void;
-  /**
-   * Опционально: показывать % у подкатегорий (листов) в детализации.
-   * % считается как доля от "Продажи" (как в ЛК).
-   * По умолчанию выключено (в ЛК у подкатегорий % обычно не показываются).
-   */
-  showLeafPercents?: boolean;
-  /**
-   * ОПТИМИЗАЦИЯ: данные costs-tree передаются из родителя (DashboardPage),
-   * чтобы избежать дублирования запросов.
-   */
+  /** Данные costs-tree передаются из родителя (DashboardPage). */
   costsTreeData?: CostsTreeResponse | null;
   isLoading?: boolean;
 }
@@ -109,24 +97,16 @@ function pickSalesColor(subcategory: string, idx: number): ColorToken {
 }
 
 export const OzonAccrualsCard = ({
-  filters: _filters,
-  showLeafPercents,
   detailsOpen,
   onToggleDetails,
   costsTreeData,
   isLoading: isLoadingProp,
 }: OzonAccrualsCardProps) => {
-  // _filters зарезервирован для будущего использования
-  void _filters;
   const [showDetailsLocal, setShowDetailsLocal] = useState(false);
-  const [showLeafPercentsLocal, setShowLeafPercentsLocal] = useState(false);
 
   const controlled = typeof detailsOpen === 'boolean';
   const showDetails = controlled ? detailsOpen : showDetailsLocal;
   const toggleDetails = controlled ? (onToggleDetails ?? (() => {})) : () => setShowDetailsLocal((v) => !v);
-
-  const leafPercentsExternallyControlled = typeof showLeafPercents === 'boolean';
-  const leafPercentsEnabled = leafPercentsExternallyControlled ? showLeafPercents : showLeafPercentsLocal;
 
   // ОПТИМИЗАЦИЯ: данные передаются через props из DashboardPage
   const data = costsTreeData;
@@ -196,6 +176,9 @@ export const OzonAccrualsCard = ({
         </h3>
         <p className="text-sm text-gray-400">
           {error ? 'Не удалось загрузить данные' : 'Нет данных за период'}
+        </p>
+        <p className="text-xs text-gray-400 mt-1 max-w-xs">
+          Данные подтягиваются при синхронизации (страница «Синхронизация»). Для сегодняшнего дня маркетплейсы часто отдают данные с задержкой (T+1).
         </p>
       </div>
     );
@@ -304,32 +287,14 @@ export const OzonAccrualsCard = ({
         </div>
       </div>
 
-      {/* Details: tree (без отдельной карточки) */}
+      {/* Details: tree */}
       {showDetails && (
         <div className="mt-4 pt-3 border-t border-gray-100">
           <div className="flex items-baseline justify-between mb-2">
-            <div className="flex items-baseline gap-2">
-              <span className="text-xs font-semibold text-gray-900">Начислено</span>
-              <span className="text-[10px] text-gray-400">за период</span>
-            </div>
-            <div className="flex items-center gap-3">
-              <label
-                className="flex items-center gap-2 text-[10px] text-gray-500 select-none"
-                title="Опционально: показать эффективные % у подкатегорий (доля от 'Продажи')"
-              >
-                <input
-                  type="checkbox"
-                  className="w-3 h-3"
-                  checked={leafPercentsEnabled}
-                  disabled={leafPercentsExternallyControlled}
-                  onChange={() => setShowLeafPercentsLocal((v) => !v)}
-                />
-                % у подкат.
-              </label>
-              <span className="text-xs font-semibold tabular-nums text-gray-900">
-                {formatOzonAmount(computed.totalAccrued)}
-              </span>
-            </div>
+            <span className="text-xs font-semibold text-gray-900">Начислено</span>
+            <span className="text-xs font-semibold tabular-nums text-gray-900">
+              {formatOzonAmount(computed.totalAccrued)}
+            </span>
           </div>
 
           <div className="space-y-0">
@@ -337,14 +302,11 @@ export const OzonAccrualsCard = ({
               <TreeCategoryInline
                 key={item.name}
                 item={item}
-                leafPercents={{
-                  enabled: leafPercentsEnabled,
-                  denom: Math.abs(
-                    typeof computed.percentBaseSales === 'number'
-                      ? computed.percentBaseSales
-                      : computed.salesTotal ?? 0
-                  ),
-                }}
+                denom={Math.abs(
+                  typeof computed.percentBaseSales === 'number'
+                    ? computed.percentBaseSales
+                    : computed.salesTotal ?? 0
+                )}
               />
             ))}
           </div>
@@ -354,9 +316,7 @@ export const OzonAccrualsCard = ({
   );
 };
 
-type LeafPercentsCfg = { enabled: boolean; denom: number };
-
-const TreeCategoryInline = ({ item, leafPercents }: { item: CostsTreeItem; leafPercents: LeafPercentsCfg }) => {
+const TreeCategoryInline = ({ item, denom }: { item: CostsTreeItem; denom: number }) => {
   const [expanded, setExpanded] = useState(true);
   const hasChildren = item.children.length > 0;
 
@@ -366,26 +326,23 @@ const TreeCategoryInline = ({ item, leafPercents }: { item: CostsTreeItem; leafP
         className="flex items-center justify-between py-1.5 cursor-pointer group"
         onClick={() => hasChildren && setExpanded((v) => !v)}
       >
-        <div className="flex items-center gap-1 min-w-0">
+        <div className="flex items-center gap-1 min-w-0 flex-1 mr-2">
           {hasChildren ? (
-            <span className="text-gray-400 w-5 h-5 flex items-center justify-center flex-shrink-0 group-hover:text-gray-600">
-              {expanded ? <ChevronDown size={16} /> : <ChevronUp size={16} />}
+            <span className="text-gray-400 w-4 h-4 flex items-center justify-center flex-shrink-0 group-hover:text-gray-600">
+              {expanded ? <ChevronDown size={14} /> : <ChevronUp size={14} />}
             </span>
           ) : (
-            <span className="w-5 flex-shrink-0" />
+            <span className="w-4 flex-shrink-0" />
           )}
-          <span className="text-xs font-medium text-gray-900">{item.name}</span>
+          <span className="text-xs font-medium text-gray-900 truncate">{item.name}</span>
         </div>
 
-        <div className="flex flex-col items-end flex-shrink-0 ml-3">
+        <div className="flex flex-col items-end flex-shrink-0">
           <span className="text-xs font-medium tabular-nums text-gray-900" title={`Точно: ${formatExactSigned(item.amount)}`}>
             {formatOzonAmount(item.amount)}
           </span>
           {item.percent !== null && item.percent !== undefined && (
-            <span
-              className="text-[10px] text-gray-400"
-              title={`Эффективная доля от Продаж (как в ЛК): ${formatCurrency(Math.abs(item.amount))} / ${formatCurrency(leafPercents.denom)} = ${item.percent} %`}
-            >
+            <span className="text-[10px] text-gray-400" title={`${formatCurrency(Math.abs(item.amount))} / ${formatCurrency(denom)}`}>
               {item.percent} %
             </span>
           )}
@@ -393,18 +350,16 @@ const TreeCategoryInline = ({ item, leafPercents }: { item: CostsTreeItem; leafP
       </div>
 
       {expanded && hasChildren && (
-        <div className="ml-5">
+        <div className="ml-4">
           {item.children.map((child) => (
-            <div key={child.name} className="flex items-center justify-between py-1.5">
-              <span className="text-xs text-gray-700">{normalizePolicyLabel(child.name)}</span>
-              <div className="flex flex-col items-end flex-shrink-0 ml-3">
-                <span className="text-xs tabular-nums text-gray-900">
-                  <span title={`Точно: ${formatExactSigned(child.amount)}`}>{formatOzonAmount(child.amount)}</span>
+            <div key={child.name} className="flex items-center justify-between py-1">
+              <span className="text-xs text-gray-700 truncate flex-1 mr-2">{normalizePolicyLabel(child.name)}</span>
+              <div className="flex flex-col items-end flex-shrink-0">
+                <span className="text-xs tabular-nums text-gray-900" title={`Точно: ${formatExactSigned(child.amount)}`}>
+                  {formatOzonAmount(child.amount)}
                 </span>
-                {leafPercents.enabled && leafPercents.denom > 0 && item.name !== 'Продажи' && (
-                  <span className="text-[10px] text-gray-400" title="Доля от 'Продажи' (как в ЛК)">
-                    {pct1(Math.abs(child.amount), leafPercents.denom)} %
-                  </span>
+                {denom > 0 && item.name !== 'Продажи' && (
+                  <span className="text-[10px] text-gray-400">{pct1(Math.abs(child.amount), denom)} %</span>
                 )}
               </div>
             </div>

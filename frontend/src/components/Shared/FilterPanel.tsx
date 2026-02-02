@@ -4,23 +4,18 @@
  * Маркетплейс: Все / WB / Ozon
  * Адаптивный: компактный вид на мобильных
  */
-import { RefreshCw } from 'lucide-react';
 import { useFiltersStore } from '../../store/useFiltersStore';
-import { cn, getDateRangeFromPreset, getYesterdayYmd, normalizeDateRangeYmd } from '../../lib/utils';
+import { cn, getDateRangeFromPreset, getMaxAvailableDateYmd, normalizeDateRangeYmd } from '../../lib/utils';
 import { DateRangePicker } from './DateRangePicker';
 import { useIsMobile } from '../../hooks/useMediaQuery';
 import type { DateRangePreset, Marketplace } from '../../types';
 
-interface FilterPanelProps {
-  onRefresh?: () => void;
-  isRefreshing?: boolean;
-}
-
-export const FilterPanel = ({ onRefresh, isRefreshing = false }: FilterPanelProps) => {
+export const FilterPanel = () => {
   const isMobile = useIsMobile();
   const { datePreset, marketplace, customDateFrom, customDateTo, setDatePreset, setMarketplace, setCustomDates } = useFiltersStore();
-  const effectiveRange = getDateRangeFromPreset(datePreset, customDateFrom, customDateTo);
-  const yesterdayMax = getYesterdayYmd();
+  // Максимальная дата: после 10:00 МСК = сегодня, до 10:00 = вчера
+  const maxAvailableDate = getMaxAvailableDateYmd();
+  const effectiveRange = getDateRangeFromPreset(datePreset, customDateFrom, customDateTo, maxAvailableDate);
 
   const datePresets: { value: DateRangePreset; label: string }[] = [
     { value: '7d', label: '7д' },
@@ -36,7 +31,7 @@ export const FilterPanel = ({ onRefresh, isRefreshing = false }: FilterPanelProp
 
   // Handler for DateRangePicker
   const handleDateRangeChange = (from: string, to: string) => {
-    const normalized = normalizeDateRangeYmd(from, to, { max: yesterdayMax });
+    const normalized = normalizeDateRangeYmd(from, to, { max: maxAvailableDate });
     setCustomDates(normalized.from, normalized.to);
   };
 
@@ -44,41 +39,22 @@ export const FilterPanel = ({ onRefresh, isRefreshing = false }: FilterPanelProp
   if (isMobile) {
     return (
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-3 mb-4">
-        {/* Первая строка: период + кнопка обновления */}
-        <div className="flex items-center justify-between gap-2 mb-2.5">
-          <div className="flex items-center gap-1.5">
-            {datePresets.map((preset) => (
-              <button
-                key={preset.value}
-                onClick={() => setDatePreset(preset.value)}
-                className={cn(
-                  'h-8 px-3 text-sm font-medium rounded-lg transition-all active:scale-95',
-                  datePreset === preset.value
-                    ? 'bg-indigo-600 text-white shadow-sm'
-                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                )}
-              >
-                {preset.label}
-              </button>
-            ))}
-          </div>
-
-          {/* Кнопка обновления */}
-          {onRefresh && (
+        {/* Первая строка: период */}
+        <div className="flex items-center gap-1.5 mb-2.5">
+          {datePresets.map((preset) => (
             <button
-              onClick={onRefresh}
-              disabled={isRefreshing}
+              key={preset.value}
+              onClick={() => setDatePreset(preset.value)}
               className={cn(
-                'h-8 w-8 flex items-center justify-center rounded-lg transition-all active:scale-95',
-                isRefreshing
-                  ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                  : 'bg-indigo-600 text-white hover:bg-indigo-700'
+                'h-8 px-3 text-sm font-medium rounded-lg transition-all active:scale-95',
+                datePreset === preset.value
+                  ? 'bg-indigo-600 text-white shadow-sm'
+                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
               )}
-              aria-label={isRefreshing ? 'Обновление...' : 'Обновить'}
             >
-              <RefreshCw className={cn('w-4 h-4', isRefreshing && 'animate-spin')} />
+              {preset.label}
             </button>
-          )}
+          ))}
         </div>
 
         {/* Вторая строка: календарь + маркетплейс */}
@@ -87,10 +63,9 @@ export const FilterPanel = ({ onRefresh, isRefreshing = false }: FilterPanelProp
             <DateRangePicker
               from={effectiveRange.from}
               to={effectiveRange.to}
-              maxDate={yesterdayMax}
+              maxDate={maxAvailableDate}
               onChange={handleDateRangeChange}
               isActive={datePreset === 'custom'}
-              debounceMs={300}
             />
           </div>
 
@@ -142,10 +117,9 @@ export const FilterPanel = ({ onRefresh, isRefreshing = false }: FilterPanelProp
         <DateRangePicker
           from={effectiveRange.from}
           to={effectiveRange.to}
-          maxDate={yesterdayMax}
+          maxDate={maxAvailableDate}
           onChange={handleDateRangeChange}
           isActive={datePreset === 'custom'}
-          debounceMs={300}
         />
 
         {/* Разделитель */}
@@ -166,26 +140,6 @@ export const FilterPanel = ({ onRefresh, isRefreshing = false }: FilterPanelProp
             ))}
           </select>
         </div>
-
-        {/* Кнопка обновления */}
-        {onRefresh && (
-          <>
-            <div className="h-8 w-px bg-gray-200" />
-            <button
-              onClick={onRefresh}
-              disabled={isRefreshing}
-              className={cn(
-                'h-9 flex items-center gap-2 px-4 text-sm font-medium rounded-lg transition-all',
-                isRefreshing
-                  ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                  : 'bg-indigo-600 text-white hover:bg-indigo-700'
-              )}
-            >
-              <RefreshCw className={cn('w-4 h-4', isRefreshing && 'animate-spin')} />
-              <span>{isRefreshing ? 'Обновление...' : 'Обновить'}</span>
-            </button>
-          </>
-        )}
       </div>
     </div>
   );

@@ -75,6 +75,8 @@ async def sync_products(request: Request):
         sync_service = SyncService()
         result = await sync_service.sync_products()
         return result
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -198,6 +200,8 @@ async def sync_sales(
             "results": results,
             "job": {"marketplace": "all", "sync_type": "sales", "records": total_records},
         }
+    except HTTPException:
+        raise
     except Exception as e:
         # Best-effort: mark lock as error (if created)
         try:
@@ -238,6 +242,8 @@ async def sync_stocks(request: Request, marketplace: Optional[str] = None):
             "status": "completed",
             "results": results
         }
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -303,6 +309,8 @@ async def sync_costs(
             },
             "results": results
         }
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -341,6 +349,8 @@ async def sync_ads(
             },
             "results": results
         }
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -373,6 +383,8 @@ async def sync_all(
             result = await sync_service.sync_all(days_back)
             return result
 
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -396,5 +408,7 @@ async def get_sync_logs(request: Request, limit: int = 50):
             "count": len(result.data),
             "logs": result.data
         }
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

@@ -5,10 +5,9 @@
 import { useState } from 'react';
 import { OzonAccrualsCard } from './OzonAccrualsCard';
 import { WbAccrualsCard } from './WbAccrualsCard';
-import type { CostsTreeResponse, DashboardFilters } from '../../types';
+import type { CostsTreeResponse } from '../../types';
 
 interface MarketplaceBreakdownProps {
-  filters: DashboardFilters;
   ozonCostsTree?: CostsTreeResponse | null;
   ozonCostsTreeLoading?: boolean;
   wbCostsTree?: CostsTreeResponse | null;
@@ -16,7 +15,6 @@ interface MarketplaceBreakdownProps {
 }
 
 export const MarketplaceBreakdown = ({
-  filters,
   ozonCostsTree,
   ozonCostsTreeLoading,
   wbCostsTree,
@@ -28,14 +26,12 @@ export const MarketplaceBreakdown = ({
   return (
     <div className="grid grid-cols-2 gap-2 sm:gap-4 mb-4 sm:mb-8">
       <OzonAccrualsCard
-        filters={filters}
         detailsOpen={detailsOpen}
         onToggleDetails={toggleDetails}
         costsTreeData={ozonCostsTree}
         isLoading={ozonCostsTreeLoading}
       />
       <WbAccrualsCard
-        filters={filters}
         detailsOpen={detailsOpen}
         onToggleDetails={toggleDetails}
         costsTreeData={wbCostsTree}

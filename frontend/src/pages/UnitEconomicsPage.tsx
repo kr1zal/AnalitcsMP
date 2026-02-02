@@ -22,21 +22,16 @@ export const UnitEconomicsPage = () => {
   const {
     data: productsData,
     isLoading: productsLoading,
-    isFetching: productsFetching,
     error: productsError,
-    refetch: refetchProducts,
   } = useProducts(marketplace);
 
   const {
     data: unitData,
     isLoading: unitLoading,
-    isFetching: unitFetching,
     error: unitError,
-    refetch: refetchUnit,
   } = useUnitEconomics(filters);
 
   const isLoading = productsLoading || unitLoading;
-  const isRefreshing = productsFetching || unitFetching;
   const error = productsError || unitError;
 
   if (isLoading) {
@@ -81,13 +76,7 @@ export const UnitEconomicsPage = () => {
       </div>
 
       {/* Фильтры */}
-      <FilterPanel
-        onRefresh={() => {
-          refetchProducts();
-          refetchUnit();
-        }}
-        isRefreshing={isRefreshing}
-      />
+      <FilterPanel />
 
       {/* Period label */}
       <div className="text-sm text-gray-500 mb-6">

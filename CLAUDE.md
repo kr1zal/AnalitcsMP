@@ -1,30 +1,54 @@
+Never run "npm run dev"
+Use "npm run build" to check if code compiles or no. See results and fix code if it's needed
+
 # Analytics Dashboard - Marketplace WB & Ozon
 
-> 🚀 **Промпт для продолжения в новом чате:**
->
-> См. файл `promt.md` — там актуальный промт для копирования.
->
-> **Текущее состояние (30.01.2026):**
-> DashboardPage работает стабильно, адаптивный дизайн реализован.
->
-> **Что сделано по адаптиву (30.01.2026, обновлено):**
-> - `DateRangePicker` — react-day-picker v9 с правильными classNames
-> - `Layout` — hamburger меню справа, slide-out drawer справа
-> - `useMediaQuery` / `useIsMobile` — хуки для responsive breakpoints
-> - **OZON/WB карточки** — 50/50 горизонтально на всех экранах (grid-cols-2)
-> - **Графики компактные** — высота 100px mobile / 140px desktop (было 200-300px)
-> - **Боковые фильтры** — вертикально слева на всех экранах (как desktop)
-> - **StocksTable** — card-based на mobile с внутренним scroll
-> - Tailwind responsive: sm:640px, md:768px, lg:1024px
->
-> **Что сделано по оптимизации:**
-> - Supabase RPC: `get_dashboard_summary`, `get_costs_tree`
-> - Индексы БД для ускорения запросов
-> - Props drilling вместо дублирующих запросов в AccrualsCards
-> - Убран `deferredEnabled` (каскадные ре-рендеры)
-> - Lazy-load графиков, мемоизация данных
->
-> **ВАЖНО:** OZON/WB мэтчинг начислений уже 1-в-1 — не ломать.
+> 🚀 **Промпт для продолжения в новом чате:** см. файл `promt.md`
+
+## 🌐 Production: https://analitics.bixirun.ru
+
+### Деплой (01.02.2026):
+> - **VPS Beget:** 83.222.16.15, Ubuntu 24.04, 1 ядро / 1 GB RAM
+> - **Домен:** analitics.bixirun.ru (субдомен от bixirun.ru)
+> - **SSL:** Let's Encrypt (автопродление настроено)
+> - **Структура:** `/var/www/analytics/` (backend + frontend + .env)
+> - **Сервисы:** systemd `analytics-api`, Nginx proxy
+> - **Пароль SSH:** `@vnDBp5VCt2+` (с символом @ в начале!)
+
+### Текущие задачи:
+> *(нет активных задач)*
+
+### Что сделано:
+> - ✅ Деплой на Beget VPS с SSL
+> - ✅ DashboardPage работает, RPC оптимизация активна
+> - ✅ Mobile-first дизайн (боковая навигация, компактные карточки)
+> - ✅ OZON/WB мэтчинг начислений 1-в-1 с ЛК — **НЕ ЛОМАТЬ**
+> - ✅ Cron автосинхронизация (07:00, 13:00 — sales+costs; каждые 6ч — stocks)
+> - ✅ Ozon stocks 400 error исправлен (6 fallback стратегий + FBO analytics)
+> - ✅ Скелетоны на графиках и остатках (animate-pulse, LoadingSpinner, Suspense)
+> - ✅ **Ограничение календаря по 10:00 МСК** — до 10:00 max=вчера, после 10:00 max=сегодня
+> - ✅ **Tooltips не уезжают за край** — tooltipAlign="right" для правых карточек
+> - ✅ **CSS overflow исправлен** — текст не уезжает за границы карточек на мобиле
+> - ✅ **Верхняя плашка "Продажи"** — данные берутся из costs-tree (как OZON+WB карточки)
+> - ✅ **Мобильное меню улучшено (02.02.2026):**
+>   - Swipe вправо для закрытия панели (threshold 60px)
+>   - Ярлычок 16px с chevron внутри, усиленная тень, 48px touch target
+>   - Панель компактнее: 240px вместо 280px, уменьшены отступы
+>   - Подсказка "← свайп для закрытия" внизу панели
+
+### SSH доступ:
+> ```bash
+> ssh root@83.222.16.15
+> # пароль: @vnDBp5VCt2+ (с @ в начале!)
+> journalctl -u analytics-api -f  # логи
+> systemctl restart analytics-api  # перезапуск
+> ```
+
+### Деплой frontend:
+> ```bash
+> cd frontend && npm run build
+> sshpass -p '@vnDBp5VCt2+' rsync -avz --delete -e "ssh -o StrictHostKeyChecking=no" dist/ root@83.222.16.15:/var/www/analytics/frontend/
+> ```
 
 ## Описание проекта
 
@@ -77,7 +101,7 @@
       useUnitEconomics, useSync)
 - [x] Утилиты форматирования (formatCurrency, formatDate,
       getDateRangeFromPreset)
-- [x] **Даты работают до вчера** (API МП с задержкой - исправлено в utils.ts)
+- [x] **Даты работают до сегодня** (автообновление каждые 5 мин)
 - [x] Компоненты:
   - SummaryCard, MetricCard - карточки метрик
   - FilterPanel - фильтры периода и маркетплейса
@@ -205,11 +229,11 @@
 - [x] Графики lazy-load через `React.lazy()` (recharts ~500KB)
 - [x] Мемоизация `salesChartSeries` и `adCostsSeriesFull` через `useMemo`
 
-**Архитектура props drilling:**
+**Архитектура props drilling (оптимизировано 31.01.2026):**
 ```
 DashboardPage
-  ├── useCostsTree(ozon) → ozonCostsTreeData
-  ├── useCostsTree(wb) → wbCostsTreeData
+  ├── useCostsTreeCombined() → { ozon, wb } (при marketplace=all — 1 запрос вместо 2)
+  ├── useCostsTree(single) → costsTreeData (при marketplace=ozon или wb)
   │
   └── MarketplaceBreakdown (props: ozonCostsTree, wbCostsTree)
         ├── OzonAccrualsCard (props: costsTreeData, isLoading)
@@ -233,10 +257,11 @@ DashboardPage
 - [x] Добавлены hooks: `useCostsTreeCombined`, `useDashboardSummaryWithPrev`
 - [x] DashboardPage очищен от мёртвого кода и упрощён
 
-**Текущее состояние:**
-- Страница загружается быстрее благодаря очистке кода
-- Оптимизированные RPC (`get_costs_tree_combined`, `get_dashboard_summary_with_prev`) готовы, но **отключены** — требуют создания базовой RPC `get_costs_tree` в Supabase
-- Для включения оптимизаций см. `backend/migrations/002_optimized_rpc.sql`
+**Текущее состояние (обновлено 31.01.2026):**
+- ✅ **RPC `get_costs_tree_combined` АКТИВИРОВАН** — DashboardPage использует объединённый запрос
+- При `marketplace=all` делается **1 запрос** costs-tree вместо **3** (было: ozon + wb + ozon summary)
+- Выручка для плиток берётся напрямую из costs-tree (без отдельного ozon summary запроса)
+- **Экономия:** ~2 HTTP запроса на каждую загрузку страницы
 
 **Ошибки, которые были исправлены:**
 - `deferredEnabled` создавал каскадные ре-рендеры при каждом изменении фильтров
@@ -246,20 +271,23 @@ DashboardPage
 
 ### Выполнено (Адаптивный дизайн — 30.01.2026):
 
-**DateRangePicker (react-day-picker v9):**
-- [x] Установлен react-day-picker v9 (совместим с date-fns 4.x)
-- [x] Исправлены classNames для v9 API: `selected`, `today`, `range_start`, `range_middle`, `range_end`
-- [x] Используется `getDefaultClassNames()` для расширения дефолтных стилей
-- [x] Мобильное позиционирование: `fixed inset-x-2 top-[10vh]` (не уезжает за экран)
-- [x] Touch-friendly: увеличенные touch targets (40px на мобильных)
-- [x] Debounce (300ms) для уменьшения API запросов
+**DateRangePicker (react-day-picker v9) — v3 compact:**
+- [x] Установлен react-day-picker v9.13.0 (совместим с date-fns 4.x)
+- [x] **Компактный размер:** ячейки 32px desktop / 34px mobile (было 40-44px)
+- [x] **Исправлен баг синхронизации года** между месяцами — `captionLayout="label"` вместо dropdown
+- [x] **Пресеты быстрого выбора:** Сегодня, Вчера, 7д, 30д, Месяц — в header
+- [x] **Кнопка "OK"** на всех экранах (убран auto-close)
+- [x] Мобильное позиционирование: `fixed inset-x-4 top-[15vh]` с safe-area
+- [x] `showOutsideDays={false}`, `fixedWeeks={false}` — меньше строк
+- [x] CSS класс `rdp-compact` с минимальными отступами
 
 **Layout с адаптивной навигацией:**
-- [x] Desktop: горизонтальная навигация в header
-- [x] Mobile: hamburger menu + slide-out drawer (слева)
-- [x] Закрытие drawer: по клику на overlay, по ESC, при переходе на страницу
-- [x] Блокировка scroll body при открытом menu
-- [x] Sticky header с z-index: 40
+- [x] Desktop: header (логотип + горизонтальная навигация), sticky, z-index: 40
+- [x] Mobile: верхнего меню нет; фиксированная плашка справа (язычок) на 25% от верха экрана
+- [x] Плашка: медленное переливание градиента (indigo→violet, 5s), hover — расширение полоски; тап — открытие панели
+- [x] Панель: выезд влево (280px / 85vw), сразу 4 ссылки (Дашборд, Unit-экономика, Реклама, Синхронизация)
+- [x] Закрытие: overlay, ESC, переход по ссылке; блокировка scroll body при открытой панели
+- [x] CSS: `.nav-tab-strip`, `.nav-tab-trigger` в index.css; `prefers-reduced-motion` отключает анимацию
 
 **Адаптивные компоненты Dashboard:**
 - [x] `SummaryCard` — адаптивные padding, шрифты, скрытые иконки на mobile
@@ -274,9 +302,11 @@ DashboardPage
 - [x] `useIsDesktop()` — `min-width: 1024px`
 
 **CSS (index.css):**
-- [x] CSS переменные для react-day-picker v9
-- [x] Mobile-first стили для календаря
+- [x] CSS классы `.rdp-compact` и `.rdp-custom` для react-day-picker v9
+- [x] Компактные размеры: `--rdp-day-height: 2rem`, `--rdp-day-width: 2rem`
+- [x] Mobile: `--rdp-day-height: 2.125rem` (34px) для touch
 - [x] Анимации fade-in, zoom-in для popover
+- [x] `.nav-tab-strip` — медленное переливание градиента (5s), hover 12px→16px; `prefers-reduced-motion` отключает анимацию
 
 ### Выполнено (Mobile-first рефакторинг — 30.01.2026, сессия 2):
 
@@ -304,10 +334,67 @@ DashboardPage
 - [x] Ширина фильтров адаптивная: w-28 sm:w-32 lg:w-36
 - [x] Шрифты фильтров: text-[9px]/text-[11px] mobile, text-[10px]/text-xs desktop
 
-**Layout:**
-- [x] Hamburger menu перемещён вправо (для правшей)
-- [x] Drawer открывается справа (translate-x-full)
-- [x] Убрана кнопка Settings (placeholder)
+**Layout (навигация mobile — 30.01.2026):**
+- [x] На мобиле header убран: контент сразу под верхним краем
+- [x] Боковая плашка справа: фиксированный «язычок» (12px видимая полоска), позиция top 25% (удобно для большого пальца правой руки)
+- [x] Переливание: градиент indigo→violet в `.nav-tab-strip`, анимация 5s; при hover полоска 16px
+- [x] По тапу плашка открывает панель (slide-in слева), в панели сразу 4 пункта меню
+- [x] Desktop без изменений: header + горизонтальные ссылки
+
+### Выполнено (Синхронизация и UX — 31.01.2026):
+
+- [x] **SYNC_TOKEN убран** из .env — защита не нужна для внутреннего проекта
+- [x] Страница синхронизации (`/sync`) работает: логи видны, кнопки работают
+- [x] Данные синхронизированы за 23-30 января (sales: 8 записей, costs: 22 записи + 128 details)
+- [x] **WB карточка** — компактный fallback при отсутствии данных ("Нет данных за период")
+- [x] Убран громоздкий блок с прочерками и предупреждениями в WbAccrualsCard
+
+### Выполнено (CSS и UX фиксы — 01.02.2026):
+
+**CSS overflow на мобиле:**
+- [x] Исправлен текст, уезжающий за границы карточек (OzonAccrualsCard, WbAccrualsCard)
+- [x] Добавлены CSS классы: `truncate`, `flex-1`, `min-w-0`, `flex-shrink-0`
+- [x] TreeCategoryInline переписан с правильными overflow-safe стилями
+
+**UI cleanup в детализации:**
+- [x] "К перечислению" → "Начислено" (WB карточка, унификация с OZON)
+- [x] Убран чекбокс "% у подкатегор." — проценты показываются по умолчанию
+- [x] Убран текст "за период" из заголовков детализации
+- [x] Очищен мёртвый код (filters prop, showLeafPercents, LeafPercentsCfg)
+
+**Исправлено расхождение цифр:**
+- [x] Верхняя плашка "Продажи" теперь берёт данные из costs-tree (не из mp_sales)
+- [x] Добавлен `isCostsTreeLoading` флаг — skeleton показывается пока данные грузятся
+- [x] `revenueForTile` логика: costs-tree приоритет, fallback на summary.revenue только когда costs-tree пуст
+- [x] Цифры верхней плашки теперь совпадают с суммой OZON + WB карточек
+
+**Деплой:**
+- [x] Frontend задеплоен на production (rsync → 83.222.16.15:/var/www/analytics/frontend/)
+
+### Выполнено (Мобильное меню — 02.02.2026):
+
+**Swipe для закрытия:**
+- [x] Touch handlers: `touchstart`, `touchmove`, `touchend`
+- [x] Threshold: 60px — минимальное расстояние свайпа вправо для закрытия
+- [x] `swipeOffset` состояние для визуальной обратной связи при свайпе
+- [x] Панель следует за пальцем при свайпе вправо
+
+**Улучшенный ярлычок (UI/UX best practices):**
+- [x] Полоска увеличена: 12px → **16px** (лучше видна)
+- [x] Добавлен **chevron `‹`** внутри полоски (affordance — понятно что это кнопка)
+- [x] Touch target увеличен: 40px → **48px** (соответствует Apple HIG 44px+)
+- [x] Усиленная тень: `box-shadow: -3px 0 16px rgba(99, 102, 241, 0.35)`
+- [x] При hover: ширина 20px, ещё более яркая тень
+
+**Компактная панель:**
+- [x] Ширина уменьшена: 280px → **240px** (75vw вместо 85vw)
+- [x] Header компактнее: py-3 → py-2, иконки h-6 → h-5
+- [x] Пункты меню компактнее: py-3.5 → py-2.5, gap-3 → gap-2.5
+- [x] Добавлена подсказка внизу: "← свайп для закрытия"
+
+**Файлы изменены:**
+- `frontend/src/components/Shared/Layout.tsx` — swipe handlers, компактный UI
+- `frontend/src/index.css` — `.nav-tab-strip` 16px + усиленная тень
 
 ### Следующий этап - Доработки:
 
@@ -317,16 +404,17 @@ DashboardPage
 - [x] ~~Оптимизация загрузки~~ — RPC функции, убраны дублирующие запросы, lazy-load
 
 **Средний приоритет (при необходимости):**
-- [ ] Активировать `get_costs_tree_combined` RPC (объединяет ozon+wb в 1 запрос)
-- [ ] Активировать `get_dashboard_summary_with_prev` RPC (summary + prev period в 1 запрос)
-- [ ] Скелетоны на тяжёлые блоки (графики, остатки)
+- [x] ~~Скелетоны на тяжёлые блоки~~ — реализовано (animate-pulse, LoadingSpinner, Suspense)
 
 **Backlog:**
 - [x] Custom Date Picker для выбора произвольного периода ✅ (DateRangePicker готов)
 - [x] Адаптивный дизайн для мобильных устройств ✅
-- [ ] Excel export функциональность
-- [ ] CostsTreeView визуал — довести до 1-в-1 как в ЛК Ozon
-- [ ] Улучшить компоновку блоков на DashboardPage
+- [x] CSS overflow на мобиле ✅ (01.02.2026)
+- [x] Расхождение цифр верхней плашки и карточек ✅ (01.02.2026)
+- [x] CostsTreeView визуал — довести до 1-в-1 как в ЛК ✅
+- [ ] Excel и PDF export функциональность
+- [ ] Улучшить UnitEconomicsPage
+- [ ] Улучшить AdsPage
 
 ## Технический стек
 
@@ -433,15 +521,26 @@ Analitics/
 
 ### Текущее состояние:
 
-#### Оптимизация (актуально на 29.01.2026):
+#### Важно про источники данных (01.02.2026):
+
+**Две разных таблицы — разная семантика:**
+- `mp_sales.revenue` — все заказы (включая непроведённые)
+- `mp_costs_details.Продажи` — только финализированные выкупы из финотчёта (как в ЛК)
+
+**Верхняя плашка "Продажи":**
+- Берёт данные из `costs-tree` (категория "Продажи"), НЕ из `summary.revenue`
+- Пока costs-tree грузится — показывается skeleton (`isCostsTreeLoading`)
+- Fallback на `summary.revenue` только если costs-tree загрузился и пуст
+- Это гарантирует, что плашка совпадает с суммой OZON + WB карточек
+
+#### Оптимизация (актуально на 01.02.2026):
 
 - **Backend:** `/dashboard/summary` и `/dashboard/costs-tree` используют Supabase RPC
 - **Frontend:** AccrualsCards получают данные через props (не дублируют запросы)
 - **Lazy-load:** графики загружаются через React.lazy()
 - **Убрано:** `deferredEnabled`, `useInView` для графиков/остатков
-- **Осталось:** ~10-12 запросов на first render, нужно сократить
 
-#### Данные (актуально на 29.01.2026):
+#### Данные (актуально на 01.02.2026):
 
 - **WB продажи:** ~51 запись (по дням, 35 дней)
 - **Ozon продажи:** 43 записи (по дням, 35 дней)
@@ -449,9 +548,6 @@ Analitics/
 - **Ozon costs:** 53 записи mp_costs + 353 записи mp_costs_details (30 дней)
 - **Ozon finance API:** 291 операция за 30 дней (5 типов operation_type)
 - **Реклама:** 1 запись WB (0.18₽) — кампания неактивна
-- **7d:** Выручка 16,505₽ / 30 продаж / Прибыль 4,245₽ (25.7%)
-- **30d (Ozon tree):** Начислено 18,859₽ = Продажи 36,182₽ - Комиссия 10,597₽ -
-  Доставка 3,524₽ - Агенты 836₽ - FBO 2,238₽ - Продвижение 128₽
 
 #### Рекламная кампания WB неактивна
 
@@ -459,22 +555,19 @@ Analitics/
 - Ozon Performance: 0 записей
 - ДРР = 0% на всех днях
 
-#### CostsTreeView — визуал в процессе:
+#### AccrualsCards (OZON / WB) — готово ✅
 
-- Backend полностью готов (endpoint, синхронизация, данные)
-- Frontend компонент рендерится, но визуально отличается от ЛК Ozon
-- Нужно: линии-коннекторы, правильные отступы, % под суммой, шрифты
-- Карточка OZON в MarketplaceBreakdown заменена на CostsTreeView
-- WB остаётся как простая карточка (комиссия, логистика, хранение, прибыль)
+- **OzonAccrualsCard** — компактная карточка + раскрываемое дерево удержаний
+- **WbAccrualsCard** — компактная карточка + раскрываемое дерево удержаний
+- Проценты показываются по умолчанию (% от продаж)
+- CSS: overflow-safe, адаптив для 50% ширины экрана
+- Синхронизированное открытие/закрытие деталей между карточками
 
 ### Задачи для следующего чата:
 
-1. **Визуализация комиссии МП** — отдельная секция/страница с детализацией
-   удержаний (комиссия, логистика, хранение, штрафы, эквайринг) по дням и
-   товарам
-2. **Custom Date Picker** — выбор произвольного периода (сейчас только пресеты
-   7/30/90d)
-3. **Excel export** — выгрузка данных дашборда в Excel
+1. **Excel export** — выгрузка данных дашборда в Excel
+2. **Улучшить UnitEconomicsPage** — добавить графики, детализацию по товарам
+3. **Улучшить AdsPage** — графики ДРР по дням, сравнение периодов
 
 ### Готовые файлы (можно использовать):
 
@@ -507,9 +600,9 @@ frontend/
 │   │   │   └── WbAccrualsCard.tsx      ✅ Compact layout (50% width), СПП
 │   │   ├── Shared/
 │   │   │   ├── LoadingSpinner.tsx      ✅ Готово
-│   │   │   ├── Layout.tsx              ✅ Hamburger справа, drawer справа
+│   │   │   ├── Layout.tsx              ✅ Mobile: боковая плашка справа (25%), выезжающая панель; Desktop: header + nav
 │   │   │   ├── FilterPanel.tsx         ✅ Адаптивный
-│   │   │   └── DateRangePicker.tsx     ✅ react-day-picker v9
+│   │   │   └── DateRangePicker.tsx     ✅ v3 compact: 32px ячейки, пресеты, OK
 │   │   ├── UnitEconomics/              (TODO)
 │   │   └── Sync/                       (TODO)
 │   ├── hooks/
@@ -638,11 +731,12 @@ npm run build
 
 ### Приоритет разработки
 
-1. ✅ Overview (главный дашборд) - **выполнено MVP**
-2. 🔄 Завершить Overview (фильтры, график, таблица)
-3. ⏳ Unit-Economics
-4. ⏳ Рекламные расходы
-5. ⏳ Синхронизация
+1. ✅ Overview (главный дашборд) - **полностью готов**
+2. ✅ Фильтры, графики, таблица — **готово**
+3. ✅ Mobile-first адаптив — **готово**
+4. ⏳ Unit-Economics — улучшить визуализацию
+5. ⏳ AdsPage — улучшить графики
+6. ⏳ Excel export
 
 ### Дизайн
 
@@ -653,5 +747,23 @@ npm run build
 
 ### Автообновление
 
-- MVP: по кнопке "Обновить"
-- v2.0: автообновление каждые 5 минут (React Query refetchInterval)
+- ✅ Автообновление каждые 5 минут (React Query refetchInterval)
+- ✅ Кнопка "Обновить" удалена (не нужна при автообновлении)
+- ✅ Даты до сегодня (вместо "до вчера")
+
+### Архитектура costs-tree запросов (31.01.2026)
+
+**Решение:** Отдельные параллельные запросы для каждого маркетплейса.
+
+**НЕ использовать:** `useCostsTreeCombined` / `get_costs_tree_combined` RPC (код существует, но не активирован).
+
+**Обоснование:**
+1. **Progressive rendering** — показываем карточку Ozon сразу, пока WB ещё грузится
+2. **Изоляция ошибок** — если API одного МП упал, остальные работают
+3. **Масштабируемость** — при добавлении 3+ маркетплейсов отдельные запросы эффективнее
+4. **Кэширование** — React Query кэширует каждый запрос отдельно
+5. **HTTP/2 multiplexing** — браузер эффективно параллелит запросы
+
+**Экономия от combined минимальна** (~50-100ms), гибкость важнее.
+
+**К этому вопросу не возвращаемся.**

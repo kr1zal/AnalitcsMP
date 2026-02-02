@@ -130,16 +130,18 @@ export const DashboardPage = () => {
   const showPeriodComparison = datePreset !== 'custom';
 
   // ==================== ЗАГРУЗКА ДАННЫХ ====================
-  // TODO: Включить оптимизацию после создания RPC get_costs_tree в Supabase
-  // Сейчас используем стандартную логику (отдельные запросы)
-
   // Основной summary
-  const { data: summaryData, isLoading: summaryLoading, error, refetch: refetchSummary } = useDashboardSummary(filters);
+  const { data: summaryData, isLoading: summaryLoading, error } = useDashboardSummary(filters);
 
   // Флаг загрузки
   const isSummaryLoading = summaryLoading;
 
-  // Costs-tree для Ozon и WB (отдельные запросы)
+  // Costs-tree для Ozon и WB (отдельные параллельные запросы)
+  // АРХИТЕКТУРНОЕ РЕШЕНИЕ: используем отдельные запросы вместо combined для:
+  // - Progressive rendering (показываем данные по мере загрузки)
+  // - Изоляции ошибок (если один МП упал — остальные работают)
+  // - Масштабируемости (при добавлении 3+ маркетплейсов)
+  // - Гибкого кэширования React Query
   const { data: ozonCostsTreeData, isLoading: ozonCostsTreeLoading } = useCostsTree(
     { ...filters, marketplace: 'ozon', include_children: true },
     { enabled: marketplace === 'ozon' || marketplace === 'all' }
@@ -147,12 +149,6 @@ export const DashboardPage = () => {
   const { data: wbCostsTreeData, isLoading: wbCostsTreeLoading } = useCostsTree(
     { ...filters, marketplace: 'wb', include_children: true },
     { enabled: marketplace === 'wb' || marketplace === 'all' }
-  );
-
-  // Для marketplace=all нужен отдельный ozon summary (для вычитания из общей выручки)
-  const { data: ozonSummaryData } = useDashboardSummary(
-    { ...filters, marketplace: 'ozon' },
-    { enabled: marketplace === 'all' }
   );
 
   // Закупка: считаем по unit-economics (purchase_costs = purchase_price * qty).
@@ -167,15 +163,15 @@ export const DashboardPage = () => {
   const chartsEnabled = true;
   const stocksEnabled = true;
 
-  const { data: chartData, isLoading: chartLoading, refetch: refetchChart } = useSalesChart(chartFilters, {
+  const { data: chartData, isLoading: chartLoading } = useSalesChart(chartFilters, {
     enabled: chartsEnabled,
   });
 
-  const { data: adCostsData, isLoading: adCostsLoading, refetch: refetchAdCosts } = useAdCosts(chartFilters, {
+  const { data: adCostsData, isLoading: adCostsLoading } = useAdCosts(chartFilters, {
     enabled: chartsEnabled,
   });
 
-  const { data: stocksData, isLoading: stocksLoading, refetch: refetchStocks } = useStocks(marketplace, {
+  const { data: stocksData, isLoading: stocksLoading } = useStocks(marketplace, {
     enabled: stocksEnabled,
   });
 
@@ -192,20 +188,6 @@ export const DashboardPage = () => {
       !!selectedProduct && !!productsData?.products?.some((p) => p.id === selectedProduct && p.barcode === 'WB_ACCOUNT');
     if (isSelectedSystem) setSelectedProduct(undefined);
   }, [selectedProduct, productsData]);
-
-  // Обработчик обновления данных
-  const handleRefresh = () => {
-    refetchSummary();
-    // Важно: disabled queries всё равно можно рефетчить вручную — но это даёт "лавину".
-    // Поэтому рефетчим только то, что уже включено/видимо.
-    if (chartsEnabled) {
-      refetchChart();
-      refetchAdCosts();
-    }
-    if (stocksEnabled) {
-      refetchStocks();
-    }
-  };
 
   // IMPORTANT: hooks must run before any early returns.
   const salesChartSeries = useMemo(() => {
@@ -271,13 +253,10 @@ export const DashboardPage = () => {
     );
   }
 
-  // Данные из summary (оптимизация отключена, используем стандартный запрос)
+  // Данные из summary
   const summary = summaryData?.summary;
   const previousPeriod = summaryData?.previous_period;
   const revenueChange = previousPeriod?.revenue_change_percent || 0;
-
-  // TODO: включить когда RPC get_costs_tree будет создан в Supabase
-  // const adjustedRevenue = summaryWithPrevData?.adjusted_revenue;
 
   const purchaseCostsForTile =
     (typeof summary?.purchase_costs_total === 'number' ? summary.purchase_costs_total : null) ??
@@ -295,23 +274,57 @@ export const DashboardPage = () => {
     return null;
   })();
 
+  // Флаг: costs-tree ещё грузится для текущего marketplace
+  const isCostsTreeLoading = (() => {
+    if (marketplace === 'ozon') return ozonCostsTreeLoading;
+    if (marketplace === 'wb') return wbCostsTreeLoading;
+    if (marketplace === 'all') return ozonCostsTreeLoading || wbCostsTreeLoading;
+    return false;
+  })();
+
   const revenueForTile = (() => {
     if (!summary) return 0;
 
-    // marketplace=ozon: полностью берём из costs-tree (истина как в ЛК).
+    // marketplace=ozon: берём из costs-tree (истина как в ЛК)
     if (marketplace === 'ozon') {
       const ozonTruth = getSalesTotalFromCostsTree(ozonCostsTreeData);
-      return ozonTruth ?? summary.revenue;
+      // Если costs-tree ещё грузится — не fallback, вернём 0 (покажем skeleton)
+      if (ozonTruth === null) return isCostsTreeLoading ? 0 : summary.revenue;
+      return ozonTruth;
     }
 
-    // marketplace=all: заменяем только Ozon-часть на costs-tree.
+    // marketplace=wb: берём из costs-tree
+    if (marketplace === 'wb') {
+      const wbTruth = getSalesTotalFromCostsTree(wbCostsTreeData);
+      if (wbTruth === null) return isCostsTreeLoading ? 0 : summary.revenue;
+      return wbTruth;
+    }
+
+    // marketplace=all: сумма ozon + wb из costs-tree
     if (marketplace === 'all') {
-      const ozonSalesFromSummary = ozonSummaryData?.summary?.revenue ?? 0;
-      const ozonTruth = getSalesTotalFromCostsTree(ozonCostsTreeData) ?? ozonSalesFromSummary;
-      return summary.revenue - ozonSalesFromSummary + ozonTruth;
+      const ozonTruth = getSalesTotalFromCostsTree(ozonCostsTreeData);
+      const wbTruth = getSalesTotalFromCostsTree(wbCostsTreeData);
+
+      // Если оба есть — сумма
+      if (ozonTruth !== null && wbTruth !== null) {
+        return ozonTruth + wbTruth;
+      }
+
+      // Если один есть — берём что есть (другой может быть 0)
+      if (ozonTruth !== null && !wbCostsTreeLoading) {
+        return ozonTruth + (wbTruth ?? 0);
+      }
+      if (wbTruth !== null && !ozonCostsTreeLoading) {
+        return (ozonTruth ?? 0) + wbTruth;
+      }
+
+      // Ещё грузится — вернём 0 для skeleton
+      if (isCostsTreeLoading) return 0;
+
+      // Fallback только если costs-tree полностью загрузился и пуст
+      return summary.revenue;
     }
 
-    // marketplace=wb (и любые будущие): оставляем как есть (mp_sales).
     return summary.revenue;
   })();
 
@@ -374,7 +387,7 @@ export const DashboardPage = () => {
   return (
     <div className="max-w-7xl mx-auto px-3 sm:px-4 lg:px-6 py-4 sm:py-6 lg:py-8">
       {/* 1. Фильтры */}
-      <FilterPanel onRefresh={handleRefresh} isRefreshing={isSummaryLoading || (chartsEnabled ? chartLoading : false)} />
+      <FilterPanel />
 
       {/* 2. Карточки метрик */}
       <div className={`grid grid-cols-2 md:grid-cols-3 ${gridCols} gap-2 mb-8`}>
@@ -385,16 +398,16 @@ export const DashboardPage = () => {
           format="currency"
           subtitle={`${summary?.sales || 0} выкупов`}
           tooltip={[
-            'Продажи (как в ЛК начислений)',
-            "WB: денежная выручка из фин.отчёта (mp_sales.revenue).",
-            "Ozon: 'Продажи' из costs-tree = Выручка + Баллы + Партнёры.",
+            'Сумма продаж как в личном кабинете МП.',
+            marketplace === 'all'
+              ? `OZON + WB = ${formatCurrency(getSalesTotalFromCostsTree(ozonCostsTreeData) ?? 0)} + ${formatCurrency(getSalesTotalFromCostsTree(wbCostsTreeData) ?? 0)}`
+              : undefined,
             ozonCostsTreeData?.warnings?.length ? `⚠ ${ozonCostsTreeData.warnings[0]}` : '',
-            ozonCostsTreeData?.source ? `source: ${ozonCostsTreeData.source}` : '',
           ]
             .filter(Boolean)
             .join('\n')}
           icon={ShoppingCart}
-          loading={isSummaryLoading}
+          loading={isSummaryLoading || isCostsTreeLoading}
         />
         <SummaryCard
           title="Прибыль"
@@ -405,14 +418,13 @@ export const DashboardPage = () => {
             summary
               ? [
                   `Прибыль (оценка)`,
-                  `Формула: прибыль = payout − закупка − реклама`,
-                  `payout (costs-tree.total_accrued): ${payoutForTile === null ? '—' : formatCurrency(payoutForTile)}`,
-                  `закупка (unit-economics.purchase_costs): ${formatCurrency(purchaseCostsForTile)}`,
-                  `реклама (summary.ad_cost): ${formatCurrency(summary.ad_cost ?? 0)}`,
-                  `итог: ${formatCurrency(netProfitForTile)}`,
+                  `= К перечислению − Закупка − Реклама`,
+                  `= ${payoutForTile === null ? '—' : formatCurrency(payoutForTile)} − ${formatCurrency(purchaseCostsForTile)} − ${formatCurrency(summary.ad_cost ?? 0)}`,
+                  `= ${formatCurrency(netProfitForTile)}`,
                 ].join('\n')
               : undefined
           }
+          tooltipAlign="right"
           icon={DollarSign}
           loading={isSummaryLoading}
         />
@@ -421,9 +433,10 @@ export const DashboardPage = () => {
           value={drrForTile}
           format="percent"
           tooltip={[
-            'ДРР',
-            'Формула: Ads API / Продажи * 100%.',
-            'Важно: не включает "Бонусы продавца" из удержаний МП.',
+            'Доля рекламных расходов',
+            `= Реклама / Продажи × 100%`,
+            `= ${formatCurrency(adCostForTile)} / ${formatCurrency(revenueForTile)} × 100%`,
+            `= ${drrForTile}%`,
           ].join('\n')}
           icon={Percent}
           loading={isSummaryLoading}
@@ -433,11 +446,11 @@ export const DashboardPage = () => {
           value={adCostForTile}
           format="currency"
           tooltip={[
-            'Реклама (Ads API)',
-            'WB: расходы из WB Ads.',
-            'Ozon: расходы из Ozon Performance (если синхронизировано).',
-            'Не равно "Продвижение и реклама / Бонусы продавца" в удержаниях.',
+            'Расходы на рекламу из рекламных кабинетов',
+            'WB Продвижение + Ozon Performance.',
+            'Не путать с "Бонусами продавца" в удержаниях МП.',
           ].join('\n')}
+          tooltipAlign="right"
           icon={Megaphone}
           loading={isSummaryLoading}
         />
@@ -447,9 +460,9 @@ export const DashboardPage = () => {
           format="currency"
           subtitle={mpDeductionsSubtitle}
           tooltip={[
-            'Расходы МП = Удержания МП',
-            'Берётся из costs-tree (как в карточках OZON/WB).',
-            'Должно совпадать с "Удержания" в блоке начислений за тот же период.',
+            'Удержания маркетплейса',
+            'Комиссия + Логистика + Хранение + Эквайринг + ...',
+            'Совпадает с "Удержания" в карточках OZON/WB ниже.',
           ].join('\n')}
           icon={Receipt}
           loading={isSummaryLoading}
@@ -459,10 +472,14 @@ export const DashboardPage = () => {
           value={payoutForTile ?? 0}
           format="currency"
           tooltip={[
-            'К перечислению / Начислено',
-            "Ozon: 'Начислено за период' (costs-tree.total_accrued).",
-            "WB: 'К перечислению за период' (costs-tree.total_accrued).",
-          ].join('\n')}
+            'Сумма к перечислению от маркетплейсов',
+            `= Продажи − Удержания МП`,
+            `= ${formatCurrency(revenueForTile)} − ${formatCurrency(mpDeductionsForTile)}`,
+            marketplace === 'all' && ozonCostsTreeData && wbCostsTreeData
+              ? `OZON: ${formatCurrency(ozonCostsTreeData.total_accrued ?? 0)}, WB: ${formatCurrency(wbCostsTreeData.total_accrued ?? 0)}`
+              : '',
+          ].filter(Boolean).join('\n')}
+          tooltipAlign="right"
           icon={BarChart3}
           loading={isSummaryLoading}
         />
@@ -485,6 +502,7 @@ export const DashboardPage = () => {
               icon={TrendingUp}
               isPositive={revenueChangeForTile >= 0}
               tooltip="Изменение продаж относительно предыдущего периода (а не YoY)."
+              tooltipAlign="right"
               loading={isSummaryLoading}
             />
           </>
@@ -492,9 +510,7 @@ export const DashboardPage = () => {
       </div>
 
       {/* 3. MarketplaceBreakdown (OZON / WB) */}
-      {/* ОПТИМИЗАЦИЯ: передаём данные costs-tree через props, чтобы избежать дублирования запросов */}
       <MarketplaceBreakdown
-        filters={filters}
         ozonCostsTree={ozonCostsTreeData}
         ozonCostsTreeLoading={ozonCostsTreeLoading}
         wbCostsTree={wbCostsTreeData}

@@ -1,64 +1,78 @@
 # Промпт для нового чата: Analytics Dashboard WB & Ozon
 
-Продолжаем разработку Analytics Dashboard для WB и Ozon. Backend: FastAPI
-(http://localhost:8000), Frontend: React+TS (http://localhost:5173).
+Продолжаем разработку Analytics Dashboard для WB и Ozon.
+
+**Production:** https://analitics.bixirun.ru
+**Local:** Backend http://localhost:8000, Frontend http://localhost:5173
 
 ---
 
 ## ПРОМПТ ДЛЯ КОПИРОВАНИЯ В НОВЫЙ ЧАТ:
 
 ```
-Продолжаем разработку Analytics Dashboard для WB и Ozon. Backend: FastAPI
-(http://localhost:8000), Frontend: React+TS (http://localhost:5173).
+Продолжаем разработку Analytics Dashboard для WB и Ozon.
 
-**Текущее состояние (30.01.2026):** DashboardPage полностью готова, mobile-first дизайн реализован.
+**Production:** https://analitics.bixirun.ru (Beget VPS 83.222.16.15)
+**Local:** Backend http://localhost:8000, Frontend http://localhost:5173
 
----
-
-## Что сделано по mobile-first (30.01.2026):
-
-### Layout (идентичен на всех экранах):
-- OZON/WB карточки ВСЕГДА 50/50 горизонтально (`grid-cols-2`)
-- Боковые фильтры ВСЕГДА слева вертикально
-- Hamburger menu справа, drawer справа
-- Sticky header (z-index: 40)
-
-### MarketplaceBreakdown (OZON/WB карточки):
-- Компактный layout для 50% ширины: Продажи + Начислено в строке
-- WB: Продажи включают СПП, полоска разделена
-- WB: "Возмещения" → "СПП" (Скидка постоянного покупателя)
-- OZON: показываются ВСЕ категории удержаний (убран "+1 ещё")
-
-### Графики (компактные):
-- SalesChart: 100px mobile / 140px desktop (было 200-300px)
-- AvgCheckChart: 80px mobile / 100px desktop
-- DrrChart: 80px mobile / 100px desktop
-- Zero-line fallback: нулевой график вместо "Нет данных"
-
-### DateRangePicker (react-day-picker v9):
-- classNames для v9: `selected`, `today`, `range_start`, `range_end`
-- Мобильное позиционирование: `fixed inset-x-2 top-[10vh]`
-- Debounce 300ms для API запросов
-
-### Хуки responsive:
-- `useIsMobile()` — max-width: 639px
-- `useIsTablet()` — 640px - 1023px
-- `useIsDesktop()` — min-width: 1024px
+**Текущее состояние (02.02.2026):**
+- Деплой завершён, сайт работает на https://analitics.bixirun.ru
+- SSL настроен (Let's Encrypt, автопродление)
+- DashboardPage работает, RPC оптимизация активна, mobile-first дизайн готов
+- ✅ Cron настроен (07:00, 13:00 — sales+costs; каждые 6ч — stocks)
+- ✅ Ozon stocks 400 error исправлен
+- ✅ Скелетоны реализованы
+- ✅ **Мобильное меню улучшено:** swipe закрытие, компактнее, ярлычок виднее
 
 ---
 
-## Что сделано по оптимизации:
+## Деплой (31.01.2026):
 
-### Backend:
-- Supabase RPC `get_dashboard_summary` — агрегация одним запросом
-- Supabase RPC `get_costs_tree` — иерархия на PostgreSQL
-- Индексы для mp_sales, mp_costs, mp_costs_details, mp_ad_costs
+**VPS Beget:**
+- IP: 83.222.16.15
+- Ubuntu 24.04, 1 ядро / 1 GB RAM
+- Домен: analitics.bixirun.ru (субдомен от bixirun.ru)
+- SSL: Let's Encrypt (до 01.05.2026, автопродление)
 
-### Frontend:
-- Props drilling: AccrualsCards получают данные через props
-- Убран `deferredEnabled` — каскадные ре-рендеры
-- Lazy-load графиков через `React.lazy()`
-- Мемоизация через `useMemo`
+**Структура на сервере:**
+- `/var/www/analytics/backend` — FastAPI
+- `/var/www/analytics/frontend` — React build (статика)
+- `/var/www/analytics/.env` — API ключи
+- systemd сервис: `analytics-api`
+- Nginx: проксирует /api/ на :8000
+
+**SSH доступ:**
+```bash
+ssh root@83.222.16.15
+# Логи API
+journalctl -u analytics-api -f
+# Перезапуск
+systemctl restart analytics-api
+```
+
+---
+
+## Выполненные задачи (31.01.2026):
+
+### ✅ 1. Ограничение календаря по датам
+**Проблема:** Данные WB/Ozon за текущий день появляются только после 10:00 утра (МСК).
+**Решение:** Функция `getMaxAvailableDateYmd()` в `utils.ts`:
+- До 10:00 МСК → max = вчера (T-1) — сегодня недоступен
+- После 10:00 МСК → max = сегодня (T-0) — день в день
+
+### ✅ 2. Tooltips не уезжают за край экрана
+**Проблема:** На мобильных правые карточки имели tooltip, уезжающий за правый край.
+**Решение:** Добавлен prop `tooltipAlign="right"` в SummaryCard для правых карточек (Прибыль, Реклама, К перечисл., Δ к пред.).
+
+### ✅ 3. Мобильное меню улучшено (02.02.2026)
+**Swipe закрытие:** Touch handlers с threshold 60px — свайп вправо закрывает панель.
+**Ярлычок виднее:** 16px полоска (было 12px), chevron внутри, 48px touch target, усиленная тень.
+**Компактность:** Панель 240px (было 280px), уменьшены отступы, подсказка "← свайп для закрытия".
+
+---
+
+## Текущие задачи:
+*(нет активных задач)*
 
 ---
 
@@ -66,57 +80,41 @@
 
 Frontend:
 - `frontend/src/pages/DashboardPage.tsx` — главная страница
-- `frontend/src/components/Dashboard/MarketplaceBreakdown.tsx` — OZON+WB 50/50
 - `frontend/src/components/Dashboard/OzonAccrualsCard.tsx` — карточка OZON
-- `frontend/src/components/Dashboard/WbAccrualsCard.tsx` — карточка WB + СПП
-- `frontend/src/components/Dashboard/SalesChart.tsx` — график с zero-line fallback
-- `frontend/src/components/Shared/Layout.tsx` — hamburger справа
-- `frontend/src/hooks/useMediaQuery.ts` — responsive хуки
+- `frontend/src/components/Dashboard/WbAccrualsCard.tsx` — карточка WB
+- `frontend/src/components/Shared/DateRangePicker.tsx` — выбор дат
+- `frontend/src/components/Shared/Layout.tsx` — навигация (swipe меню на мобиле)
+- `frontend/src/hooks/useDashboard.ts` — React Query hooks
 
 Backend:
-- `backend/app/api/v1/dashboard.py` — API endpoints
-- `backend/migrations/002_optimized_rpc.sql` — RPC функции
-
----
-
-## Архитектура (props drilling):
-
-```
-DashboardPage
-  ├── useCostsTree(ozon) → ozonCostsTreeData
-  ├── useCostsTree(wb) → wbCostsTreeData
-  │
-  └── MarketplaceBreakdown (grid-cols-2 ВСЕГДА)
-        ├── OzonAccrualsCard (props: costsTreeData)
-        └── WbAccrualsCard (props: costsTreeData)
-```
-
----
-
-## Возможные задачи:
-
-### Готово:
-- [x] Mobile-first layout (50/50 карточки, фильтры слева)
-- [x] Компактные графики (80-140px) + zero-line fallback
-- [x] WB: СПП в продажах, унификация терминологии
-- [x] OZON: все категории удержаний видны
-- [x] DateRangePicker с react-day-picker v9
-
-### Backlog:
-- [ ] Excel export
-- [ ] Unit-Economics страница
-- [ ] CostsTreeView визуал — довести до 1-в-1 как в ЛК Ozon
+- `backend/app/api/v1/dashboard.py` — API endpoints (используют RPC)
+- `backend/app/api/v1/sync.py` — синхронизация
+- `backend/migrations/003_all_rpc_functions.sql` — все RPC функции
 
 ---
 
 ## ВАЖНО:
 
+- **Production URL:** https://analitics.bixirun.ru
 - OZON/WB мэтчинг начислений уже 1-в-1 с ЛК — НЕ ЛОМАТЬ
-- react-day-picker v9 — classNames отличаются от v8
-- Backend: `uvicorn app.main:app --reload --port 8000` (папка backend/)
-- Frontend: `npm run dev` (папка frontend/)
+- RPC функции в Supabase — не удалять
+- DateRangePicker: `captionLayout="label"` (не dropdown!)
 - Не делать git команды без явного согласия
-- Не запускать/останавливать серверы без явного согласия
+
+**Локальная разработка:**
+- Backend: `cd backend && source venv/bin/activate && uvicorn app.main:app --reload --port 8000`
+- Frontend: `cd frontend && npm run dev`
+
+**Деплой изменений:**
+```bash
+# Frontend
+cd frontend && npm run build
+sshpass -p 'PASSWORD' rsync -avz --delete dist/ root@83.222.16.15:/var/www/analytics/frontend/
+
+# Backend
+sshpass -p 'PASSWORD' rsync -avz --exclude 'venv' --exclude '__pycache__' backend/ root@83.222.16.15:/var/www/analytics/backend/
+ssh root@83.222.16.15 "systemctl restart analytics-api"
+```
 
 Документация: CLAUDE.md, frontend/README.md, backend/README.md
 ```
@@ -125,20 +123,25 @@ DashboardPage
 
 ## Прошлые ошибки (не повторять):
 
-1. `deferredEnabled` — создавал каскадные ре-рендеры при изменении фильтров
+1. `deferredEnabled` — создавал каскадные ре-рендеры
 2. `useInView` с `rootMargin` — не триггерился для далёких элементов
 3. Дублирование запросов — каждая AccrualsCard делала свой useCostsTree
 4. `include_children: false` — возвращал пустое дерево
 5. react-day-picker v8 classNames в v9 — day_selected → selected
-6. `grid-cols-1 sm:grid-cols-2` — карточки стекались на mobile (исправлено на `grid-cols-2`)
-7. Большое "Нет данных" в графиках — заменено на zero-line fallback
+6. `grid-cols-1 sm:grid-cols-2` — карточки стекались на mobile
+7. `captionLayout="dropdown"` — синхронизировал год между месяцами
+8. **SYNC_TOKEN блокировал запросы** — убран токен
+9. **RPC не созданы в Supabase** — выполнить 003_all_rpc_functions.sql
+10. **config.py env_file="../.env"** — .env должен лежать в родительской папке от backend
+11. **НЕ использовать `useCostsTreeCombined`** — архитектурное решение: отдельные параллельные запросы лучше для масштабирования
 
 ---
 
-## Reconcile (не ломать):
+## Архитектурные решения (не менять):
 
-- `ozon/reconcile_accruals.py` — сверка OZON начислений с ЛК
-- `wb/reconcile_wb.py` — сверка WB начислений с CSV выгрузкой
+- **Costs-tree запросы:** отдельные параллельные запросы для каждого МП (не combined)
+  - Причины: progressive rendering, изоляция ошибок, масштабируемость на 3+ МП
+  - `useCostsTreeCombined` существует, но НЕ активирован — это намеренно
 
 ---
 
@@ -147,4 +150,5 @@ DashboardPage
 - **Frontend:** React 19.2, TypeScript 5.9, Vite 7.2, Tailwind CSS 3.4
 - **Calendar:** react-day-picker 9.x + date-fns 4.x
 - **State:** React Query 5.90, Zustand 5.0
-- **Backend:** FastAPI, Supabase (PostgreSQL)
+- **Backend:** FastAPI, Supabase (PostgreSQL + RPC)
+- **Hosting:** Beget VPS (Ubuntu 24.04) + Supabase + Let's Encrypt SSL

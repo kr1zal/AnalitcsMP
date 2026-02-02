@@ -5,11 +5,32 @@ import { format, subDays } from 'date-fns';
 import type { DateRangePreset } from '../types';
 
 /**
- * Вчерашний день в формате YYYY-MM-DD (локальная TZ)
- * ВАЖНО: маркетплейсы часто отдают данные с задержкой, поэтому UI по умолчанию опирается на "вчера".
+ * Сегодняшний день в формате YYYY-MM-DD (локальная TZ)
  */
-export const getYesterdayYmd = (): string => {
-  return formatDateForAPI(subDays(new Date(), 1));
+export const getTodayYmd = (): string => {
+  return formatDateForAPI(new Date());
+};
+
+/**
+ * Максимальная доступная дата для выбора в календаре.
+ * Данные WB/Ozon за текущий день появляются после 10:00 МСК.
+ * - До 10:00 МСК → max = вчера (T-1)
+ * - После 10:00 МСК → max = сегодня (T-0)
+ */
+export const getMaxAvailableDateYmd = (): string => {
+  const now = new Date();
+
+  // Получаем текущий час в московском времени (UTC+3)
+  // toLocaleString с timeZone даёт корректное время в МСК
+  const moscowTime = new Date(now.toLocaleString('en-US', { timeZone: 'Europe/Moscow' }));
+  const moscowHour = moscowTime.getHours();
+
+  // Если до 10:00 МСК — данные за сегодня ещё не доступны
+  if (moscowHour < 10) {
+    return formatDateForAPI(subDays(now, 1));
+  }
+
+  return formatDateForAPI(now);
 };
 
 /**
@@ -108,39 +129,41 @@ export const fillDailySeriesYmd = <T extends { date: string }>(
 
 /**
  * Получить диапазон дат по пресету
- * ВАЖНО: API маркетплейсов отдают данные с задержкой, поэтому используем вчерашний день
+ * @param maxDate — максимальная дата (если не указана, используется getMaxAvailableDateYmd)
  */
 export const getDateRangeFromPreset = (
   preset: DateRangePreset,
   customFrom?: string | null,
-  customTo?: string | null
+  customTo?: string | null,
+  maxDate?: string
 ): { from: string; to: string } => {
-  const yesterdayStr = getYesterdayYmd();
+  // Используем maxDate если передан, иначе вычисляем по логике 10:00 МСК
+  const endDateStr = maxDate ?? getMaxAvailableDateYmd();
 
   if (preset === 'custom' && customFrom && customTo) {
-    return normalizeDateRangeYmd(customFrom, customTo, { max: yesterdayStr });
+    return normalizeDateRangeYmd(customFrom, customTo, { max: endDateStr });
   }
 
   switch (preset) {
     case '7d':
       return {
-        from: formatDateForAPI(subDays(new Date(`${yesterdayStr}T00:00:00`), 6)),
-        to: yesterdayStr,
+        from: formatDateForAPI(subDays(new Date(`${endDateStr}T00:00:00`), 6)),
+        to: endDateStr,
       };
     case '30d':
       return {
-        from: formatDateForAPI(subDays(new Date(`${yesterdayStr}T00:00:00`), 29)),
-        to: yesterdayStr,
+        from: formatDateForAPI(subDays(new Date(`${endDateStr}T00:00:00`), 29)),
+        to: endDateStr,
       };
     case '90d':
       return {
-        from: formatDateForAPI(subDays(new Date(`${yesterdayStr}T00:00:00`), 89)),
-        to: yesterdayStr,
+        from: formatDateForAPI(subDays(new Date(`${endDateStr}T00:00:00`), 89)),
+        to: endDateStr,
       };
     default:
       return {
-        from: formatDateForAPI(subDays(new Date(`${yesterdayStr}T00:00:00`), 29)),
-        to: yesterdayStr,
+        from: formatDateForAPI(subDays(new Date(`${endDateStr}T00:00:00`), 29)),
+        to: endDateStr,
       };
   }
 };
