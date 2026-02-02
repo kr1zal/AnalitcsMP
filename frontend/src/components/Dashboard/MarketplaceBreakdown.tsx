@@ -24,7 +24,7 @@ export const MarketplaceBreakdown = ({
   const toggleDetails = () => setDetailsOpen((v) => !v);
 
   return (
-    <div className="grid grid-cols-2 gap-2 sm:gap-4 mb-4 sm:mb-8">
+    <div className="grid grid-cols-2 gap-2 sm:gap-3 mb-4 sm:mb-5 lg:mb-6">
       <OzonAccrualsCard
         detailsOpen={detailsOpen}
         onToggleDetails={toggleDetails}

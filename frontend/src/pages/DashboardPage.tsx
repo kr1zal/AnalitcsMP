@@ -390,7 +390,7 @@ export const DashboardPage = () => {
       <FilterPanel />
 
       {/* 2. Карточки метрик */}
-      <div className={`grid grid-cols-2 md:grid-cols-3 ${gridCols} gap-2 mb-8`}>
+      <div className={`grid grid-cols-2 md:grid-cols-3 ${gridCols} gap-2 sm:gap-3 mb-4 sm:mb-5 lg:mb-6`}>
         {/* Всегда видимые карточки (6 шт) */}
         <SummaryCard
           title="Продажи"
@@ -518,7 +518,7 @@ export const DashboardPage = () => {
       />
 
       {/* 4. Графики с боковыми фильтрами */}
-      <div className="flex flex-row gap-3 lg:gap-4 mb-6 lg:mb-8">
+      <div className="flex flex-row gap-2 sm:gap-3 mb-4 sm:mb-5 lg:mb-6">
         {/* Боковая панель фильтров - всегда слева (как на десктопе) */}
         <div className="w-28 sm:w-32 lg:w-36 flex-shrink-0 space-y-2 sm:space-y-3">
           {/* Фильтр маркетплейса */}
@@ -603,7 +603,7 @@ export const DashboardPage = () => {
       </div>
 
       {/* 5. Таблица остатков */}
-      <div className="mb-8">
+      <div className="mb-4 sm:mb-5 lg:mb-6">
         <StocksTable
           stocks={stocksData?.stocks || []}
           isLoading={!stocksEnabled || stocksLoading}
