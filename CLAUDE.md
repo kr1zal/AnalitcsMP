@@ -37,6 +37,12 @@ Use "npm run build" to check if code compiles or no. See results and fix code if
 >   - Подсказка "← свайп для закрытия" внизу панели
 > - ✅ **Tooltips с формулами (02.02.2026):** понятные расчёты вместо технических терминов
 > - ✅ **Система отступов (02.02.2026):** mb-4→5→6 между секциями, gap-2→3 между карточками
+> - ✅ **Экспорт в Excel/PDF (03.02.2026):**
+>   - Excel: 6 листов (Сводка разбита по OZON/WB, Продажи по дням, Реклама, Удержания МП, Unit-экономика, Остатки)
+>   - PDF: 3 страницы (Dashboard, Реклама, Unit-экономика) через PdfExportContent
+>   - Mobile: кнопки-иконки на уровне с МП селектором
+>   - Toast notifications с заменой loading → success/error
+>   - Зависимости: xlsx, jspdf, html2canvas
 
 ### SSH доступ:
 > ```bash
@@ -414,7 +420,7 @@ DashboardPage
 - [x] CSS overflow на мобиле ✅ (01.02.2026)
 - [x] Расхождение цифр верхней плашки и карточек ✅ (01.02.2026)
 - [x] CostsTreeView визуал — довести до 1-в-1 как в ЛК ✅
-- [ ] Excel и PDF export функциональность
+- [x] Excel и PDF export ✅ (03.02.2026)
 - [ ] Улучшить UnitEconomicsPage
 - [ ] Улучшить AdsPage
 
@@ -605,14 +611,19 @@ frontend/
 │   │   │   ├── Layout.tsx              ✅ Mobile: боковая плашка справа (25%), выезжающая панель; Desktop: header + nav
 │   │   │   ├── FilterPanel.tsx         ✅ Адаптивный
 │   │   │   └── DateRangePicker.tsx     ✅ v3 compact: 32px ячейки, пресеты, OK
+│   │   ├── Export/
+│   │   │   └── PdfExportContent.tsx    ✅ Скрытый контент для 3-страничного PDF
 │   │   ├── UnitEconomics/              (TODO)
 │   │   └── Sync/                       (TODO)
 │   ├── hooks/
 │   │   ├── useDashboard.ts             ✅ Готово
 │   │   ├── useSync.ts                  ✅ Готово
-│   │   └── useMediaQuery.ts            ✅ useIsMobile, useIsTablet, useIsDesktop
+│   │   ├── useMediaQuery.ts            ✅ useIsMobile, useIsTablet, useIsDesktop
+│   │   └── useExport.ts                ✅ Excel/PDF экспорт hook
 │   ├── lib/
-│   │   └── utils.ts                    ✅ Готово
+│   │   ├── utils.ts                    ✅ Готово
+│   │   ├── exportExcel.ts              ✅ Генерация Excel (6 листов)
+│   │   └── exportPdf.ts                ✅ Генерация PDF (html2canvas)
 │   ├── pages/
 │   │   └── DashboardPage.tsx           ✅ Фильтры слева, графики справа
 │   ├── services/

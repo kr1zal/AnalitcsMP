@@ -12,9 +12,12 @@
  * - При пресете (7d/30d/90d): 7 карточек (5 основных + Prior Period + YoY)
  * - При custom датах: 5 основных карточек (Заказы, Прибыль, ДРР, Продвижение, Op. Costs)
  */
-import { Suspense, lazy, useEffect, useMemo, useState } from 'react';
+import { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react';
 import axios from 'axios';
 import { DollarSign, ShoppingCart, TrendingUp, Percent, Megaphone, BarChart3, Receipt } from 'lucide-react';
+import { useExport } from '../hooks/useExport';
+import type { ExcelExportData } from '../lib/exportExcel';
+import { PdfExportContent, type PdfExportRefs } from '../components/Export/PdfExportContent';
 import { SummaryCard } from '../components/Dashboard/SummaryCard';
 import { MarketplaceBreakdown } from '../components/Dashboard/MarketplaceBreakdown';
 import { StocksTable } from '../components/Dashboard/StocksTable';
@@ -104,6 +107,12 @@ function describeRequestUrl(err: unknown): string | null {
 export const DashboardPage = () => {
   const { datePreset, marketplace, customDateFrom, customDateTo } = useFiltersStore();
   const dateRange = getDateRangeFromPreset(datePreset, customDateFrom, customDateTo);
+
+  // Ref для PDF экспорта (скрытый контент для захвата)
+  const pdfExportRef = useRef<PdfExportRefs>(null);
+
+  // Export hook
+  const { isExporting, exportType, exportExcel, exportPdf } = useExport();
 
   // Фильтр товаров (боковая панель)
   const [selectedProduct, setSelectedProduct] = useState<string | undefined>(undefined);
@@ -384,10 +393,42 @@ export const DashboardPage = () => {
   // Количество колонок зависит от наличия карточек сравнения
   const gridCols = showPeriodComparison ? 'lg:grid-cols-8' : 'lg:grid-cols-6';
 
+  // ==================== EXPORT HANDLERS ====================
+  const handleExportExcel = () => {
+    const exportData: ExcelExportData = {
+      summary: summary ?? null,
+      period: dateRange,
+      marketplace,
+      salesChart: chartData?.data ?? [],
+      adCosts: adCostsData?.data ?? [],
+      ozonCostsTree: ozonCostsTreeData ?? null,
+      wbCostsTree: wbCostsTreeData ?? null,
+      unitEconomics: unitEconomicsData?.products ?? [],
+      stocks: stocksData?.stocks ?? [],
+    };
+    exportExcel(exportData);
+  };
+
+  const handleExportPdf = () => {
+    const refs = pdfExportRef.current;
+    exportPdf({
+      dashboardElement: refs?.dashboardRef ?? null,
+      adsElement: refs?.adsRef ?? null,
+      unitEconomicsElement: refs?.unitEconomicsRef ?? null,
+      period: dateRange,
+      marketplace,
+    });
+  };
+
   return (
     <div className="max-w-7xl mx-auto px-3 sm:px-4 lg:px-6 py-4 sm:py-6 lg:py-8">
       {/* 1. Фильтры */}
-      <FilterPanel />
+      <FilterPanel
+        onExportExcel={handleExportExcel}
+        onExportPdf={handleExportPdf}
+        isExporting={isExporting}
+        exportType={exportType}
+      />
 
       {/* 2. Карточки метрик */}
       <div className={`grid grid-cols-2 md:grid-cols-3 ${gridCols} gap-2 sm:gap-3 mb-4 sm:mb-5 lg:mb-6`}>
@@ -609,6 +650,18 @@ export const DashboardPage = () => {
           isLoading={!stocksEnabled || stocksLoading}
         />
       </div>
+
+      {/* Скрытый контент для PDF экспорта */}
+      <PdfExportContent
+        ref={pdfExportRef}
+        summary={summary ?? null}
+        ozonCostsTree={ozonCostsTreeData ?? null}
+        wbCostsTree={wbCostsTreeData ?? null}
+        adCosts={adCostsData?.data ?? []}
+        adTotals={adCostsData?.totals}
+        unitEconomics={unitEconomicsData?.products ?? []}
+        period={dateRange}
+      />
     </div>
   );
 };
