@@ -21,3 +21,6 @@ pandas>=2.1.0
 # Validation
 pydantic>=2.5.0
 pydantic-settings>=2.1.0
+
+# PDF Export
+playwright>=1.40.0

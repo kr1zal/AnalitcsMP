@@ -25,23 +25,24 @@
 - ✅ **Мобильное меню улучшено:** swipe закрытие, компактнее, ярлычок виднее
 - ✅ **Экспорт в Excel/PDF (03.02.2026):**
   - Excel: 6 листов (Сводка по OZON/WB, Продажи, Реклама, Удержания, Unit-экономика, Остатки)
-  - PDF: 3 страницы через PdfExportContent (Dashboard, Ads, Unit Economics)
+  - **PDF: Playwright на backend** — идеальное качество, 3 страницы A4
   - Mobile: кнопки-иконки рядом с МП селектором
-  - Зависимости: xlsx, jspdf, html2canvas
+  - Backend: playwright + chromium, swap 2GB на сервере
 
 **Текущие задачи:**
-- 🔄 Улучшить PDF экспорт (визуал, форматирование)
 - 🔄 Улучшить UnitEconomicsPage (графики, детализация)
+- 🔄 Улучшить AdsPage (графики ДРР)
 
 ---
 
-## Деплой (31.01.2026):
+## Деплой (03.02.2026):
 
 **VPS Beget:**
 - IP: 83.222.16.15
-- Ubuntu 24.04, 1 ядро / 1 GB RAM
+- Ubuntu 24.04, 1 ядро / 1 GB RAM + **2 GB swap**
 - Домен: analitics.bixirun.ru (субдомен от bixirun.ru)
 - SSL: Let's Encrypt (до 01.05.2026, автопродление)
+- **Playwright + Chromium** установлен для PDF экспорта
 
 **Структура на сервере:**
 - `/var/www/analytics/backend` — FastAPI
@@ -97,11 +98,12 @@ systemctl restart analytics-api
 - Продажи по дням, Реклама, Удержания МП, Unit-экономика, Остатки
 - Зависимость: xlsx (SheetJS)
 
-**PDF (3 страницы A4 landscape):**
-- Dashboard: метрики OZON/WB, общие показатели
-- Реклама: метрики + таблица по дням
-- Unit-экономика: таблица товаров с маржой
-- Реализовано через скрытый PdfExportContent + html2canvas + jsPDF
+**PDF (Playwright на backend):**
+- 3 страницы A4 landscape: Dashboard, Unit-экономика, Реклама
+- Backend открывает `/print` страницу через Chromium
+- Ждёт `data-pdf-ready="true"`, генерирует PDF
+- Качество идеальное (настоящий браузер, не canvas)
+- Размер: ~76 КБ, генерация ~15-20 сек
 
 **UI:**
 - Desktop: кнопки Excel/PDF после МП селектора
@@ -111,8 +113,8 @@ systemctl restart analytics-api
 ---
 
 ## Текущие задачи:
-- 🔄 Улучшить PDF экспорт (визуал, форматирование)
 - 🔄 Улучшить UnitEconomicsPage (графики, детализация по товарам)
+- 🔄 Улучшить AdsPage (графики ДРР по дням)
 
 ---
 
@@ -120,18 +122,20 @@ systemctl restart analytics-api
 
 Frontend:
 - `frontend/src/pages/DashboardPage.tsx` — главная страница
+- `frontend/src/pages/PrintPage.tsx` — страница для PDF (3 секции A4, без UI)
 - `frontend/src/pages/UnitEconomicsPage.tsx` — unit-экономика (TODO: улучшить)
 - `frontend/src/components/Dashboard/OzonAccrualsCard.tsx` — карточка OZON
 - `frontend/src/components/Dashboard/WbAccrualsCard.tsx` — карточка WB
-- `frontend/src/components/Export/PdfExportContent.tsx` — скрытый контент для PDF
 - `frontend/src/components/Shared/FilterPanel.tsx` — фильтры + кнопки экспорта
 - `frontend/src/hooks/useExport.ts` — hook для Excel/PDF экспорта
 - `frontend/src/lib/exportExcel.ts` — генерация Excel (6 листов)
-- `frontend/src/lib/exportPdf.ts` — генерация PDF (html2canvas)
+- `frontend/src/services/api.ts` — API клиент (включая exportApi)
 
 Backend:
 - `backend/app/api/v1/dashboard.py` — API endpoints (используют RPC)
+- `backend/app/api/v1/export.py` — PDF экспорт через Playwright
 - `backend/app/api/v1/sync.py` — синхронизация
+- `backend/app/config.py` — настройки (frontend_url для Playwright)
 - `backend/migrations/003_all_rpc_functions.sql` — все RPC функции
 
 ---
@@ -178,6 +182,7 @@ ssh root@83.222.16.15 "systemctl restart analytics-api"
 10. **config.py env_file="../.env"** — .env должен лежать в родительской папке от backend
 11. **НЕ использовать `useCostsTreeCombined`** — архитектурное решение: отдельные параллельные запросы лучше для масштабирования
 12. **toast.dismiss() + toast.success()** — использовать `id: loadingToastId` для замены toast вместо dismiss + new
+13. **html2canvas для PDF** — заменён на Playwright (качество несопоставимо лучше)
 
 ---
 
@@ -194,5 +199,5 @@ ssh root@83.222.16.15 "systemctl restart analytics-api"
 - **Frontend:** React 19.2, TypeScript 5.9, Vite 7.2, Tailwind CSS 3.4
 - **Calendar:** react-day-picker 9.x + date-fns 4.x
 - **State:** React Query 5.90, Zustand 5.0
-- **Backend:** FastAPI, Supabase (PostgreSQL + RPC)
-- **Hosting:** Beget VPS (Ubuntu 24.04) + Supabase + Let's Encrypt SSL
+- **Backend:** FastAPI, Supabase (PostgreSQL + RPC), Playwright (PDF)
+- **Hosting:** Beget VPS (Ubuntu 24.04, 2GB swap) + Supabase + Let's Encrypt SSL

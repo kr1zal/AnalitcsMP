@@ -185,6 +185,29 @@ export const dashboardApi = {
 
 // ==================== СИНХРОНИЗАЦИЯ ====================
 
+// ==================== ЭКСПОРТ ====================
+
+export const exportApi = {
+  /**
+   * Экспорт в PDF через Playwright (backend)
+   * Возвращает blob PDF файла
+   */
+  exportPdf: async (params: {
+    date_from: string;
+    date_to: string;
+    marketplace: string;
+  }): Promise<Blob> => {
+    const { data } = await api.get('/export/pdf', {
+      params,
+      responseType: 'blob',
+      timeout: 120000, // 2 минуты — PDF генерация может быть долгой
+    });
+    return data;
+  },
+};
+
+// ==================== СИНХРОНИЗАЦИЯ ====================
+
 export const syncApi = {
   /**
    * Полная синхронизация всех данных

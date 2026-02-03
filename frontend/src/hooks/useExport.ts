@@ -1,15 +1,23 @@
 /**
  * Hook для управления экспортом в Excel и PDF
  * Управляет состоянием загрузки, скачиванием файлов и уведомлениями
+ *
+ * PDF экспорт: через Playwright на backend (идеальное качество)
+ * Excel экспорт: через xlsx на frontend
  */
 import { useState, useCallback } from 'react';
 import { toast } from 'sonner';
 import { generateExcelReport, type ExcelExportData } from '../lib/exportExcel';
-import { generatePdfReport, type PdfExportConfig } from '../lib/exportPdf';
+import { exportApi } from '../services/api';
 
 // ==================== ТИПЫ ====================
 
 export type ExportType = 'excel' | 'pdf' | null;
+
+export interface PdfExportParams {
+  period: { from: string; to: string };
+  marketplace: string;
+}
 
 export interface UseExportReturn {
   /** Идёт ли экспорт */
@@ -18,8 +26,8 @@ export interface UseExportReturn {
   exportType: ExportType;
   /** Экспорт в Excel */
   exportExcel: (data: ExcelExportData) => Promise<void>;
-  /** Экспорт в PDF */
-  exportPdf: (config: PdfExportConfig) => Promise<void>;
+  /** Экспорт в PDF (через backend Playwright) */
+  exportPdf: (params: PdfExportParams) => Promise<void>;
 }
 
 // ==================== HOOK ====================
@@ -89,31 +97,37 @@ export function useExport(): UseExportReturn {
   );
 
   /**
-   * Экспорт в PDF
+   * Экспорт в PDF (через Playwright на backend)
    */
   const exportPdf = useCallback(
-    async (config: PdfExportConfig) => {
+    async (params: PdfExportParams) => {
       if (isExporting) return;
 
       setIsExporting(true);
       setExportType('pdf');
 
       // Показываем toast о начале экспорта
-      const loadingToastId = toast.loading('Формируем PDF отчёт...');
+      const loadingToastId = toast.loading('Формируем PDF отчёт...', {
+        description: 'Это может занять 10-20 секунд',
+      });
 
       try {
-        const blob = await generatePdfReport(config);
-        const filename = generateFilename(config.period.from, config.period.to, 'pdf');
+        const blob = await exportApi.exportPdf({
+          date_from: params.period.from,
+          date_to: params.period.to,
+          marketplace: params.marketplace,
+        });
+        const filename = generateFilename(params.period.from, params.period.to, 'pdf');
         downloadBlob(blob, filename);
 
         toast.success('PDF отчёт сохранён', {
-          id: loadingToastId, // Заменяем loading toast на success
+          id: loadingToastId,
           description: filename,
         });
       } catch (error) {
         console.error('PDF export error:', error);
         toast.error('Ошибка экспорта в PDF', {
-          id: loadingToastId, // Заменяем loading toast на error
+          id: loadingToastId,
           description: error instanceof Error ? error.message : 'Неизвестная ошибка',
         });
       } finally {

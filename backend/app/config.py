@@ -29,6 +29,9 @@ class Settings(BaseSettings):
     debug: bool = True
     secret_key: str = "change-me-in-production"
 
+    # Frontend URL for PDF export (Playwright opens this)
+    frontend_url: str = "https://analitics.bixirun.ru"
+
     class Config:
         env_file = "../.env"
         env_file_encoding = "utf-8"

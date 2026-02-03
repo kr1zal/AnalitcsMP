@@ -9,6 +9,7 @@ import { DashboardPage } from './pages/DashboardPage';
 import { UnitEconomicsPage } from './pages/UnitEconomicsPage';
 import { SyncPage } from './pages/SyncPage';
 import { AdsPage } from './pages/AdsPage';
+import { PrintPage } from './pages/PrintPage';
 
 // Создаём QueryClient
 const queryClient = new QueryClient({
@@ -26,6 +27,9 @@ function App() {
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>
         <Routes>
+          {/* Print page — без Layout для чистой печати */}
+          <Route path="/print" element={<PrintPage />} />
+
           <Route path="/" element={<Layout />}>
             <Route index element={<DashboardPage />} />
             <Route path="unit-economics" element={<UnitEconomicsPage />} />

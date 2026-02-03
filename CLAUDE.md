@@ -7,12 +7,13 @@ Use "npm run build" to check if code compiles or no. See results and fix code if
 
 ## 🌐 Production: https://analitics.bixirun.ru
 
-### Деплой (01.02.2026):
-> - **VPS Beget:** 83.222.16.15, Ubuntu 24.04, 1 ядро / 1 GB RAM
+### Деплой (03.02.2026):
+> - **VPS Beget:** 83.222.16.15, Ubuntu 24.04, 1 ядро / 1 GB RAM + **2 GB swap**
 > - **Домен:** analitics.bixirun.ru (субдомен от bixirun.ru)
 > - **SSL:** Let's Encrypt (автопродление настроено)
 > - **Структура:** `/var/www/analytics/` (backend + frontend + .env)
 > - **Сервисы:** systemd `analytics-api`, Nginx proxy
+> - **Playwright:** Chromium установлен для PDF экспорта
 > - **Пароль SSH:** `@vnDBp5VCt2+` (с символом @ в начале!)
 
 ### Текущие задачи:
@@ -39,10 +40,11 @@ Use "npm run build" to check if code compiles or no. See results and fix code if
 > - ✅ **Система отступов (02.02.2026):** mb-4→5→6 между секциями, gap-2→3 между карточками
 > - ✅ **Экспорт в Excel/PDF (03.02.2026):**
 >   - Excel: 6 листов (Сводка разбита по OZON/WB, Продажи по дням, Реклама, Удержания МП, Unit-экономика, Остатки)
->   - PDF: 3 страницы (Dashboard, Реклама, Unit-экономика) через PdfExportContent
+>   - **PDF: Playwright на backend** — идеальное качество, 3 страницы (Dashboard, Unit-экономика, Реклама)
 >   - Mobile: кнопки-иконки на уровне с МП селектором
 >   - Toast notifications с заменой loading → success/error
->   - Зависимости: xlsx, jspdf, html2canvas
+>   - Зависимости: xlsx (frontend), playwright (backend)
+>   - Сервер: добавлен swap 2GB для Playwright + Chromium
 
 ### SSH доступ:
 > ```bash
@@ -85,6 +87,7 @@ Use "npm run build" to check if code compiles or no. See results and fix code if
   - Dashboard: GET /dashboard/summary, /unit-economics, /sales-chart, /stocks,
     /costs-tree, /ad-costs
   - Sync: POST /sync/products, /sales, /stocks, /costs, /all + GET /sync/logs
+  - Export: GET /export/pdf (Playwright)
 - [x] FastAPI сервер запущен (http://localhost:8000)
 - [x] Swagger документация (http://localhost:8000/docs)
 - [x] Backend README.md с полной документацией
@@ -127,6 +130,7 @@ Use "npm run build" to check if code compiles or no. See results and fix code if
   - UnitEconomicsPage - прибыль по товарам
   - SyncPage - синхронизация данных
   - AdsPage - реклама (метрики, графики ДРР, таблица по дням)
+  - PrintPage - страница для PDF экспорта (без Layout, 3 секции A4)
 - [x] React Router с 5 страницами
 - [x] Zustand store для фильтров
 - [x] Frontend запущен на http://localhost:5173
@@ -404,6 +408,30 @@ DashboardPage
 - `frontend/src/components/Shared/Layout.tsx` — swipe handlers, компактный UI
 - `frontend/src/index.css` — `.nav-tab-strip` 16px + усиленная тень
 
+### Выполнено (PDF Export через Playwright — 03.02.2026):
+
+**Архитектура:**
+- Frontend вызывает `GET /api/v1/export/pdf?date_from=...&date_to=...&marketplace=...`
+- Backend (Playwright + Chromium) открывает `/print?from=...&to=...&marketplace=...`
+- PrintPage загружает данные через React Query, рендерит 3 страницы A4
+- После `data-pdf-ready="true"` Playwright генерирует PDF и возвращает blob
+
+**Файлы:**
+- `backend/app/api/v1/export.py` — endpoint `/export/pdf`, функция `generate_pdf()`
+- `frontend/src/pages/PrintPage.tsx` — 3 страницы: Dashboard, Unit-экономика, Реклама
+- `frontend/src/hooks/useExport.ts` — hook с `exportPdf()` вызывающий backend API
+- `frontend/src/services/api.ts` — `exportApi.exportPdf()`
+
+**Сервер:**
+- Добавлен swap 2GB (`/swapfile`) — требуется для Playwright + Chromium
+- Playwright установлен: `pip install playwright && playwright install chromium`
+- Timeout: 120 сек (PDF генерация ~15-20 сек)
+
+**Качество:**
+- Идеальный рендеринг (настоящий браузер, не canvas)
+- PDF 3 страницы, ~76 КБ
+- Градиенты, шрифты, графики — всё корректно
+
 ### Следующий этап - Доработки:
 
 - [x] ~~Затраты за декабрь 2025 без продаж~~ — исправлено
@@ -474,13 +502,14 @@ DashboardPage
 Analitics/
 ├── backend/
 │   ├── app/
-│   │   ├── api/v1/          # FastAPI роуты
+│   │   ├── api/v1/          # FastAPI роуты (products, dashboard, sync, export)
 │   │   ├── services/        # WB и Ozon клиенты (готовы)
 │   │   ├── models/          # Pydantic модели
-│   │   └── db/              # Supabase клиент
+│   │   ├── db/              # Supabase клиент
+│   │   └── config.py        # Settings (включая frontend_url для Playwright)
 │   ├── migrations/          # SQL миграции
 │   ├── tests/
-│   ├── requirements.txt
+│   ├── requirements.txt     # + playwright>=1.40.0
 │   └── test_api.py          # Тест подключения к API
 ├── frontend/                # React + TypeScript (готов MVP v0.1)
 ├── .env                     # API ключи (не коммитить!)
@@ -573,9 +602,8 @@ Analitics/
 
 ### Задачи для следующего чата:
 
-1. **Excel export** — выгрузка данных дашборда в Excel
-2. **Улучшить UnitEconomicsPage** — добавить графики, детализацию по товарам
-3. **Улучшить AdsPage** — графики ДРР по дням, сравнение периодов
+1. **Улучшить UnitEconomicsPage** — добавить графики, детализацию по товарам
+2. **Улучшить AdsPage** — графики ДРР по дням, сравнение периодов
 
 ### Готовые файлы (можно использовать):
 
@@ -611,8 +639,7 @@ frontend/
 │   │   │   ├── Layout.tsx              ✅ Mobile: боковая плашка справа (25%), выезжающая панель; Desktop: header + nav
 │   │   │   ├── FilterPanel.tsx         ✅ Адаптивный
 │   │   │   └── DateRangePicker.tsx     ✅ v3 compact: 32px ячейки, пресеты, OK
-│   │   ├── Export/
-│   │   │   └── PdfExportContent.tsx    ✅ Скрытый контент для 3-страничного PDF
+│   │   ├── Export/                     (удалён — PDF теперь через backend)
 │   │   ├── UnitEconomics/              (TODO)
 │   │   └── Sync/                       (TODO)
 │   ├── hooks/
@@ -622,10 +649,10 @@ frontend/
 │   │   └── useExport.ts                ✅ Excel/PDF экспорт hook
 │   ├── lib/
 │   │   ├── utils.ts                    ✅ Готово
-│   │   ├── exportExcel.ts              ✅ Генерация Excel (6 листов)
-│   │   └── exportPdf.ts                ✅ Генерация PDF (html2canvas)
+│   │   └── exportExcel.ts              ✅ Генерация Excel (6 листов)
 │   ├── pages/
-│   │   └── DashboardPage.tsx           ✅ Фильтры слева, графики справа
+│   │   ├── DashboardPage.tsx           ✅ Фильтры слева, графики справа
+│   │   └── PrintPage.tsx               ✅ PDF layout (3 страницы A4, без UI)
 │   ├── services/
 │   │   └── api.ts                      ✅ Готово
 │   ├── store/
@@ -747,9 +774,9 @@ npm run build
 1. ✅ Overview (главный дашборд) - **полностью готов**
 2. ✅ Фильтры, графики, таблица — **готово**
 3. ✅ Mobile-first адаптив — **готово**
-4. ⏳ Unit-Economics — улучшить визуализацию
-5. ⏳ AdsPage — улучшить графики
-6. ⏳ Excel export
+4. ✅ Excel/PDF export — **готово (Playwright)**
+5. ⏳ Unit-Economics — улучшить визуализацию
+6. ⏳ AdsPage — улучшить графики
 
 ### Дизайн
 
