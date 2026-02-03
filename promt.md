@@ -15,7 +15,7 @@
 **Production:** https://analitics.bixirun.ru (Beget VPS 83.222.16.15)
 **Local:** Backend http://localhost:8000, Frontend http://localhost:5173
 
-**Текущее состояние (02.02.2026):**
+**Текущее состояние (03.02.2026):**
 - Деплой завершён, сайт работает на https://analitics.bixirun.ru
 - SSL настроен (Let's Encrypt, автопродление)
 - DashboardPage работает, RPC оптимизация активна, mobile-first дизайн готов
@@ -23,6 +23,15 @@
 - ✅ Ozon stocks 400 error исправлен
 - ✅ Скелетоны реализованы
 - ✅ **Мобильное меню улучшено:** swipe закрытие, компактнее, ярлычок виднее
+- ✅ **Экспорт в Excel/PDF (03.02.2026):**
+  - Excel: 6 листов (Сводка по OZON/WB, Продажи, Реклама, Удержания, Unit-экономика, Остатки)
+  - PDF: 3 страницы через PdfExportContent (Dashboard, Ads, Unit Economics)
+  - Mobile: кнопки-иконки рядом с МП селектором
+  - Зависимости: xlsx, jspdf, html2canvas
+
+**Текущие задачи:**
+- 🔄 Улучшить PDF экспорт (визуал, форматирование)
+- 🔄 Улучшить UnitEconomicsPage (графики, детализация)
 
 ---
 
@@ -82,10 +91,28 @@ systemctl restart analytics-api
 - Tablet: mb-5 (20px) между секциями, gap-3 (12px) между карточками
 - Desktop: mb-6 (24px) между секциями, gap-3 (12px) между карточками
 
+### ✅ 6. Экспорт в Excel и PDF (03.02.2026)
+**Excel (6 листов):**
+- Сводка: разбита по OZON/WB с итогами (Продажи, Начислено, Удержания)
+- Продажи по дням, Реклама, Удержания МП, Unit-экономика, Остатки
+- Зависимость: xlsx (SheetJS)
+
+**PDF (3 страницы A4 landscape):**
+- Dashboard: метрики OZON/WB, общие показатели
+- Реклама: метрики + таблица по дням
+- Unit-экономика: таблица товаров с маржой
+- Реализовано через скрытый PdfExportContent + html2canvas + jsPDF
+
+**UI:**
+- Desktop: кнопки Excel/PDF после МП селектора
+- Mobile: компактные кнопки-иконки (9x9) рядом с МП селектором
+- Toast: loading → success/error через id replacement
+
 ---
 
 ## Текущие задачи:
-*(нет активных задач)*
+- 🔄 Улучшить PDF экспорт (визуал, форматирование)
+- 🔄 Улучшить UnitEconomicsPage (графики, детализация по товарам)
 
 ---
 
@@ -93,11 +120,14 @@ systemctl restart analytics-api
 
 Frontend:
 - `frontend/src/pages/DashboardPage.tsx` — главная страница
+- `frontend/src/pages/UnitEconomicsPage.tsx` — unit-экономика (TODO: улучшить)
 - `frontend/src/components/Dashboard/OzonAccrualsCard.tsx` — карточка OZON
 - `frontend/src/components/Dashboard/WbAccrualsCard.tsx` — карточка WB
-- `frontend/src/components/Shared/DateRangePicker.tsx` — выбор дат
-- `frontend/src/components/Shared/Layout.tsx` — навигация (swipe меню на мобиле)
-- `frontend/src/hooks/useDashboard.ts` — React Query hooks
+- `frontend/src/components/Export/PdfExportContent.tsx` — скрытый контент для PDF
+- `frontend/src/components/Shared/FilterPanel.tsx` — фильтры + кнопки экспорта
+- `frontend/src/hooks/useExport.ts` — hook для Excel/PDF экспорта
+- `frontend/src/lib/exportExcel.ts` — генерация Excel (6 листов)
+- `frontend/src/lib/exportPdf.ts` — генерация PDF (html2canvas)
 
 Backend:
 - `backend/app/api/v1/dashboard.py` — API endpoints (используют RPC)
@@ -147,6 +177,7 @@ ssh root@83.222.16.15 "systemctl restart analytics-api"
 9. **RPC не созданы в Supabase** — выполнить 003_all_rpc_functions.sql
 10. **config.py env_file="../.env"** — .env должен лежать в родительской папке от backend
 11. **НЕ использовать `useCostsTreeCombined`** — архитектурное решение: отдельные параллельные запросы лучше для масштабирования
+12. **toast.dismiss() + toast.success()** — использовать `id: loadingToastId` для замены toast вместо dismiss + new
 
 ---
 
