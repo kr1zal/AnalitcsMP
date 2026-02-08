@@ -1,18 +1,19 @@
 """
 Роутер для дашборда - сводная аналитика
 """
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Depends
 from typing import Optional
 from datetime import datetime, timedelta
-from decimal import Decimal
 
 from ...db.supabase import get_supabase_client
+from ...auth import CurrentUser, get_current_user
 
 router = APIRouter()
 
 
 @router.get("/dashboard/summary")
 async def get_summary(
+    current_user: CurrentUser = Depends(get_current_user),
     date_from: Optional[str] = Query(None, description="Дата начала (YYYY-MM-DD)"),
     date_to: Optional[str] = Query(None, description="Дата окончания (YYYY-MM-DD)"),
     marketplace: Optional[str] = Query(None, description="Фильтр по МП: wb, ozon"),
@@ -21,29 +22,15 @@ async def get_summary(
 ):
     """
     Сводка по продажам за период (использует RPC для оптимизации).
-
-    Возвращает агрегированные данные:
-    - Общее количество заказов, выкупов, возвратов
-    - Выручка
-    - Средний процент выкупа
-
-    При include_prev_period=true также возвращает:
-    - Данные предыдущего периода
-    - Процент изменения выручки
-
-    При include_ozon_truth=true:
-    - Выручка Ozon берётся из costs-tree (как в ЛК)
     """
     supabase = get_supabase_client()
 
-    # Если даты не указаны, берём последние 30 дней
     if not date_from:
         date_from = (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d")
     if not date_to:
         date_to = datetime.now().strftime("%Y-%m-%d")
 
     try:
-        # Используем оптимизированную RPC если нужен prev-period
         if include_prev_period:
             result = supabase.rpc(
                 "get_dashboard_summary_with_prev",
@@ -51,17 +38,18 @@ async def get_summary(
                     "p_date_from": date_from,
                     "p_date_to": date_to,
                     "p_marketplace": marketplace,
-                    "p_include_costs_tree_revenue": include_ozon_truth
+                    "p_include_costs_tree_revenue": include_ozon_truth,
+                    "p_user_id": current_user.id,
                 }
             ).execute()
         else:
-            # Стандартный запрос без prev-period
             result = supabase.rpc(
                 "get_dashboard_summary",
                 {
                     "p_date_from": date_from,
                     "p_date_to": date_to,
-                    "p_marketplace": marketplace
+                    "p_marketplace": marketplace,
+                    "p_user_id": current_user.id,
                 }
             ).execute()
 
@@ -73,17 +61,13 @@ async def get_summary(
 
 @router.get("/dashboard/unit-economics")
 async def get_unit_economics(
+    current_user: CurrentUser = Depends(get_current_user),
     date_from: Optional[str] = Query(None),
     date_to: Optional[str] = Query(None),
     marketplace: Optional[str] = Query(None)
 ):
     """
     Unit-экономика по товарам
-
-    Возвращает для каждого товара:
-    - Продажи, выручка
-    - Удержания (комиссия, логистика, хранение и т.д.)
-    - Чистая прибыль на единицу
     """
     supabase = get_supabase_client()
 
@@ -93,23 +77,19 @@ async def get_unit_economics(
         date_to = datetime.now().strftime("%Y-%m-%d")
 
     try:
-        # Получаем товары
-        products_result = supabase.table("mp_products").select("*").execute()
+        products_result = supabase.table("mp_products").select("*").eq("user_id", current_user.id).execute()
         products = {p["id"]: p for p in products_result.data}
 
-        # Получаем продажи
-        sales_query = supabase.table("mp_sales").select("*").gte("date", date_from).lte("date", date_to)
+        sales_query = supabase.table("mp_sales").select("*").eq("user_id", current_user.id).gte("date", date_from).lte("date", date_to)
         if marketplace and marketplace != "all":
             sales_query = sales_query.eq("marketplace", marketplace)
         sales_result = sales_query.execute()
 
-        # Получаем удержания
-        costs_query = supabase.table("mp_costs").select("*").gte("date", date_from).lte("date", date_to)
+        costs_query = supabase.table("mp_costs").select("*").eq("user_id", current_user.id).gte("date", date_from).lte("date", date_to)
         if marketplace and marketplace != "all":
             costs_query = costs_query.eq("marketplace", marketplace)
         costs_result = costs_query.execute()
 
-        # Группируем по product_id
         product_metrics = {}
 
         for sale in sales_result.data:
@@ -123,14 +103,12 @@ async def get_unit_economics(
             product_metrics[product_id]["sales"] += sale.get("sales_count", 0)
             product_metrics[product_id]["revenue"] += float(sale.get("revenue", 0))
 
-        # Считаем costs только для товаров с продажами (исключаем orphan-затраты)
         for cost in costs_result.data:
             product_id = cost["product_id"]
             if product_id not in product_metrics:
-                continue  # Пропускаем затраты для товаров без продаж в периоде
+                continue
             product_metrics[product_id]["costs"] += float(cost.get("total_costs", 0))
 
-        # Рассчитываем unit-экономику
         result = []
         for product_id, metrics in product_metrics.items():
             if product_id not in products:
@@ -142,7 +120,6 @@ async def get_unit_economics(
             costs = metrics["costs"]
             purchase_price = float(product.get("purchase_price", 0))
 
-            # Чистая прибыль
             net_profit = revenue - costs - (purchase_price * sales_count)
             unit_profit = round(net_profit / sales_count, 2) if sales_count > 0 else 0
 
@@ -163,7 +140,6 @@ async def get_unit_economics(
                 }
             })
 
-        # Сортируем по прибыли
         result.sort(key=lambda x: x["metrics"]["net_profit"], reverse=True)
 
         return {
@@ -179,6 +155,7 @@ async def get_unit_economics(
 
 @router.get("/dashboard/sales-chart")
 async def get_sales_chart(
+    current_user: CurrentUser = Depends(get_current_user),
     date_from: Optional[str] = Query(None),
     date_to: Optional[str] = Query(None),
     marketplace: Optional[str] = Query(None),
@@ -195,7 +172,7 @@ async def get_sales_chart(
         date_to = datetime.now().strftime("%Y-%m-%d")
 
     try:
-        query = supabase.table("mp_sales").select("*").gte("date", date_from).lte("date", date_to).order("date")
+        query = supabase.table("mp_sales").select("*").eq("user_id", current_user.id).gte("date", date_from).lte("date", date_to).order("date")
 
         if marketplace and marketplace != "all":
             query = query.eq("marketplace", marketplace)
@@ -204,7 +181,6 @@ async def get_sales_chart(
 
         result = query.execute()
 
-        # Группируем по дате
         chart_data = {}
         for sale in result.data:
             date = sale["date"]
@@ -219,7 +195,6 @@ async def get_sales_chart(
             chart_data[date]["sales"] += sale.get("sales_count", 0)
             chart_data[date]["revenue"] += float(sale.get("revenue", 0))
 
-        # Рассчитываем средний чек
         for date_key in chart_data:
             sales_count = chart_data[date_key]["sales"]
             revenue = chart_data[date_key]["revenue"]
@@ -240,6 +215,7 @@ async def get_sales_chart(
 
 @router.get("/dashboard/ad-costs")
 async def get_ad_costs(
+    current_user: CurrentUser = Depends(get_current_user),
     date_from: Optional[str] = Query(None),
     date_to: Optional[str] = Query(None),
     marketplace: Optional[str] = Query(None)
@@ -255,19 +231,16 @@ async def get_ad_costs(
         date_to = datetime.now().strftime("%Y-%m-%d")
 
     try:
-        # Получаем рекламные расходы
-        ads_query = supabase.table("mp_ad_costs").select("*").gte("date", date_from).lte("date", date_to)
+        ads_query = supabase.table("mp_ad_costs").select("*").eq("user_id", current_user.id).gte("date", date_from).lte("date", date_to)
         if marketplace and marketplace != "all":
             ads_query = ads_query.eq("marketplace", marketplace)
         ads_result = ads_query.execute()
 
-        # Получаем продажи за тот же период для расчёта ДРР
-        sales_query = supabase.table("mp_sales").select("*").gte("date", date_from).lte("date", date_to)
+        sales_query = supabase.table("mp_sales").select("*").eq("user_id", current_user.id).gte("date", date_from).lte("date", date_to)
         if marketplace and marketplace != "all":
             sales_query = sales_query.eq("marketplace", marketplace)
         sales_result = sales_query.execute()
 
-        # Группируем продажи по дате
         revenue_by_date = {}
         for sale in sales_result.data:
             date = sale["date"]
@@ -275,7 +248,6 @@ async def get_ad_costs(
                 revenue_by_date[date] = 0
             revenue_by_date[date] += float(sale.get("revenue", 0))
 
-        # Группируем рекламные расходы по дате
         ads_by_date = {}
         total_ad_cost = 0
         total_impressions = 0
@@ -302,7 +274,6 @@ async def get_ad_costs(
             total_clicks += ad.get("clicks", 0)
             total_orders += ad.get("orders_count", 0)
 
-        # Рассчитываем ДРР по дням
         chart_data = []
         for date in sorted(set(list(ads_by_date.keys()) + list(revenue_by_date.keys()))):
             ad_data = ads_by_date.get(date, {"cost": 0, "impressions": 0, "clicks": 0, "orders": 0})
@@ -319,7 +290,6 @@ async def get_ad_costs(
                 "orders": ad_data["orders"]
             })
 
-        # Общий ДРР
         total_revenue = sum(revenue_by_date.values())
         total_drr = round(total_ad_cost / total_revenue * 100, 2) if total_revenue > 0 else 0
 
@@ -344,6 +314,7 @@ async def get_ad_costs(
 
 @router.get("/dashboard/costs-tree")
 async def get_costs_tree(
+    current_user: CurrentUser = Depends(get_current_user),
     date_from: Optional[str] = Query(None, description="Дата начала (YYYY-MM-DD)"),
     date_to: Optional[str] = Query(None, description="Дата окончания (YYYY-MM-DD)"),
     marketplace: Optional[str] = Query(None, description="Фильтр по МП: wb, ozon"),
@@ -352,7 +323,6 @@ async def get_costs_tree(
 ):
     """
     Иерархическое дерево удержаний (tree-view как в ЛК Ozon).
-    Использует RPC функцию для оптимизации.
     """
     supabase = get_supabase_client()
 
@@ -362,7 +332,6 @@ async def get_costs_tree(
         date_to = datetime.now().strftime("%Y-%m-%d")
 
     try:
-        # Вызываем RPC функцию — один запрос вместо нескольких
         result = supabase.rpc(
             "get_costs_tree",
             {
@@ -370,7 +339,8 @@ async def get_costs_tree(
                 "p_date_to": date_to,
                 "p_marketplace": marketplace,
                 "p_product_id": product_id,
-                "p_include_children": include_children
+                "p_include_children": include_children,
+                "p_user_id": current_user.id,
             }
         ).execute()
 
@@ -382,6 +352,7 @@ async def get_costs_tree(
 
 @router.get("/dashboard/costs-tree-combined")
 async def get_costs_tree_combined(
+    current_user: CurrentUser = Depends(get_current_user),
     date_from: Optional[str] = Query(None, description="Дата начала (YYYY-MM-DD)"),
     date_to: Optional[str] = Query(None, description="Дата окончания (YYYY-MM-DD)"),
     product_id: Optional[str] = Query(None, description="Фильтр по товару (UUID)"),
@@ -389,14 +360,6 @@ async def get_costs_tree_combined(
 ):
     """
     Объединённое дерево удержаний для Ozon и WB в одном запросе.
-    Экономит 1 HTTP запрос при marketplace=all.
-
-    Возвращает:
-    {
-      "ozon": { costs-tree для Ozon },
-      "wb": { costs-tree для WB },
-      "period": { "from": "...", "to": "..." }
-    }
     """
     supabase = get_supabase_client()
 
@@ -406,14 +369,14 @@ async def get_costs_tree_combined(
         date_to = datetime.now().strftime("%Y-%m-%d")
 
     try:
-        # Вызываем RPC функцию — один запрос вместо двух
         result = supabase.rpc(
             "get_costs_tree_combined",
             {
                 "p_date_from": date_from,
                 "p_date_to": date_to,
                 "p_product_id": product_id,
-                "p_include_children": include_children
+                "p_include_children": include_children,
+                "p_user_id": current_user.id,
             }
         ).execute()
 
@@ -424,22 +387,23 @@ async def get_costs_tree_combined(
 
 
 @router.get("/dashboard/stocks")
-async def get_stocks(marketplace: Optional[str] = Query(None)):
+async def get_stocks(
+    current_user: CurrentUser = Depends(get_current_user),
+    marketplace: Optional[str] = Query(None),
+):
     """
     Текущие остатки по складам
     """
     supabase = get_supabase_client()
 
     try:
-        query = supabase.table("mp_stocks").select("*, mp_products(name, barcode)")
+        query = supabase.table("mp_stocks").select("*, mp_products(name, barcode)").eq("user_id", current_user.id)
 
         if marketplace and marketplace != "all":
             query = query.eq("marketplace", marketplace)
 
         result = query.execute()
 
-        # Группируем по товару.
-        # Важно: НЕ по product_name (возможны совпадения), а по (product_id|barcode) как по устойчивому ключу.
         stocks_by_product: dict[str, dict] = {}
         for stock in result.data:
             product_data = stock.get("mp_products")
@@ -470,7 +434,6 @@ async def get_stocks(marketplace: Optional[str] = Query(None)):
             stocks_by_product[key]["warehouses"].append(warehouse_info)
             stocks_by_product[key]["total_quantity"] += stock["quantity"]
 
-            # last_updated_at: max(updated_at) среди складов (если есть)
             upd = stock.get("updated_at")
             if upd:
                 cur = stocks_by_product[key].get("last_updated_at")

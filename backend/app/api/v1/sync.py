@@ -1,12 +1,13 @@
 """
 Роутер для запуска синхронизации данных
 """
-from fastapi import APIRouter, HTTPException, BackgroundTasks, Request
+from fastapi import APIRouter, HTTPException, BackgroundTasks, Depends, Query
 from typing import Optional
 from datetime import datetime, timedelta, timezone
-import hmac
 
 from ...services.sync_service import SyncService
+from ...db.supabase import get_supabase_client
+from ...auth import CurrentUser, get_current_user, get_current_user_or_cron
 
 router = APIRouter()
 
@@ -29,50 +30,19 @@ def _parse_dt(value: str | None) -> datetime | None:
     except Exception:
         return None
     if dt.tzinfo is None:
-        # best-effort: assume UTC if tz missing
         return dt.replace(tzinfo=timezone.utc)
     return dt
 
 
-def _require_sync_token(request: Request) -> None:
-    """
-    Protect /sync/* endpoints.
-    If SYNC_TOKEN is configured, require it via X-Sync-Token or Authorization: Bearer.
-    """
-    from ...config import get_settings
-
-    token = (get_settings().sync_token or "").strip()
-    if not token:
-        # dev / not configured -> allow
-        return
-
-    provided = (request.headers.get("x-sync-token") or "").strip()
-    if not provided:
-        auth = (request.headers.get("authorization") or "").strip()
-        if auth.lower().startswith("bearer "):
-            provided = auth[7:].strip()
-
-    # hmac.compare_digest(str, str) in CPython requires ASCII-only strings.
-    # Use bytes to safely handle any user-provided header content.
-    ok = False
-    if provided:
-        try:
-            ok = hmac.compare_digest(provided.encode("utf-8"), token.encode("utf-8"))
-        except Exception:
-            ok = False
-
-    if not ok:
-        raise HTTPException(status_code=401, detail="Unauthorized (missing/invalid sync token)")
-
-
 @router.post("/sync/products")
-async def sync_products(request: Request):
+async def sync_products(
+    current_user: CurrentUser = Depends(get_current_user_or_cron),
+):
     """
     Синхронизация товаров (обновление WB/Ozon ID)
     """
     try:
-        _require_sync_token(request)
-        sync_service = SyncService()
+        sync_service = SyncService(user_id=current_user.id)
         result = await sync_service.sync_products()
         return result
     except HTTPException:
@@ -83,7 +53,7 @@ async def sync_products(request: Request):
 
 @router.post("/sync/sales")
 async def sync_sales(
-    request: Request,
+    current_user: CurrentUser = Depends(get_current_user_or_cron),
     days_back: int = 35,
     marketplace: Optional[str] = None,
     force: bool = False,
@@ -95,11 +65,7 @@ async def sync_sales(
     - **marketplace**: wb, ozon или all (по умолчанию)
     - **force**: игнорировать idempotency-guard (по умолчанию false)
     """
-    from ...db.supabase import get_supabase_client
-
     try:
-        _require_sync_token(request)
-
         # Idempotency + lock (protect from double-trigger / concurrent cron)
         supabase = get_supabase_client()
         now = datetime.now(timezone.utc)
@@ -111,6 +77,7 @@ async def sync_sales(
             .eq("marketplace", "all")
             .eq("sync_type", "sales")
             .eq("status", "running")
+            .eq("user_id", current_user.id)
             .order("started_at", desc=True)
             .limit(1)
             .execute()
@@ -132,6 +99,7 @@ async def sync_sales(
                 .eq("marketplace", "all")
                 .eq("sync_type", "sales")
                 .eq("status", "success")
+                .eq("user_id", current_user.id)
                 .order("finished_at", desc=True)
                 .limit(1)
                 .execute()
@@ -157,13 +125,14 @@ async def sync_sales(
                     "error_message": None,
                     "started_at": _now_utc_iso(),
                     "finished_at": None,
+                    "user_id": current_user.id,
                 }
             )
             .execute()
         )
         lock_id = lock_insert.data[0]["id"] if lock_insert.data else None
 
-        sync_service = SyncService()
+        sync_service = SyncService(user_id=current_user.id)
         date_from = datetime.now() - timedelta(days=days_back)
         date_to = datetime.now()
 
@@ -221,15 +190,17 @@ async def sync_sales(
 
 
 @router.post("/sync/stocks")
-async def sync_stocks(request: Request, marketplace: Optional[str] = None):
+async def sync_stocks(
+    current_user: CurrentUser = Depends(get_current_user_or_cron),
+    marketplace: Optional[str] = None,
+):
     """
     Синхронизация остатков на складах
 
     - **marketplace**: wb, ozon или all (по умолчанию)
     """
     try:
-        _require_sync_token(request)
-        sync_service = SyncService()
+        sync_service = SyncService(user_id=current_user.id)
         results = {}
 
         if marketplace in [None, "wb", "all"]:
@@ -250,7 +221,7 @@ async def sync_stocks(request: Request, marketplace: Optional[str] = None):
 
 @router.get("/sync/stocks/check")
 async def check_stocks(
-    request: Request,
+    current_user: CurrentUser = Depends(get_current_user_or_cron),
     marketplace: Optional[str] = None,
     days_back: int = 365,
 ):
@@ -261,11 +232,9 @@ async def check_stocks(
     - **days_back**: окно dateFrom для WB stocks (по умолчанию 365)
     """
     try:
-        _require_sync_token(request)
-        sync_service = SyncService()
+        sync_service = SyncService(user_id=current_user.id)
 
         if marketplace in [None, "wb", "all"]:
-            # Пока реализуем только WB, т.к. там есть сложности с "неполным снапшотом".
             return await sync_service.diagnose_stocks_wb(days_back=days_back)
 
         raise HTTPException(status_code=400, detail="Unsupported marketplace for stocks check (use wb)")
@@ -277,9 +246,9 @@ async def check_stocks(
 
 @router.post("/sync/costs")
 async def sync_costs(
-    request: Request,
+    current_user: CurrentUser = Depends(get_current_user_or_cron),
     days_back: int = 30,
-    marketplace: Optional[str] = None
+    marketplace: Optional[str] = None,
 ):
     """
     Синхронизация удержаний МП за последние N дней
@@ -288,8 +257,7 @@ async def sync_costs(
     - **marketplace**: wb, ozon или all (по умолчанию)
     """
     try:
-        _require_sync_token(request)
-        sync_service = SyncService()
+        sync_service = SyncService(user_id=current_user.id)
         date_from = datetime.now() - timedelta(days=days_back)
         date_to = datetime.now()
 
@@ -317,9 +285,9 @@ async def sync_costs(
 
 @router.post("/sync/ads")
 async def sync_ads(
-    request: Request,
+    current_user: CurrentUser = Depends(get_current_user_or_cron),
     days_back: int = 30,
-    marketplace: Optional[str] = None
+    marketplace: Optional[str] = None,
 ):
     """
     Синхронизация рекламных расходов за последние N дней
@@ -328,8 +296,7 @@ async def sync_ads(
     - **marketplace**: wb, ozon или all (по умолчанию)
     """
     try:
-        _require_sync_token(request)
-        sync_service = SyncService()
+        sync_service = SyncService(user_id=current_user.id)
         date_from = datetime.now() - timedelta(days=days_back)
         date_to = datetime.now()
 
@@ -358,9 +325,9 @@ async def sync_ads(
 @router.post("/sync/all")
 async def sync_all(
     background_tasks: BackgroundTasks,
-    request: Request,
+    current_user: CurrentUser = Depends(get_current_user_or_cron),
     days_back: int = 30,
-    run_in_background: bool = False
+    run_in_background: bool = False,
 ):
     """
     Полная синхронизация всех данных
@@ -369,8 +336,7 @@ async def sync_all(
     - **run_in_background**: запустить в фоне (по умолчанию false)
     """
     try:
-        _require_sync_token(request)
-        sync_service = SyncService()
+        sync_service = SyncService(user_id=current_user.id)
 
         if run_in_background:
             background_tasks.add_task(sync_service.sync_all, days_back)
@@ -390,18 +356,25 @@ async def sync_all(
 
 
 @router.get("/sync/logs")
-async def get_sync_logs(request: Request, limit: int = 50):
+async def get_sync_logs(
+    current_user: CurrentUser = Depends(get_current_user_or_cron),
+    limit: int = 50,
+):
     """
     Получить логи синхронизации
 
     - **limit**: количество последних записей (по умолчанию 50)
     """
-    from ...db.supabase import get_supabase_client
-
     try:
-        _require_sync_token(request)
         supabase = get_supabase_client()
-        result = supabase.table("mp_sync_log").select("*").order("finished_at", desc=True).limit(limit).execute()
+        result = (
+            supabase.table("mp_sync_log")
+            .select("*")
+            .eq("user_id", current_user.id)
+            .order("finished_at", desc=True)
+            .limit(limit)
+            .execute()
+        )
 
         return {
             "status": "success",

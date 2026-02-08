@@ -17,11 +17,18 @@ Use "npm run build" to check if code compiles or no. See results and fix code if
 > - **Пароль SSH:** `@vnDBp5VCt2+` (с символом @ в начале!)
 
 ### Текущие задачи:
-> - 🔄 **Улучшить PDF экспорт** — см. promt.md раздел "Предложения по PDF"
-> - 🔄 Улучшить UnitEconomicsPage
+> - ⏳ **Деплой SaaS Фаза 1 на VPS** — см. promt.md чеклист
+> - 🔄 **SaaS Фаза 2: Онбординг** — ввод токенов WB/Ozon
 > - 🔄 Улучшить AdsPage
+> - 🔄 Улучшить PDF экспорт — см. promt.md раздел "Предложения по PDF"
 
 ### Что сделано:
+> - ✅ **SaaS Фаза 1: Auth + RLS — КОД ГОТОВ (08.02.2026):**
+>   - Backend: JWT middleware (JWKS), auth на всех endpoints, sync_service с user_id
+>   - Frontend: LoginPage, ProtectedRoute, auth interceptor, email+logout в Layout
+>   - SQL: user_id во все 8 таблиц, RLS-политики, RPC с p_user_id, SET NOT NULL
+>   - CORS ограничен, cron через X-Cron-Secret + X-Cron-User-Id
+>   - Admin: exklante@gmail.com / UUID: 17e80396-86e1-4ec8-8cb2-f727462bf20c
 > - ✅ Деплой на Beget VPS с SSL
 > - ✅ DashboardPage работает, RPC оптимизация активна
 > - ✅ Mobile-first дизайн (боковая навигация, компактные карточки)
@@ -453,6 +460,46 @@ DashboardPage
 - PDF 3 страницы, ~76 КБ
 - Градиенты, шрифты, графики — всё корректно
 
+### Выполнено (SaaS Фаза 1: Auth + RLS — 08.02.2026):
+
+**Архитектура:** Hybrid — service_role_key на backend, RLS как safety net, JWT через JWKS.
+
+**SQL миграции (выполнены в Supabase):**
+- `004_add_user_id.sql` — user_id UUID + индексы + обновлённые UNIQUE constraints (8 таблиц)
+- `005_rls_policies.sql` — RLS ENABLE + CRUD-политики (auth.uid() = user_id)
+- `006_rpc_with_user_id.sql` — p_user_id во все 4 RPC функции
+- Данные привязаны к user 17e80396-86e1-4ec8-8cb2-f727462bf20c (exklante@gmail.com)
+- Все user_id колонки SET NOT NULL
+
+**Backend (новые файлы):**
+- `backend/app/auth.py` — JWT middleware (JWKS верификация через PyJWKClient, ES256+HS256)
+- `backend/requirements.txt` — +PyJWT[crypto]>=2.8.0
+- `backend/app/config.py` — +sync_cron_secret
+
+**Backend (изменённые файлы):**
+- `backend/app/main.py` — CORS ограничен (analitics.bixirun.ru + localhost:5173)
+- `backend/app/api/v1/dashboard.py` — auth + user_id в 7 endpoints
+- `backend/app/api/v1/products.py` — auth + user_id в 3 endpoints
+- `backend/app/api/v1/sync.py` — cron/jwt auth + user_id в 8 endpoints
+- `backend/app/api/v1/export.py` — auth + JWT pass-through для PDF
+- `backend/app/services/sync_service.py` — user_id во всех insert/upsert/delete (~30 мест)
+
+**Frontend (новые файлы):**
+- `frontend/src/lib/supabase.ts` — Supabase client (auth only)
+- `frontend/src/store/useAuthStore.ts` — Zustand auth store
+- `frontend/src/hooks/useAuth.ts` — auth listener (getSession + onAuthStateChange)
+- `frontend/src/pages/LoginPage.tsx` — login/register + eye toggle
+- `frontend/src/components/Shared/ProtectedRoute.tsx` — route guard
+
+**Frontend (изменённые файлы):**
+- `frontend/.env` — +VITE_SUPABASE_URL, +VITE_SUPABASE_ANON_KEY
+- `frontend/src/services/api.ts` — auth interceptor (Bearer token, PDF token, 401→/login)
+- `frontend/src/App.tsx` — useAuth(), /login route, ProtectedRoute wrapper
+- `frontend/src/components/Shared/Layout.tsx` — email + logout (desktop + mobile)
+- `frontend/src/pages/PrintPage.tsx` — reads ?token= from URL для PDF
+
+**Статус:** Код готов, SQL применён, ДЕПЛОЙ НА VPS PENDING.
+
 ### Следующий этап - Доработки:
 
 - [x] ~~Затраты за декабрь 2025 без продаж~~ — исправлено
@@ -470,16 +517,20 @@ DashboardPage
 - [x] Расхождение цифр верхней плашки и карточек ✅ (01.02.2026)
 - [x] CostsTreeView визуал — довести до 1-в-1 как в ЛК ✅
 - [x] Excel и PDF export ✅ (03.02.2026)
-- [ ] Улучшить UnitEconomicsPage
+- [x] UnitEconomicsPage переделана ✅ (08.02.2026)
+- [x] SaaS Фаза 1: Auth + RLS — код готов ✅ (08.02.2026)
+- [ ] Деплой SaaS Фаза 1 на VPS
+- [ ] SaaS Фаза 2: Онбординг (токены)
 - [ ] Улучшить AdsPage
 
 ## Технический стек
 
-- **Backend:** Python 3.14 + FastAPI
-- **Database:** Supabase (PostgreSQL)
+- **Backend:** Python 3.14 + FastAPI + PyJWT[crypto] (JWKS)
+- **Database:** Supabase (PostgreSQL + RLS + RPC)
+- **Auth:** Supabase Auth (email/password) + JWT middleware (JWKS)
 - **Frontend:** React 19.2 + TypeScript 5.9 + Vite 7.2 + Tailwind CSS 3
 - **State Management:** React Query 5.90 + Zustand 5.0
-- **Деплой:** Beget + Supabase (планируется)
+- **Деплой:** Beget VPS + Supabase + Let's Encrypt SSL
 
 ## Товары (5 SKU)
 
@@ -504,18 +555,20 @@ DashboardPage
 
 ## Структура БД (Supabase)
 
-Все таблицы с префиксом `mp_`:
+Все таблицы с префиксом `mp_`, все имеют `user_id UUID NOT NULL REFERENCES auth.users(id)`:
 
 - `mp_products` - товары с закупочными ценами и идентификаторами МП
 - `mp_sales` - продажи (ежедневная агрегация)
 - `mp_stocks` - остатки на складах
-- `mp_costs` - удержания маркетплейса (агрегация: commission, logistics,
-  storage...)
-- `mp_costs_details` - гранулярные удержания для tree-view (category,
-  subcategory, amount)
+- `mp_costs` - удержания маркетплейса (агрегация: commission, logistics, storage...)
+- `mp_costs_details` - гранулярные удержания для tree-view (category, subcategory, amount)
 - `mp_sales_geo` - география продаж
 - `mp_ad_costs` - рекламные расходы
 - `mp_sync_log` - логи синхронизации
+
+**RLS:** Все таблицы с `ENABLE ROW LEVEL SECURITY`, политики `auth.uid() = user_id`.
+**RPC:** 4 функции с `p_user_id` параметром (get_dashboard_summary, get_costs_tree, get_costs_tree_combined, get_dashboard_summary_with_prev).
+**UNIQUE constraints:** Все включают `user_id` (напр. `(user_id, product_id, marketplace, date)`).
 
 ## Структура проекта
 
@@ -527,16 +580,16 @@ Analitics/
 │   │   ├── services/        # WB и Ozon клиенты (готовы)
 │   │   ├── models/          # Pydantic модели
 │   │   ├── db/              # Supabase клиент
-│   │   └── config.py        # Settings (включая frontend_url для Playwright)
-│   ├── migrations/          # SQL миграции
+│   │   ├── auth.py          # JWT middleware (JWKS, CurrentUser, get_current_user_or_cron)
+│   │   └── config.py        # Settings (+ sync_cron_secret)
+│   ├── migrations/          # SQL миграции (004-006: user_id, RLS, RPC)
 │   ├── tests/
-│   ├── requirements.txt     # + playwright>=1.40.0
+│   ├── requirements.txt     # + playwright>=1.40.0, PyJWT[crypto]>=2.8.0
 │   └── test_api.py          # Тест подключения к API
-├── frontend/                # React + TypeScript (готов MVP v0.1)
+├── frontend/                # React + TypeScript
 ├── .env                     # API ключи (не коммитить!)
 ├── .gitignore
-├── BRIEF.md                 # Детальный бриф проекта
-└── CLAUDE.md                # Этот файл
+└── CLAUDE.md                # Основная документация проекта
 ```
 
 ## API ключи (.env)
@@ -657,7 +710,8 @@ frontend/
 │   │   │   └── WbAccrualsCard.tsx      ✅ Compact layout (50% width), СПП
 │   │   ├── Shared/
 │   │   │   ├── LoadingSpinner.tsx      ✅ Готово
-│   │   │   ├── Layout.tsx              ✅ Mobile: боковая плашка справа (25%), выезжающая панель; Desktop: header + nav
+│   │   │   ├── Layout.tsx              ✅ Mobile: панель + email/logout; Desktop: header + nav + email/logout
+│   │   │   ├── ProtectedRoute.tsx      ✅ Auth guard (Phase 1)
 │   │   │   ├── FilterPanel.tsx         ✅ Адаптивный
 │   │   │   └── DateRangePicker.tsx     ✅ v3 compact: 32px ячейки, пресеты, OK
 │   │   ├── Export/                     (удалён — PDF теперь через backend)
@@ -666,27 +720,31 @@ frontend/
 │   ├── hooks/
 │   │   ├── useDashboard.ts             ✅ Готово
 │   │   ├── useSync.ts                  ✅ Готово
+│   │   ├── useAuth.ts                  ✅ Auth listener (Phase 1)
 │   │   ├── useMediaQuery.ts            ✅ useIsMobile, useIsTablet, useIsDesktop
 │   │   └── useExport.ts                ✅ Excel/PDF экспорт hook
 │   ├── lib/
 │   │   ├── utils.ts                    ✅ Готово
+│   │   ├── supabase.ts                 ✅ Supabase client (Phase 1)
 │   │   └── exportExcel.ts              ✅ Генерация Excel (6 листов)
 │   ├── pages/
 │   │   ├── DashboardPage.tsx           ✅ Фильтры слева, графики справа
-│   │   └── PrintPage.tsx               ✅ PDF layout (3 страницы A4, без UI)
+│   │   ├── LoginPage.tsx               ✅ Login/Register + eye toggle (Phase 1)
+│   │   └── PrintPage.tsx               ✅ PDF layout (3 страницы A4, token из URL)
 │   ├── services/
-│   │   └── api.ts                      ✅ Готово
+│   │   └── api.ts                      ✅ Auth interceptor (Bearer, 401→/login)
 │   ├── store/
-│   │   └── useFiltersStore.ts          ✅ Zustand store
+│   │   ├── useFiltersStore.ts          ✅ Zustand store
+│   │   └── useAuthStore.ts             ✅ Auth store (Phase 1)
 │   ├── types/
 │   │   └── index.ts                    ✅ Готово
-│   ├── App.tsx                         ✅ Готово
+│   ├── App.tsx                         ✅ useAuth() + ProtectedRoute + /login
 │   ├── index.css                       ✅ RDP v9 стили
 │   └── main.tsx                        ✅ Готово
-├── .env                                ✅ Готово
+├── .env                                ✅ + VITE_SUPABASE_URL/KEY
 ├── tailwind.config.js                  ✅ Готово
 ├── postcss.config.js                   ✅ Готово
-└── package.json                        ✅ Готово
+└── package.json                        ✅ + @supabase/supabase-js
 ```
 
 ## Команды для работы
@@ -759,16 +817,20 @@ npm run build
 
 ### API keys:
 
-- Supabase ключи обновлены на новые (publishable/secret)
+- Supabase anon key: `sb_publishable_...` (НЕ JWT формат!)
 - WB токен валиден до 2025-09-04
 - Все ключи в `.env` - **НЕ КОММИТИТЬ В GIT!**
+- SYNC_CRON_SECRET: `analytics-cron-s3cr3t-2026`
+- **Два проекта в одном Supabase:** auth.users общие, mp_* таблицы — только наши
 
 ### Backend архитектура:
 
-- `sync_service.py` - центральный сервис синхронизации
+- `auth.py` — JWT middleware (JWKS верификация, поддержка ES256+HS256)
+- `sync_service.py` - центральный сервис синхронизации (с user_id)
 - Асинхронные клиенты (httpx) для API запросов
-- FastAPI с CORS для frontend
+- FastAPI с CORS (ограничен конкретными origins)
 - Swagger docs автоматически генерируется
+- Cron: X-Cron-Secret + X-Cron-User-Id headers (вместо JWT)
 
 ## Полная документация
 
@@ -776,9 +838,8 @@ npm run build
 
 - [backend/README.md](backend/README.md) - Backend API, схема БД, примеры
 - [frontend/README.md](frontend/README.md) - Frontend структура, компоненты
-- [DESIGN_REFERENCE.md](frontend/DESIGN_REFERENCE.md) - Гайд по дизайну (цвета,
-  шрифты, spacing)
-- [DECISIONS.md](DECISIONS.md) - Утверждённые решения по архитектуре
+- [DESIGN_REFERENCE.md](frontend/DESIGN_REFERENCE.md) - Гайд по дизайну (цвета, шрифты, spacing)
+- [promt.md](promt.md) - Промпт для нового чата + чеклист деплоя
 
 ## Согласованные решения
 
@@ -796,8 +857,11 @@ npm run build
 2. ✅ Фильтры, графики, таблица — **готово**
 3. ✅ Mobile-first адаптив — **готово**
 4. ✅ Excel/PDF export — **готово (Playwright)**
-5. ⏳ Unit-Economics — улучшить визуализацию
-6. ⏳ AdsPage — улучшить графики
+5. ✅ UnitEconomicsPage — **переделана (08.02.2026)**
+6. ✅ SaaS Фаза 1: Auth + RLS — **код готов (08.02.2026), деплой pending**
+7. ⏳ Деплой SaaS Фаза 1 на VPS
+8. ⏳ SaaS Фаза 2: Онбординг (токены)
+9. ⏳ AdsPage — улучшить графики
 
 ### Дизайн
 

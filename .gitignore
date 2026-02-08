@@ -36,5 +36,8 @@ dist/
 build/
 .next/
 
+# Supabase CLI
+supabase/.temp/
+
 # Docker
 docker-compose.override.yml

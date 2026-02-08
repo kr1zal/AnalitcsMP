@@ -22,5 +22,8 @@ pandas>=2.1.0
 pydantic>=2.5.0
 pydantic-settings>=2.1.0
 
+# JWT Auth (JWKS verification for Supabase)
+PyJWT[crypto]>=2.8.0
+
 # PDF Export
 playwright>=1.40.0

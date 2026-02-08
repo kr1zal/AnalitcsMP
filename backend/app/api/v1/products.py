@@ -1,29 +1,28 @@
 """
 Роутер для работы с товарами
 """
-from fastapi import APIRouter, HTTPException
-from typing import List, Optional
+from fastapi import APIRouter, HTTPException, Depends
+from typing import Optional
 
 from ...db.supabase import get_supabase_client
+from ...auth import CurrentUser, get_current_user
 
 router = APIRouter()
 
 
 @router.get("/products")
 async def get_products(
-    marketplace: Optional[str] = None
+    current_user: CurrentUser = Depends(get_current_user),
+    marketplace: Optional[str] = None,
 ):
     """
     Получить список всех товаров
-
-    - **marketplace**: фильтр по МП (wb, ozon) - опционально
     """
     supabase = get_supabase_client()
 
     try:
-        query = supabase.table("mp_products").select("*")
+        query = supabase.table("mp_products").select("*").eq("user_id", current_user.id)
 
-        # Если нужна фильтрация по наличию ID конкретного МП
         if marketplace == "wb":
             query = query.not_.is_("wb_nm_id", "null")
         elif marketplace == "ozon":
@@ -42,14 +41,17 @@ async def get_products(
 
 
 @router.get("/products/{product_id}")
-async def get_product_by_id(product_id: str):
+async def get_product_by_id(
+    product_id: str,
+    current_user: CurrentUser = Depends(get_current_user),
+):
     """
     Получить товар по ID (UUID)
     """
     supabase = get_supabase_client()
 
     try:
-        result = supabase.table("mp_products").select("*").eq("id", product_id).execute()
+        result = supabase.table("mp_products").select("*").eq("id", product_id).eq("user_id", current_user.id).execute()
 
         if not result.data:
             raise HTTPException(status_code=404, detail="Product not found")
@@ -66,14 +68,17 @@ async def get_product_by_id(product_id: str):
 
 
 @router.get("/products/barcode/{barcode}")
-async def get_product_by_barcode(barcode: str):
+async def get_product_by_barcode(
+    barcode: str,
+    current_user: CurrentUser = Depends(get_current_user),
+):
     """
     Получить товар по штрихкоду
     """
     supabase = get_supabase_client()
 
     try:
-        result = supabase.table("mp_products").select("*").eq("barcode", barcode).execute()
+        result = supabase.table("mp_products").select("*").eq("barcode", barcode).eq("user_id", current_user.id).execute()
 
         if not result.data:
             raise HTTPException(status_code=404, detail="Product not found")

@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 class SyncService:
     """Сервис синхронизации данных с маркетплейсов в Supabase"""
 
-    def __init__(self):
+    def __init__(self, user_id: str | None = None):
         settings = get_settings()
         self.wb_client = WildberriesClient(settings.wb_api_token)
         self.ozon_client = OzonClient(settings.ozon_client_id, settings.ozon_api_key)
@@ -27,6 +27,7 @@ class SyncService:
             settings.ozon_performance_client_secret
         )
         self.supabase = get_supabase_client()
+        self.user_id = user_id
 
         # Штрихкоды наших товаров
         self.barcodes = [
@@ -51,26 +52,35 @@ class SyncService:
                   records_count: int = 0, error_message: str = None,
                   started_at: datetime = None):
         """Записать лог синхронизации в БД"""
-        self.supabase.table("mp_sync_log").insert({
+        row = {
             "marketplace": marketplace,
             "sync_type": sync_type,
             "status": status,
             "records_count": records_count,
             "error_message": error_message,
             "started_at": started_at.isoformat() if started_at else None,
-            "finished_at": datetime.now().isoformat()
-        }).execute()
+            "finished_at": datetime.now().isoformat(),
+        }
+        if self.user_id:
+            row["user_id"] = self.user_id
+        self.supabase.table("mp_sync_log").insert(row).execute()
 
     def _get_product_id_by_barcode(self, barcode: str) -> Optional[str]:
         """Получить UUID товара по штрихкоду"""
-        result = self.supabase.table("mp_products").select("id").eq("barcode", barcode).execute()
+        query = self.supabase.table("mp_products").select("id").eq("barcode", barcode)
+        if self.user_id:
+            query = query.eq("user_id", self.user_id)
+        result = query.execute()
         if result.data:
             return result.data[0]["id"]
         return None
 
     def _get_products_map(self) -> dict:
         """Получить словарь товаров {barcode: {id, wb_nm_id, ozon_product_id}}"""
-        result = self.supabase.table("mp_products").select("*").execute()
+        query = self.supabase.table("mp_products").select("*")
+        if self.user_id:
+            query = query.eq("user_id", self.user_id)
+        result = query.execute()
         return {p["barcode"]: p for p in result.data}
 
     def _get_or_create_system_product_id(self, barcode: str, name: str) -> str:
@@ -80,22 +90,31 @@ class SyncService:
 
         Важно: purchase_price в схеме NOT NULL → ставим 0.
         """
-        existing = self.supabase.table("mp_products").select("id").eq("barcode", barcode).execute()
+        query = self.supabase.table("mp_products").select("id").eq("barcode", barcode)
+        if self.user_id:
+            query = query.eq("user_id", self.user_id)
+        existing = query.execute()
         if existing.data:
             return existing.data[0]["id"]
 
-        inserted = self.supabase.table("mp_products").insert({
+        row = {
             "barcode": barcode,
             "name": name,
             "purchase_price": 0,
             "updated_at": datetime.now().isoformat(),
-        }).execute()
+        }
+        if self.user_id:
+            row["user_id"] = self.user_id
+        inserted = self.supabase.table("mp_products").insert(row).execute()
         # Supabase returns inserted row(s) in data for insert
         if inserted.data:
             return inserted.data[0]["id"]
 
         # Fallback: try re-select (in case insert returned empty but succeeded)
-        existing = self.supabase.table("mp_products").select("id").eq("barcode", barcode).execute()
+        query = self.supabase.table("mp_products").select("id").eq("barcode", barcode)
+        if self.user_id:
+            query = query.eq("user_id", self.user_id)
+        existing = query.execute()
         if existing.data:
             return existing.data[0]["id"]
         raise RuntimeError(f"Failed to create system product for barcode={barcode}")
@@ -125,11 +144,14 @@ class SyncService:
                     for barcode in size.get("skus", []):
                         if barcode in self.barcodes:
                             # Обновляем в БД
-                            self.supabase.table("mp_products").update({
+                            query = self.supabase.table("mp_products").update({
                                 "wb_nm_id": nm_id,
                                 "wb_vendor_code": vendor_code,
                                 "updated_at": datetime.now().isoformat()
-                            }).eq("barcode", barcode).execute()
+                            }).eq("barcode", barcode)
+                            if self.user_id:
+                                query = query.eq("user_id", self.user_id)
+                            query.execute()
                             updated_count += 1
                             logger.info(f"WB: обновлен товар {barcode} -> nm_id={nm_id}")
 
@@ -142,11 +164,14 @@ class SyncService:
                 offer_id = product.get("offer_id")  # offer_id = штрихкод в Ozon
 
                 if offer_id in self.barcodes:
-                    self.supabase.table("mp_products").update({
+                    query = self.supabase.table("mp_products").update({
                         "ozon_product_id": product_id,
                         "ozon_offer_id": offer_id,
                         "updated_at": datetime.now().isoformat()
-                    }).eq("barcode", offer_id).execute()
+                    }).eq("barcode", offer_id)
+                    if self.user_id:
+                        query = query.eq("user_id", self.user_id)
+                    query.execute()
                     updated_count += 1
                     logger.info(f"Ozon: обновлен товар {offer_id} -> product_id={product_id}")
 
@@ -225,7 +250,7 @@ class SyncService:
                 buyout_percent = round(data["sales"] / orders_count * 100, 2) if orders_count > 0 else None
 
                 # Upsert в mp_sales
-                self.supabase.table("mp_sales").upsert({
+                row = {
                     "product_id": product_id,
                     "marketplace": "wb",
                     "date": date,
@@ -233,8 +258,13 @@ class SyncService:
                     "sales_count": data["sales"],
                     "returns_count": data["returns"],
                     "revenue": data["revenue"],
-                    "buyout_percent": buyout_percent
-                }, on_conflict="product_id,marketplace,date").execute()
+                    "buyout_percent": buyout_percent,
+                }
+                if self.user_id:
+                    row["user_id"] = self.user_id
+                self.supabase.table("mp_sales").upsert(
+                    row, on_conflict="user_id,product_id,marketplace,date"
+                ).execute()
                 records_count += 1
 
             # Получаем воронку (cart_adds) если есть nm_ids
@@ -255,9 +285,12 @@ class SyncService:
                             for stat in card.get("statistics", {}).get("selectedPeriod", {}).get("conversions", []):
                                 # Обновляем cart_adds за период
                                 cart_adds = stat.get("addToCart", 0)
-                                self.supabase.table("mp_sales").update({
+                                query = self.supabase.table("mp_sales").update({
                                     "cart_adds": cart_adds
-                                }).eq("product_id", product_id).eq("marketplace", "wb").gte("date", date_from.strftime("%Y-%m-%d")).execute()
+                                }).eq("product_id", product_id).eq("marketplace", "wb").gte("date", date_from.strftime("%Y-%m-%d"))
+                                if self.user_id:
+                                    query = query.eq("user_id", self.user_id)
+                                query.execute()
                 except Exception as e:
                     logger.warning(f"Не удалось получить воронку WB: {e}")
 
@@ -325,7 +358,7 @@ class SyncService:
                     continue
 
                 # Upsert с реальной датой
-                self.supabase.table("mp_sales").upsert({
+                upsert_row = {
                     "product_id": product_id,
                     "marketplace": "ozon",
                     "date": day_str,
@@ -334,8 +367,13 @@ class SyncService:
                     "returns_count": returns,
                     "revenue": revenue,
                     "cart_adds": cart_adds,
-                    "buyout_percent": round((orders - returns) / orders * 100, 2) if orders > 0 else None
-                }, on_conflict="product_id,marketplace,date").execute()
+                    "buyout_percent": round((orders - returns) / orders * 100, 2) if orders > 0 else None,
+                }
+                if self.user_id:
+                    upsert_row["user_id"] = self.user_id
+                self.supabase.table("mp_sales").upsert(
+                    upsert_row, on_conflict="user_id,product_id,marketplace,date"
+                ).execute()
                 records_count += 1
 
             self._log_sync("ozon", "sales", "success", records_count, started_at=started_at)
@@ -429,15 +467,18 @@ class SyncService:
 
             now_iso = datetime.now().isoformat()
             for (pid, wh), qty in agg.items():
+                upsert_row = {
+                    "product_id": pid,
+                    "marketplace": "wb",
+                    "warehouse": wh,
+                    "quantity": qty,
+                    "updated_at": now_iso,
+                }
+                if self.user_id:
+                    upsert_row["user_id"] = self.user_id
                 self.supabase.table("mp_stocks").upsert(
-                    {
-                        "product_id": pid,
-                        "marketplace": "wb",
-                        "warehouse": wh,
-                        "quantity": qty,
-                        "updated_at": now_iso,
-                    },
-                    on_conflict="product_id,marketplace,warehouse",
+                    upsert_row,
+                    on_conflict="user_id,product_id,marketplace,warehouse",
                 ).execute()
                 records_count += 1
 
@@ -523,12 +564,14 @@ class SyncService:
             wb_by_pid_total[pid] = wb_by_pid_total.get(pid, 0) + qty
 
         # DB agg
-        db_rows = (
+        db_query = (
             self.supabase.table("mp_stocks")
             .select("product_id, warehouse, quantity, updated_at, mp_products(name, barcode)")
             .eq("marketplace", "wb")
-            .execute()
         )
+        if self.user_id:
+            db_query = db_query.eq("user_id", self.user_id)
+        db_rows = db_query.execute()
         db_by_pid_wh: dict[tuple[str, str], int] = {}
         db_by_pid_total: dict[str, int] = {}
         last_updated_by_pid: dict[str, str] = {}
@@ -635,7 +678,7 @@ class SyncService:
                 res = await self.ozon_client.get_all_stocks(filter=flt)
                 return (res or {}).get("result", {}).get("items", []) or []
 
-            # 1) product_id (самый надёжный для FBO/“Склад Ozon”)
+            # 1) product_id (самый надёжный для FBO/"Склад Ozon")
             stocks: list[dict] = []
             if product_ids:
                 stocks = await _fetch_items({"visibility": "ALL", "product_id": product_ids})
@@ -705,15 +748,18 @@ class SyncService:
                             logger.warning(f"Ozon stock_on_warehouses: unmapped row sku={sku} item_code={item_code}")
                             continue
 
+                        upsert_row = {
+                            "product_id": product_id,
+                            "marketplace": "ozon",
+                            "warehouse": warehouse,
+                            "quantity": qty,
+                            "updated_at": datetime.now().isoformat(),
+                        }
+                        if self.user_id:
+                            upsert_row["user_id"] = self.user_id
                         self.supabase.table("mp_stocks").upsert(
-                            {
-                                "product_id": product_id,
-                                "marketplace": "ozon",
-                                "warehouse": warehouse,
-                                "quantity": qty,
-                                "updated_at": datetime.now().isoformat(),
-                            },
-                            on_conflict="product_id,marketplace,warehouse",
+                            upsert_row,
+                            on_conflict="user_id,product_id,marketplace,warehouse",
                         ).execute()
                         records_count += 1
 
@@ -744,13 +790,19 @@ class SyncService:
                     # Ближе к "доступно к продаже": present - reserved (если reserved есть).
                     quantity = max(present - reserved, 0)
 
-                    self.supabase.table("mp_stocks").upsert({
+                    upsert_row = {
                         "product_id": product_id,
                         "marketplace": "ozon",
                         "warehouse": warehouse,
                         "quantity": quantity,
-                        "updated_at": datetime.now().isoformat()
-                    }, on_conflict="product_id,marketplace,warehouse").execute()
+                        "updated_at": datetime.now().isoformat(),
+                    }
+                    if self.user_id:
+                        upsert_row["user_id"] = self.user_id
+                    self.supabase.table("mp_stocks").upsert(
+                        upsert_row,
+                        on_conflict="user_id,product_id,marketplace,warehouse",
+                    ).execute()
                     records_count += 1
 
             # Если по Ozon пусто — логируем как success с 0, но добавляем диагностическое сообщение
@@ -887,7 +939,7 @@ class SyncService:
 
             # Сохраняем mp_costs
             for (pid, date), costs in costs_agg.items():
-                self.supabase.table("mp_costs").upsert({
+                upsert_row = {
                     "product_id": pid,
                     "marketplace": "wb",
                     "date": date,
@@ -898,20 +950,29 @@ class SyncService:
                     "penalties": round(costs["penalties"], 2),
                     "acquiring": round(costs["acquiring"], 2),
                     "other_costs": round(costs["other"], 2),
-                }, on_conflict="product_id,marketplace,date").execute()
+                }
+                if self.user_id:
+                    upsert_row["user_id"] = self.user_id
+                self.supabase.table("mp_costs").upsert(
+                    upsert_row, on_conflict="user_id,product_id,marketplace,date"
+                ).execute()
                 records_count += 1
 
             # Удаляем старые записи деталей WB за период и вставляем новые
-            self.supabase.table("mp_costs_details") \
-                .delete() \
-                .eq("marketplace", "wb") \
-                .gte("date", date_from.strftime("%Y-%m-%d")) \
-                .lte("date", date_to.strftime("%Y-%m-%d")) \
-                .execute()
+            delete_query = (
+                self.supabase.table("mp_costs_details")
+                .delete()
+                .eq("marketplace", "wb")
+                .gte("date", date_from.strftime("%Y-%m-%d"))
+                .lte("date", date_to.strftime("%Y-%m-%d"))
+            )
+            if self.user_id:
+                delete_query = delete_query.eq("user_id", self.user_id)
+            delete_query.execute()
 
             details_count = 0
             for (pid, date, category, subcategory), data in details_agg.items():
-                self.supabase.table("mp_costs_details").insert({
+                insert_row = {
                     "product_id": pid,
                     "marketplace": "wb",
                     "date": date,
@@ -920,7 +981,10 @@ class SyncService:
                     "amount": round(float(data["amount"] or 0), 2),
                     "operation_type": data.get("operation_type", "WB"),
                     "operation_id": data.get("operation_id", ""),
-                }).execute()
+                }
+                if self.user_id:
+                    insert_row["user_id"] = self.user_id
+                self.supabase.table("mp_costs_details").insert(insert_row).execute()
                 details_count += 1
 
             self._log_sync("wb", "costs", "success", records_count, started_at=started_at)
@@ -1309,7 +1373,7 @@ class SyncService:
                 if not product_id:
                     continue
 
-                self.supabase.table("mp_costs").upsert({
+                upsert_row = {
                     "product_id": product_id,
                     "marketplace": "ozon",
                     "date": date,
@@ -1319,8 +1383,13 @@ class SyncService:
                     "promotion": costs["promotion"],
                     "penalties": costs["penalties"],
                     "acquiring": costs["acquiring"],
-                    "other_costs": costs["other"]
-                }, on_conflict="product_id,marketplace,date").execute()
+                    "other_costs": costs["other"],
+                }
+                if self.user_id:
+                    upsert_row["user_id"] = self.user_id
+                self.supabase.table("mp_costs").upsert(
+                    upsert_row, on_conflict="user_id,product_id,marketplace,date"
+                ).execute()
                 records_count += 1
 
             # === 2. Гранулярные данные для mp_costs_details (tree-view) ===
@@ -1414,16 +1483,20 @@ class SyncService:
                             details_agg[key]["amount"] += sign * (cents / 100.0)
 
             # Удаляем старые записи за период перед вставкой
-            self.supabase.table("mp_costs_details") \
-                .delete() \
-                .eq("marketplace", "ozon") \
-                .gte("date", date_from.strftime("%Y-%m-%d")) \
-                .lte("date", date_to.strftime("%Y-%m-%d")) \
-                .execute()
+            delete_query = (
+                self.supabase.table("mp_costs_details")
+                .delete()
+                .eq("marketplace", "ozon")
+                .gte("date", date_from.strftime("%Y-%m-%d"))
+                .lte("date", date_to.strftime("%Y-%m-%d"))
+            )
+            if self.user_id:
+                delete_query = delete_query.eq("user_id", self.user_id)
+            delete_query.execute()
 
             # Сохраняем mp_costs_details
             for (pid, date, category, subcategory), data in details_agg.items():
-                self.supabase.table("mp_costs_details").insert({
+                insert_row = {
                     "product_id": pid,
                     "marketplace": "ozon",
                     "date": date,
@@ -1432,7 +1505,10 @@ class SyncService:
                     "amount": round(data["amount"], 2),
                     "operation_type": data["operation_type"],
                     "operation_id": data["operation_id"],
-                }).execute()
+                }
+                if self.user_id:
+                    insert_row["user_id"] = self.user_id
+                self.supabase.table("mp_costs_details").insert(insert_row).execute()
                 details_count += 1
 
             logger.info(f"Ozon costs: {records_count} mp_costs records, {details_count} mp_costs_details records")
@@ -1509,7 +1585,7 @@ class SyncService:
                             cpc = round(cost / clicks, 2) if clicks > 0 else 0
                             acos = round(cost / float(nm.get("ordersSumRub", 1)) * 100, 2) if nm.get("ordersSumRub") else None
 
-                            self.supabase.table("mp_ad_costs").upsert({
+                            upsert_row = {
                                 "product_id": product_id,
                                 "marketplace": "wb",
                                 "date": date,
@@ -1520,8 +1596,13 @@ class SyncService:
                                 "orders_count": orders,
                                 "ctr": ctr,
                                 "cpc": cpc,
-                                "acos": acos
-                            }, on_conflict="product_id,marketplace,date,campaign_id").execute()
+                                "acos": acos,
+                            }
+                            if self.user_id:
+                                upsert_row["user_id"] = self.user_id
+                            self.supabase.table("mp_ad_costs").upsert(
+                                upsert_row, on_conflict="user_id,product_id,marketplace,date,campaign_id"
+                            ).execute()
                             records_count += 1
 
             self._log_sync("wb", "ads", "success", records_count, started_at=started_at)
@@ -1579,7 +1660,7 @@ class SyncService:
                         ctr = round(clicks / views * 100, 2) if views > 0 else 0
                         cpc = round(cost / clicks, 2) if clicks > 0 else 0
 
-                        self.supabase.table("mp_ad_costs").upsert({
+                        upsert_row = {
                             "product_id": None,
                             "marketplace": "ozon",
                             "date": date,
@@ -1589,8 +1670,13 @@ class SyncService:
                             "cost": cost,
                             "orders_count": orders,
                             "ctr": ctr,
-                            "cpc": cpc
-                        }, on_conflict="product_id,marketplace,date,campaign_id").execute()
+                            "cpc": cpc,
+                        }
+                        if self.user_id:
+                            upsert_row["user_id"] = self.user_id
+                        self.supabase.table("mp_ad_costs").upsert(
+                            upsert_row, on_conflict="user_id,product_id,marketplace,date,campaign_id"
+                        ).execute()
                         records_count += 1
 
                 except Exception as e:

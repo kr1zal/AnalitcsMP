@@ -97,6 +97,12 @@ function fillMissingAdDates(
 export function PrintPage() {
   const [searchParams] = useSearchParams();
 
+  // Если Playwright передал JWT через URL — используем его для API запросов
+  const tokenFromUrl = searchParams.get('token');
+  if (tokenFromUrl) {
+    window.__PDF_TOKEN = tokenFromUrl;
+  }
+
   const dateFrom = searchParams.get('from') || '';
   const dateTo = searchParams.get('to') || '';
   const marketplace = (searchParams.get('marketplace') || 'all') as 'all' | 'ozon' | 'wb';

@@ -2,6 +2,7 @@
  * API клиент для взаимодействия с backend
  */
 import axios from 'axios';
+import { supabase } from '../lib/supabase';
 import type {
   ProductsResponse,
   DashboardSummaryResponse,
@@ -26,11 +27,48 @@ const api = axios.create({
   },
 });
 
+// ==================== AUTH INTERCEPTOR ====================
+
+// PrintPage передаёт JWT через URL (?token=...) — используем его приоритетно
+declare global {
+  interface Window {
+    __PDF_TOKEN?: string;
+  }
+}
+
+api.interceptors.request.use(async (config) => {
+  // Приоритет 1: PDF token (передан через URL в PrintPage)
+  if (window.__PDF_TOKEN) {
+    config.headers.Authorization = `Bearer ${window.__PDF_TOKEN}`;
+    return config;
+  }
+
+  // Приоритет 2: Supabase session token
+  const { data: { session } } = await supabase.auth.getSession();
+  if (session?.access_token) {
+    config.headers.Authorization = `Bearer ${session.access_token}`;
+  }
+
+  return config;
+});
+
+// 401 → redirect to /login
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response?.status === 401 && !window.__PDF_TOKEN) {
+      // Не редиректим если уже на /login
+      if (window.location.pathname !== '/login') {
+        window.location.href = '/login';
+      }
+    }
+    return Promise.reject(error);
+  }
+);
+
 // Interceptor для логирования запросов (только в dev режиме)
 if (import.meta.env.DEV) {
   api.interceptors.request.use((config) => {
-    // ВАЖНО: не логируем payload ответа (response.data) — это сильно замедляет UI на больших ответах.
-    // Пишем только метаданные: method/url + время/размер (если есть).
     (config as any).__meta = {
       startMs: typeof performance !== 'undefined' ? performance.now() : Date.now(),
     };
@@ -184,8 +222,6 @@ export const dashboardApi = {
     return data;
   },
 };
-
-// ==================== СИНХРОНИЗАЦИЯ ====================
 
 // ==================== ЭКСПОРТ ====================
 

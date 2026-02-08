@@ -117,5 +117,5 @@ npm run dev
 
 - [DESIGN_REFERENCE.md](DESIGN_REFERENCE.md) — гайд по дизайну
 - [../CLAUDE.md](../CLAUDE.md) — главная документация проекта
-- [../DECISIONS.md](../DECISIONS.md) — архитектурные решения
+- [../promt.md](../promt.md) — промпт для нового чата
 - [../backend/README.md](../backend/README.md) — backend API

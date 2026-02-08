@@ -19,11 +19,11 @@ class Settings(BaseSettings):
     supabase_anon_key: str
     supabase_service_role_key: str
 
-    # Sync security (protect /sync/* endpoints in production)
-    # If set, requests must provide this token via:
-    # - header: X-Sync-Token: <token>
-    # - or: Authorization: Bearer <token>
+    # Sync security (legacy, unused — replaced by JWT auth)
     sync_token: str | None = None
+
+    # Cron secret for server-side sync jobs (X-Cron-Secret header)
+    sync_cron_secret: str | None = None
 
     # App
     debug: bool = True

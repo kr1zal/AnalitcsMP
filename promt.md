@@ -15,24 +15,109 @@
 **Production:** https://analitics.bixirun.ru (Beget VPS 83.222.16.15)
 **Local:** Backend http://localhost:8000, Frontend http://localhost:5173
 
-**Текущее состояние (03.02.2026):**
+**Текущее состояние (08.02.2026):**
 - Деплой завершён, сайт работает на https://analitics.bixirun.ru
 - SSL настроен (Let's Encrypt, автопродление)
 - DashboardPage работает, RPC оптимизация активна, mobile-first дизайн готов
 - ✅ Cron настроен (07:00, 13:00 — sales+costs; каждые 6ч — stocks)
-- ✅ Ozon stocks 400 error исправлен
-- ✅ Скелетоны реализованы
-- ✅ **Мобильное меню улучшено:** swipe закрытие, компактнее, ярлычок виднее
-- ✅ **Экспорт в Excel/PDF (03.02.2026):**
-  - Excel: 6 листов (Сводка по OZON/WB, Продажи, Реклама, Удержания, Unit-экономика, Остатки)
-  - **PDF: Playwright на backend** — идеальное качество, 3 страницы A4
-  - Mobile: кнопки-иконки рядом с МП селектором
-  - Backend: playwright + chromium, swap 2GB на сервере
+- ✅ **UnitEconomicsPage переделана (08.02.2026):**
+  - 4 KPI-карточки (Выручка, Прибыль, Ср.маржа, Прибыль/ед.)
+  - Horizontal bars ТОП-5 + BOTTOM-3 по прибыли
+  - Сортируемая таблица (клик по заголовку), поиск по названию
+  - Пагинация по 20 (масштабируется на 100+ товаров)
+  - Mobile-first: карточки вместо таблицы на мобиле
+  - Цветовая маржа: зелёный >20%, жёлтый 10-20%, красный <10%
+- ✅ Удалены мёртвые зависимости (html2canvas, jspdf) и файлы (Export/PdfExportContent.tsx, lib/exportPdf.ts)
+- ✅ Excel/PDF экспорт работает (Playwright на backend)
+- ✅ Мобильное меню, скелетоны, tooltips — всё готово
+- ✅ **SaaS Фаза 1: Auth + RLS — КОД ГОТОВ (08.02.2026), ДЕПЛОЙ PENDING**
+  - Supabase Auth (email/password, Confirm Email OFF)
+  - JWT middleware на backend (JWKS верификация, ES256+HS256)
+  - user_id во все 8 mp_* таблиц + RLS-политики + RPC с p_user_id
+  - Frontend: LoginPage, ProtectedRoute, auth interceptor в axios
+  - CORS ограничен (было `*`, стало конкретные origins)
+  - Cron: X-Cron-Secret + X-Cron-User-Id headers
+  - Admin: exklante@gmail.com / 123456 / UUID: 17e80396-86e1-4ec8-8cb2-f727462bf20c
 
-**Текущие задачи:**
-- 🔄 **Улучшить PDF экспорт (PrintPage.tsx)** — см. раздел "Предложения по PDF"
-- 🔄 Улучшить UnitEconomicsPage (графики, детализация)
-- 🔄 Улучшить AdsPage (графики ДРР)
+**ГЛАВНАЯ ЗАДАЧА — SaaS-трансформация:**
+
+Превратить проект из одно-пользовательского дашборда в подписочный SaaS:
+1. ✅ **Auth + RLS** — Supabase Auth, JWT middleware, RLS, user_id — **КОД ГОТОВ, ДЕПЛОЙ PENDING**
+2. **Онбординг** — пользователь вводит токены WB/Ozon → валидация → первичный sync
+3. **Тарифы** — Free (7 дней, 10 SKU, без экспорта) / Pro (всё)
+4. **Категории из API** — WB subjectName + Ozon category_id (автоматически при sync)
+5. **Очередь sync** — APScheduler с приоритетами для нескольких пользователей
+
+**Порядок реализации SaaS:**
+```
+Фаза 1: Auth + RLS (фундамент) ✅ КОД ГОТОВ, ДЕПЛОЙ PENDING
+  ├── ✅ Supabase Auth настройка (email/password, Confirm Email OFF)
+  ├── ✅ user_id во все 8 таблиц (004_add_user_id.sql) + SET NOT NULL
+  ├── ✅ RLS-политики (005_rls_policies.sql)
+  ├── ✅ RPC с p_user_id (006_rpc_with_user_id.sql)
+  ├── ✅ Backend: JWT middleware (JWKS), auth в endpoints, sync_service с user_id
+  ├── ✅ Frontend: Login/Register, ProtectedRoute, auth interceptor
+  ├── ✅ Данные привязаны к exklante@gmail.com (UUID: 17e80396...)
+  └── ⏳ ДЕПЛОЙ на VPS (см. чеклист ниже)
+
+Фаза 2: Онбординг (ввод токенов)
+  ├── Таблица user_marketplace_tokens (зашифрованные)
+  ├── Страница "Подключить маркетплейс" (WB token + Ozon tokens)
+  ├── Валидация токенов (тестовый API-запрос)
+  ├── Первичная синхронизация с прогресс-баром
+  └── sync_service.py → токены из БД (не из .env)
+
+Фаза 3: Тарифы + feature gating
+  ├── Таблица user_subscriptions
+  ├── Free: 7 дней, 10 SKU, без Excel/PDF
+  ├── Pro: всё безлимитно
+  └── UI: paywall компоненты
+
+Фаза 4: Масштабирование
+  ├── Очередь sync (Pro → Basic → Free)
+  ├── Категории из WB/Ozon API (автоматически)
+  └── Rate limiting для API маркетплейсов
+```
+
+**Фичи ПОСЛЕ SaaS (не раньше):**
+- Прибыль на карточках OZON/WB
+- Возвраты + ДРР от заказов/выкупов
+- План продаж (ручной ввод)
+- Donut chart по категориям
+- Позаказный монитор (Pro-фича)
+
+---
+
+## ⏳ Деплой SaaS Фаза 1 — ЧЕКЛИСТ:
+
+```bash
+# 1. Backend: скопировать файлы + установить PyJWT
+sshpass -p '@vnDBp5VCt2+' rsync -avz --exclude 'venv' --exclude '__pycache__' backend/ root@83.222.16.15:/var/www/analytics/backend/
+ssh root@83.222.16.15 "cd /var/www/analytics/backend && source venv/bin/activate && pip install 'PyJWT[crypto]>=2.8.0'"
+
+# 2. Скопировать .env с SYNC_CRON_SECRET
+sshpass -p '@vnDBp5VCt2+' scp .env root@83.222.16.15:/var/www/analytics/.env
+
+# 3. Frontend: обновить .env на сервере + build + deploy
+# ВАЖНО: на сервере frontend/.env должен содержать:
+#   VITE_SUPABASE_URL=https://wesrkttwjuvclvfkuxzx.supabase.co
+#   VITE_SUPABASE_ANON_KEY=sb_publishable_LDbqC5uAVqU5N9evkAR7ag_7XQw5tAA
+cd frontend && npm run build
+sshpass -p '@vnDBp5VCt2+' rsync -avz --delete dist/ root@83.222.16.15:/var/www/analytics/frontend/
+
+# 4. Перезапуск backend
+ssh root@83.222.16.15 "systemctl restart analytics-api"
+
+# 5. Обновить cron на сервере — добавить headers:
+#   -H "X-Cron-Secret: analytics-cron-s3cr3t-2026"
+#   -H "X-Cron-User-Id: 17e80396-86e1-4ec8-8cb2-f727462bf20c"
+
+# 6. Проверить
+# - https://analitics.bixirun.ru/login — должна открыться форма входа
+# - Войти: exklante@gmail.com / 123456
+# - Dashboard должен загрузить данные
+# - Cron sync должен работать с новыми headers
+```
 
 ---
 
@@ -114,9 +199,10 @@ systemctl restart analytics-api
 ---
 
 ## Текущие задачи:
-- 🔄 **Улучшить PDF экспорт (PrintPage.tsx)** — см. раздел "Предложения по PDF"
-- 🔄 Улучшить UnitEconomicsPage (графики, детализация по товарам)
+- ⏳ **Деплой SaaS Фаза 1 на VPS** — см. чеклист выше
+- 🔄 **SaaS Фаза 2: Онбординг** — пользователь вводит свои токены WB/Ozon
 - 🔄 Улучшить AdsPage (графики ДРР по дням)
+- 🔄 Улучшить PDF экспорт (PrintPage.tsx) — см. раздел "Предложения по PDF"
 
 ---
 
@@ -160,29 +246,49 @@ systemctl restart analytics-api
 
 ## Ключевые файлы:
 
-Frontend:
+Frontend (Auth — Фаза 1):
+- `frontend/src/lib/supabase.ts` — Supabase клиент (auth only)
+- `frontend/src/store/useAuthStore.ts` — Zustand auth store (user, session, logout)
+- `frontend/src/hooks/useAuth.ts` — auth listener (getSession + onAuthStateChange)
+- `frontend/src/pages/LoginPage.tsx` — login/register + eye toggle
+- `frontend/src/components/Shared/ProtectedRoute.tsx` — route guard
+- `frontend/src/services/api.ts` — API клиент + auth interceptor (Bearer token, 401→/login)
+
+Frontend (основные):
 - `frontend/src/pages/DashboardPage.tsx` — главная страница
-- `frontend/src/pages/PrintPage.tsx` — страница для PDF (3 секции A4, без UI)
-- `frontend/src/pages/UnitEconomicsPage.tsx` — unit-экономика (TODO: улучшить)
+- `frontend/src/pages/PrintPage.tsx` — страница для PDF (3 секции A4, без UI, token из URL)
+- `frontend/src/pages/UnitEconomicsPage.tsx` — unit-экономика
 - `frontend/src/components/Dashboard/OzonAccrualsCard.tsx` — карточка OZON
 - `frontend/src/components/Dashboard/WbAccrualsCard.tsx` — карточка WB
 - `frontend/src/components/Shared/FilterPanel.tsx` — фильтры + кнопки экспорта
-- `frontend/src/hooks/useExport.ts` — hook для Excel/PDF экспорта
-- `frontend/src/lib/exportExcel.ts` — генерация Excel (6 листов)
-- `frontend/src/services/api.ts` — API клиент (включая exportApi)
+- `frontend/src/components/Shared/Layout.tsx` — навигация + email/logout
+- `frontend/src/App.tsx` — routing с ProtectedRoute
 
-Backend:
-- `backend/app/api/v1/dashboard.py` — API endpoints (используют RPC)
-- `backend/app/api/v1/export.py` — PDF экспорт через Playwright
-- `backend/app/api/v1/sync.py` — синхронизация
-- `backend/app/config.py` — настройки (frontend_url для Playwright)
-- `backend/migrations/003_all_rpc_functions.sql` — все RPC функции
+Backend (Auth — Фаза 1):
+- `backend/app/auth.py` — JWT middleware (JWKS, CurrentUser, get_current_user_or_cron)
+- `backend/app/config.py` — настройки (+ sync_cron_secret)
+- `backend/app/main.py` — CORS ограничен конкретными origins
+
+Backend (основные):
+- `backend/app/api/v1/dashboard.py` — API endpoints (auth + user_id + RPC)
+- `backend/app/api/v1/products.py` — продукты (auth + user_id)
+- `backend/app/api/v1/sync.py` — синхронизация (cron/jwt auth + user_id)
+- `backend/app/api/v1/export.py` — PDF экспорт (auth + JWT pass-through)
+- `backend/app/services/sync_service.py` — sync с user_id (~30 мест)
+- `backend/migrations/004_add_user_id.sql` — user_id + constraints
+- `backend/migrations/005_rls_policies.sql` — RLS на все mp_*
+- `backend/migrations/006_rpc_with_user_id.sql` — RPC с p_user_id
 
 ---
 
 ## ВАЖНО:
 
 - **Production URL:** https://analitics.bixirun.ru
+- **Auth:** Hybrid — service_role_key на backend, RLS как safety net, JWT через JWKS
+- **Admin:** exklante@gmail.com / 123456 / UUID: 17e80396-86e1-4ec8-8cb2-f727462bf20c
+- **SYNC_CRON_SECRET:** analytics-cron-s3cr3t-2026
+- **Supabase anon key:** `sb_publishable_...` (НЕ JWT формат!)
+- **Два проекта в одном Supabase:** auth.users общие, mp_* таблицы — только наши
 - OZON/WB мэтчинг начислений уже 1-в-1 с ЛК — НЕ ЛОМАТЬ
 - RPC функции в Supabase — не удалять
 - DateRangePicker: `captionLayout="label"` (не dropdown!)

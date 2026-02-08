@@ -5,9 +5,10 @@
  */
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { Outlet, Link, useLocation } from 'react-router-dom';
-import { BarChart3, Package, TrendingUp, RefreshCw, ChevronLeft } from 'lucide-react';
+import { BarChart3, Package, TrendingUp, RefreshCw, ChevronLeft, LogOut } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { useIsMobile } from '../../hooks/useMediaQuery';
+import { useAuthStore } from '../../store/useAuthStore';
 
 const navigation = [
   { name: 'Дашборд', href: '/', icon: BarChart3 },
@@ -22,6 +23,7 @@ const SWIPE_THRESHOLD = 60;
 export const Layout = () => {
   const location = useLocation();
   const isMobile = useIsMobile();
+  const { user, logout } = useAuthStore();
   const [mobilePanelOpen, setMobilePanelOpen] = useState(false);
 
   // Swipe state
@@ -119,7 +121,21 @@ export const Layout = () => {
                 })}
               </nav>
 
-            <div className="w-8" />
+            <div className="flex items-center gap-3">
+              {user && (
+                <>
+                  <span className="text-sm text-gray-500 truncate max-w-[160px]">{user.email}</span>
+                  <button
+                    type="button"
+                    onClick={logout}
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-md transition-colors"
+                    title="Выйти"
+                  >
+                    <LogOut className="w-4 h-4" />
+                  </button>
+                </>
+              )}
+            </div>
           </div>
         </div>
       </header>
@@ -218,8 +234,21 @@ export const Layout = () => {
                   })}
                 </ul>
               </nav>
-              {/* Подсказка о свайпе */}
-              <div className="px-3 py-2 border-t border-gray-100">
+              {/* Пользователь + выход */}
+              <div className="px-3 py-2 border-t border-gray-100 space-y-2">
+                {user && (
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs text-gray-500 truncate max-w-[140px]">{user.email}</span>
+                    <button
+                      type="button"
+                      onClick={logout}
+                      className="flex items-center gap-1 px-2 py-1 text-xs text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded transition-colors"
+                    >
+                      <LogOut className="w-3 h-3" />
+                      Выйти
+                    </button>
+                  </div>
+                )}
                 <p className="text-[10px] text-gray-400 text-center">← свайп для закрытия</p>
               </div>
             </div>
