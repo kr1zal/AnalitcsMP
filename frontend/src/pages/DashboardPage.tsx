@@ -23,7 +23,7 @@ import { StocksTable } from '../components/Dashboard/StocksTable';
 import { FilterPanel } from '../components/Shared/FilterPanel';
 import { LoadingSpinner } from '../components/Shared/LoadingSpinner';
 import {
-  useDashboardSummary,
+  useDashboardSummaryWithPrev,
   useSalesChart,
   useStocks,
   useAdCosts,
@@ -136,7 +136,7 @@ export const DashboardPage = () => {
 
   // ==================== ЗАГРУЗКА ДАННЫХ ====================
   // Основной summary
-  const { data: summaryData, isLoading: summaryLoading, error } = useDashboardSummary(filters);
+  const { data: summaryData, isLoading: summaryLoading, error } = useDashboardSummaryWithPrev(filters);
 
   // Флаг загрузки
   const isSummaryLoading = summaryLoading;
