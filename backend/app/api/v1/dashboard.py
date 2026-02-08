@@ -7,6 +7,8 @@ from datetime import datetime, timedelta
 
 from ...db.supabase import get_supabase_client
 from ...auth import CurrentUser, get_current_user
+from ...subscription import get_user_subscription, UserSubscription, require_feature
+from ...plans import has_feature
 
 router = APIRouter()
 
@@ -14,6 +16,7 @@ router = APIRouter()
 @router.get("/dashboard/summary")
 async def get_summary(
     current_user: CurrentUser = Depends(get_current_user),
+    sub: UserSubscription = Depends(get_user_subscription),
     date_from: Optional[str] = Query(None, description="Дата начала (YYYY-MM-DD)"),
     date_to: Optional[str] = Query(None, description="Дата окончания (YYYY-MM-DD)"),
     marketplace: Optional[str] = Query(None, description="Фильтр по МП: wb, ozon"),
@@ -23,6 +26,10 @@ async def get_summary(
     """
     Сводка по продажам за период (использует RPC для оптимизации).
     """
+    # Feature gate: period comparison requires pro+
+    if include_prev_period and not has_feature(sub.plan, "period_comparison"):
+        include_prev_period = False
+
     supabase = get_supabase_client()
 
     if not date_from:
@@ -62,6 +69,7 @@ async def get_summary(
 @router.get("/dashboard/unit-economics")
 async def get_unit_economics(
     current_user: CurrentUser = Depends(get_current_user),
+    sub: UserSubscription = Depends(require_feature("unit_economics")),
     date_from: Optional[str] = Query(None),
     date_to: Optional[str] = Query(None),
     marketplace: Optional[str] = Query(None)
@@ -216,6 +224,7 @@ async def get_sales_chart(
 @router.get("/dashboard/ad-costs")
 async def get_ad_costs(
     current_user: CurrentUser = Depends(get_current_user),
+    sub: UserSubscription = Depends(require_feature("ads_page")),
     date_from: Optional[str] = Query(None),
     date_to: Optional[str] = Query(None),
     marketplace: Optional[str] = Query(None)
@@ -315,6 +324,7 @@ async def get_ad_costs(
 @router.get("/dashboard/costs-tree")
 async def get_costs_tree(
     current_user: CurrentUser = Depends(get_current_user),
+    sub: UserSubscription = Depends(get_user_subscription),
     date_from: Optional[str] = Query(None, description="Дата начала (YYYY-MM-DD)"),
     date_to: Optional[str] = Query(None, description="Дата окончания (YYYY-MM-DD)"),
     marketplace: Optional[str] = Query(None, description="Фильтр по МП: wb, ozon"),
@@ -324,6 +334,10 @@ async def get_costs_tree(
     """
     Иерархическое дерево удержаний (tree-view как в ЛК Ozon).
     """
+    # Free plan: basic costs tree only (no children details)
+    if not has_feature(sub.plan, "costs_tree_details"):
+        include_children = False
+
     supabase = get_supabase_client()
 
     if not date_from:
@@ -353,6 +367,7 @@ async def get_costs_tree(
 @router.get("/dashboard/costs-tree-combined")
 async def get_costs_tree_combined(
     current_user: CurrentUser = Depends(get_current_user),
+    sub: UserSubscription = Depends(get_user_subscription),
     date_from: Optional[str] = Query(None, description="Дата начала (YYYY-MM-DD)"),
     date_to: Optional[str] = Query(None, description="Дата окончания (YYYY-MM-DD)"),
     product_id: Optional[str] = Query(None, description="Фильтр по товару (UUID)"),
@@ -361,6 +376,9 @@ async def get_costs_tree_combined(
     """
     Объединённое дерево удержаний для Ozon и WB в одном запросе.
     """
+    if not has_feature(sub.plan, "costs_tree_details"):
+        include_children = False
+
     supabase = get_supabase_client()
 
     if not date_from:

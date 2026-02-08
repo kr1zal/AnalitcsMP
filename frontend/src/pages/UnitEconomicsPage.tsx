@@ -6,6 +6,7 @@ import { useState, useMemo } from 'react';
 import { useUnitEconomics } from '../hooks/useDashboard';
 import { useFiltersStore } from '../store/useFiltersStore';
 import { FilterPanel } from '../components/Shared/FilterPanel';
+import { FeatureGate } from '../components/Shared/FeatureGate';
 import { LoadingSpinner } from '../components/Shared/LoadingSpinner';
 import { formatCurrency, formatPercent, getDateRangeFromPreset, cn } from '../lib/utils';
 import {
@@ -175,6 +176,7 @@ export const UnitEconomicsPage = () => {
   );
 
   return (
+    <FeatureGate feature="unit_economics">
     <div className="max-w-7xl mx-auto px-3 sm:px-6 py-4 sm:py-8">
       {/* Header */}
       <div className="mb-4 sm:mb-6">
@@ -500,6 +502,7 @@ export const UnitEconomicsPage = () => {
         )}
       </div>
     </div>
+    </FeatureGate>
   );
 };
 

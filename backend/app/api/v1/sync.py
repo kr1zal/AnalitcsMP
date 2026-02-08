@@ -8,6 +8,7 @@ from datetime import datetime, timedelta, timezone
 from ...services.sync_service import SyncService
 from ...db.supabase import get_supabase_client
 from ...auth import CurrentUser, get_current_user, get_current_user_or_cron
+from ...subscription import get_subscription_or_cron, UserSubscription
 
 router = APIRouter()
 
@@ -54,6 +55,7 @@ async def sync_products(
 @router.post("/sync/sales")
 async def sync_sales(
     current_user: CurrentUser = Depends(get_current_user_or_cron),
+    sub: UserSubscription = Depends(get_subscription_or_cron),
     days_back: int = 35,
     marketplace: Optional[str] = None,
     force: bool = False,
@@ -66,6 +68,8 @@ async def sync_sales(
     - **force**: игнорировать idempotency-guard (по умолчанию false)
     """
     try:
+        # Marketplace restriction per plan
+        allowed_mps = sub.plan_config["marketplaces"]
         # Idempotency + lock (protect from double-trigger / concurrent cron)
         supabase = get_supabase_client()
         now = datetime.now(timezone.utc)
@@ -138,10 +142,10 @@ async def sync_sales(
 
         results = {}
 
-        if marketplace in [None, "wb", "all"]:
+        if marketplace in [None, "wb", "all"] and "wb" in allowed_mps:
             results["wb"] = await sync_service.sync_sales_wb(date_from, date_to)
 
-        if marketplace in [None, "ozon", "all"]:
+        if marketplace in [None, "ozon", "all"] and "ozon" in allowed_mps:
             results["ozon"] = await sync_service.sync_sales_ozon(date_from, date_to)
 
         total_records = 0
@@ -192,6 +196,7 @@ async def sync_sales(
 @router.post("/sync/stocks")
 async def sync_stocks(
     current_user: CurrentUser = Depends(get_current_user_or_cron),
+    sub: UserSubscription = Depends(get_subscription_or_cron),
     marketplace: Optional[str] = None,
 ):
     """
@@ -200,13 +205,14 @@ async def sync_stocks(
     - **marketplace**: wb, ozon или all (по умолчанию)
     """
     try:
+        allowed_mps = sub.plan_config["marketplaces"]
         sync_service = SyncService(user_id=current_user.id)
         results = {}
 
-        if marketplace in [None, "wb", "all"]:
+        if marketplace in [None, "wb", "all"] and "wb" in allowed_mps:
             results["wb"] = await sync_service.sync_stocks_wb()
 
-        if marketplace in [None, "ozon", "all"]:
+        if marketplace in [None, "ozon", "all"] and "ozon" in allowed_mps:
             results["ozon"] = await sync_service.sync_stocks_ozon()
 
         return {
@@ -247,6 +253,7 @@ async def check_stocks(
 @router.post("/sync/costs")
 async def sync_costs(
     current_user: CurrentUser = Depends(get_current_user_or_cron),
+    sub: UserSubscription = Depends(get_subscription_or_cron),
     days_back: int = 30,
     marketplace: Optional[str] = None,
 ):
@@ -257,16 +264,17 @@ async def sync_costs(
     - **marketplace**: wb, ozon или all (по умолчанию)
     """
     try:
+        allowed_mps = sub.plan_config["marketplaces"]
         sync_service = SyncService(user_id=current_user.id)
         date_from = datetime.now() - timedelta(days=days_back)
         date_to = datetime.now()
 
         results = {}
 
-        if marketplace in [None, "wb", "all"]:
+        if marketplace in [None, "wb", "all"] and "wb" in allowed_mps:
             results["wb"] = await sync_service.sync_costs_wb(date_from, date_to)
 
-        if marketplace in [None, "ozon", "all"]:
+        if marketplace in [None, "ozon", "all"] and "ozon" in allowed_mps:
             results["ozon"] = await sync_service.sync_costs_ozon(date_from, date_to)
 
         return {
@@ -286,6 +294,7 @@ async def sync_costs(
 @router.post("/sync/ads")
 async def sync_ads(
     current_user: CurrentUser = Depends(get_current_user_or_cron),
+    sub: UserSubscription = Depends(get_subscription_or_cron),
     days_back: int = 30,
     marketplace: Optional[str] = None,
 ):
@@ -296,16 +305,17 @@ async def sync_ads(
     - **marketplace**: wb, ozon или all (по умолчанию)
     """
     try:
+        allowed_mps = sub.plan_config["marketplaces"]
         sync_service = SyncService(user_id=current_user.id)
         date_from = datetime.now() - timedelta(days=days_back)
         date_to = datetime.now()
 
         results = {}
 
-        if marketplace in [None, "wb", "all"]:
+        if marketplace in [None, "wb", "all"] and "wb" in allowed_mps:
             results["wb"] = await sync_service.sync_ads_wb(date_from, date_to)
 
-        if marketplace in [None, "ozon", "all"]:
+        if marketplace in [None, "ozon", "all"] and "ozon" in allowed_mps:
             results["ozon"] = await sync_service.sync_ads_ozon(date_from, date_to)
 
         return {

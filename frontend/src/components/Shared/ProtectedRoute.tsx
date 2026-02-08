@@ -1,11 +1,13 @@
 import { Navigate, useLocation } from 'react-router-dom';
 import { useAuthStore } from '../../store/useAuthStore';
 import { useTokensStatus } from '../../hooks/useTokens';
+import { useSubscription } from '../../hooks/useSubscription';
 
 export function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, isLoading } = useAuthStore();
   const location = useLocation();
   const { data: tokensStatus, isLoading: tokensLoading } = useTokensStatus();
+  useSubscription(); // prefetch subscription data
 
   if (isLoading || (user && tokensLoading)) {
     return (

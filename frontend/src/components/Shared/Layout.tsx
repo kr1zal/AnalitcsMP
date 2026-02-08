@@ -9,6 +9,7 @@ import { BarChart3, Package, TrendingUp, RefreshCw, ChevronLeft, LogOut, Setting
 import { cn } from '../../lib/utils';
 import { useIsMobile } from '../../hooks/useMediaQuery';
 import { useAuthStore } from '../../store/useAuthStore';
+import { useSubscription } from '../../hooks/useSubscription';
 
 const navigation = [
   { name: 'Дашборд', href: '/', icon: BarChart3 },
@@ -25,6 +26,7 @@ export const Layout = () => {
   const location = useLocation();
   const isMobile = useIsMobile();
   const { user, logout } = useAuthStore();
+  const { data: subscription } = useSubscription();
   const [mobilePanelOpen, setMobilePanelOpen] = useState(false);
 
   // Swipe state
@@ -125,6 +127,16 @@ export const Layout = () => {
             <div className="flex items-center gap-3">
               {user && (
                 <>
+                  {subscription && (
+                    <span className={cn(
+                      'text-[10px] font-semibold px-1.5 py-0.5 rounded-full uppercase tracking-wider',
+                      subscription.plan === 'free' ? 'bg-gray-100 text-gray-500' :
+                      subscription.plan === 'pro' ? 'bg-indigo-100 text-indigo-700' :
+                      'bg-amber-100 text-amber-700'
+                    )}>
+                      {subscription.plan_name}
+                    </span>
+                  )}
                   <span className="text-sm text-gray-500 truncate max-w-[160px]">{user.email}</span>
                   <button
                     type="button"

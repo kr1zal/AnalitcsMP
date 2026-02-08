@@ -4,6 +4,7 @@ import { Eye, EyeOff, CheckCircle, XCircle, AlertCircle, Loader2, Info } from 'l
 import { toast } from 'sonner';
 import { useAuthStore } from '../store/useAuthStore';
 import { useTokensStatus, useValidateTokens, useSaveTokens, useSaveAndSync } from '../hooks/useTokens';
+import { SubscriptionCard } from '../components/Settings/SubscriptionCard';
 
 // ─── Подсказки где взять токены ───
 
@@ -263,6 +264,12 @@ export function SettingsPage() {
             Выйти
           </button>
         </div>
+      </div>
+
+      {/* Тариф */}
+      <div id="subscription" className="bg-white rounded-xl shadow-sm border border-gray-200 p-5 mb-4">
+        <h2 className="text-sm font-semibold text-gray-900 mb-3">Тариф</h2>
+        <SubscriptionCard />
       </div>
 
       {/* WB */}

@@ -10,6 +10,7 @@ import asyncio
 
 from ...config import get_settings
 from ...auth import CurrentUser, get_current_user, security
+from ...subscription import UserSubscription, require_feature
 
 router = APIRouter()
 settings = get_settings()
@@ -18,6 +19,7 @@ settings = get_settings()
 @router.get("/export/pdf")
 async def export_pdf(
     current_user: CurrentUser = Depends(get_current_user),
+    sub: UserSubscription = Depends(require_feature("pdf_export")),
     credentials: HTTPAuthorizationCredentials = Depends(security),
     date_from: str = Query(..., description="Начало периода (YYYY-MM-DD)"),
     date_to: str = Query(..., description="Конец периода (YYYY-MM-DD)"),

@@ -16,6 +16,7 @@ import { Suspense, lazy, useEffect, useMemo, useState } from 'react';
 import axios from 'axios';
 import { DollarSign, ShoppingCart, TrendingUp, Percent, Megaphone, BarChart3, Receipt } from 'lucide-react';
 import { useExport } from '../hooks/useExport';
+import { useSubscription } from '../hooks/useSubscription';
 import type { ExcelExportData } from '../lib/exportExcel';
 import { SummaryCard } from '../components/Dashboard/SummaryCard';
 import { MarketplaceBreakdown } from '../components/Dashboard/MarketplaceBreakdown';
@@ -109,6 +110,7 @@ export const DashboardPage = () => {
 
   // Export hook
   const { isExporting, exportType, exportExcel, exportPdf } = useExport();
+  const { data: subscription } = useSubscription();
 
   // Фильтр товаров (боковая панель)
   const [selectedProduct, setSelectedProduct] = useState<string | undefined>(undefined);
@@ -417,7 +419,7 @@ export const DashboardPage = () => {
       {/* 1. Фильтры */}
       <FilterPanel
         onExportExcel={handleExportExcel}
-        onExportPdf={handleExportPdf}
+        onExportPdf={subscription?.features?.pdf_export ? handleExportPdf : undefined}
         isExporting={isExporting}
         exportType={exportType}
       />
@@ -517,8 +519,8 @@ export const DashboardPage = () => {
           loading={isSummaryLoading}
         />
 
-        {/* Карточки сравнения периодов - только при пресетах 7/30/90 */}
-        {showPeriodComparison && (
+        {/* Карточки сравнения периодов - только при пресетах 7/30/90 и если фича доступна */}
+        {showPeriodComparison && subscription?.features?.period_comparison && (
           <>
             <SummaryCard
               title="Пред. пер."

@@ -19,6 +19,8 @@ import type {
   TokensStatus,
   TokensInput,
   TokensValidateResponse,
+  UserSubscriptionResponse,
+  PlansListResponse,
 } from '../types';
 
 // Создаём axios instance с базовыми настройками
@@ -269,6 +271,20 @@ export const tokensApi = {
     const { data } = await api.post('/tokens/save-and-sync', tokens, {
       timeout: 300000, // 5 мин — полная синхронизация долгая
     });
+    return data;
+  },
+};
+
+// ==================== ПОДПИСКИ ====================
+
+export const subscriptionApi = {
+  getMy: async (): Promise<UserSubscriptionResponse> => {
+    const { data } = await api.get<UserSubscriptionResponse>('/subscription');
+    return data;
+  },
+
+  getPlans: async (): Promise<PlansListResponse> => {
+    const { data } = await api.get<PlansListResponse>('/subscription/plans');
     return data;
   },
 };

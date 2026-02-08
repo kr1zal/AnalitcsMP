@@ -8,6 +8,7 @@ import { useFiltersStore } from '../store/useFiltersStore';
 import { LoadingSpinner } from '../components/Shared/LoadingSpinner';
 import { formatCurrency, formatPercent, formatNumber, getDateRangeFromPreset } from '../lib/utils';
 import { Megaphone, Eye, MousePointer, ShoppingCart, TrendingUp } from 'lucide-react';
+import { FeatureGate } from '../components/Shared/FeatureGate';
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 
 export const AdsPage = () => {
@@ -99,6 +100,7 @@ export const AdsPage = () => {
   }));
 
   return (
+    <FeatureGate feature="ads_page">
     <div className="max-w-7xl mx-auto px-6 py-8">
       {/* Header */}
       <div className="flex items-center justify-between mb-8">
@@ -264,5 +266,6 @@ export const AdsPage = () => {
         </>
       )}
     </div>
+    </FeatureGate>
   );
 };

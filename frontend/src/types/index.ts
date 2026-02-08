@@ -342,6 +342,54 @@ export interface TokensValidateResponse {
   };
 }
 
+// ==================== ПОДПИСКИ ====================
+
+export type SubscriptionPlan = 'free' | 'pro' | 'business';
+export type SubscriptionStatus = 'active' | 'cancelled' | 'expired';
+
+export interface SubscriptionFeatures {
+  dashboard: boolean;
+  costs_tree_basic: boolean;
+  costs_tree_details: boolean;
+  unit_economics: boolean;
+  ads_page: boolean;
+  pdf_export: boolean;
+  period_comparison: boolean;
+  api_access: boolean;
+}
+
+export interface SubscriptionLimits {
+  max_sku: number | null;
+  current_sku: number;
+  sku_remaining: number | null;
+  marketplaces: string[];
+  auto_sync: boolean;
+  sync_interval_hours: number | null;
+}
+
+export interface UserSubscriptionResponse {
+  plan: SubscriptionPlan;
+  status: SubscriptionStatus;
+  plan_name: string;
+  limits: SubscriptionLimits;
+  features: SubscriptionFeatures;
+}
+
+export interface PlanDefinition {
+  id: SubscriptionPlan;
+  name: string;
+  price_rub: number;
+  max_sku: number | null;
+  marketplaces: string[];
+  auto_sync: boolean;
+  sync_interval_hours: number | null;
+  features: SubscriptionFeatures;
+}
+
+export interface PlansListResponse {
+  plans: PlanDefinition[];
+}
+
 // ==================== ФИЛЬТРЫ ====================
 
 export interface DashboardFilters {
