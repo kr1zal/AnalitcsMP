@@ -2,6 +2,16 @@
 
 > Полная история выполненных задач. Для текущего статуса см. [CLAUDE.md](CLAUDE.md).
 
+## 09.02.2026 — Tech Debt Cleanup
+
+- Удалён `secret_key` из config.py (никогда не использовался)
+- Добавлен `extra = "ignore"` в Settings.Config (толерантность к лишним env-переменным)
+- Dynamic barcodes + ozon_sku_map: загрузка из БД вместо хардкода в sync_service.py
+- Migration 009: `ozon_sku` column в mp_products + seed data
+- `sync_products()` теперь получает FBO SKU из Ozon API и сохраняет в ozon_sku
+- Concurrent sync protection: running-lock + cooldown guard на sales/stocks/costs/ads
+- Коммиты: 88bbe86, d4e54d4
+
 ## 09.02.2026 — SaaS Phase 3: Subscription Tiers
 
 **3 тарифа:** Free / Pro (990₽/мес) / Business (2990₽/мес). MVP без оплаты — admin назначает тариф.

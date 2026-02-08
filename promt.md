@@ -35,6 +35,10 @@
   - Backend: plans.py, subscription.py (Depends), feature gates на dashboard/export/sync
   - Frontend: FeatureGate (blur+lock), SubscriptionCard, бейдж тарифа в header
 - ✅ **Bugfix:** Предыдущий период в плашках DashboardPage — commit 1aa095f
+- ✅ **Tech Debt (09.02.2026):**
+  - Удалён secret_key, добавлен extra="ignore" в Settings
+  - Dynamic barcodes/ozon_sku_map из БД (миграция 009: ozon_sku column)
+  - Concurrent sync protection (running-lock + cooldown) на sales/stocks/costs/ads
 
 **ГЛАВНАЯ ЗАДАЧА — SaaS-трансформация:**
 

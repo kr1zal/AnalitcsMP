@@ -49,9 +49,9 @@ sshpass -p '@vnDBp5VCt2+' rsync -avz --delete -e "ssh -o StrictHostKeyChecking=n
 
 ### Известные баги
 - ~~Плашки "Пред.пер." не показывают данные~~ FIXED (commit 1aa095f)
-- `secret_key = "change-me-in-production"` в config.py
-- Нет concurrent sync protection на costs/stocks/ads endpoints
-- Ozon SKU mapping частично hardcoded в sync_service.py
+- ~~`secret_key = "change-me-in-production"` в config.py~~ FIXED (удалён, `extra="ignore"`)
+- ~~Нет concurrent sync protection на costs/stocks/ads endpoints~~ FIXED (sync guard + lock)
+- ~~Ozon SKU mapping частично hardcoded в sync_service.py~~ FIXED (dynamic from DB + migration 009)
 
 ## Технический стек
 
