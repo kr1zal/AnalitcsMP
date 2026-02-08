@@ -25,6 +25,9 @@ class Settings(BaseSettings):
     # Cron secret for server-side sync jobs (X-Cron-Secret header)
     sync_cron_secret: str | None = None
 
+    # Fernet encryption key for user API tokens
+    fernet_key: str = ""
+
     # App
     debug: bool = True
     secret_key: str = "change-me-in-production"

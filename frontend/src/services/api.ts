@@ -16,6 +16,9 @@ import type {
   AdCostsResponse,
   CostsTreeResponse,
   CostsTreeCombinedResponse,
+  TokensStatus,
+  TokensInput,
+  TokensValidateResponse,
 } from '../types';
 
 // Создаём axios instance с базовыми настройками
@@ -239,6 +242,32 @@ export const exportApi = {
       params,
       responseType: 'blob',
       timeout: 120000, // 2 минуты — PDF генерация может быть долгой
+    });
+    return data;
+  },
+};
+
+// ==================== ТОКЕНЫ ====================
+
+export const tokensApi = {
+  getStatus: async (): Promise<TokensStatus> => {
+    const { data } = await api.get<TokensStatus>('/tokens');
+    return data;
+  },
+
+  save: async (tokens: TokensInput): Promise<{ status: string }> => {
+    const { data } = await api.put('/tokens', tokens);
+    return data;
+  },
+
+  validate: async (tokens: TokensInput): Promise<TokensValidateResponse> => {
+    const { data } = await api.post<TokensValidateResponse>('/tokens/validate', tokens);
+    return data;
+  },
+
+  saveAndSync: async (tokens: TokensInput): Promise<{ status: string; sync_result?: unknown }> => {
+    const { data } = await api.post('/tokens/save-and-sync', tokens, {
+      timeout: 300000, // 5 мин — полная синхронизация долгая
     });
     return data;
   },

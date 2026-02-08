@@ -12,6 +12,7 @@ import { SyncPage } from './pages/SyncPage';
 import { AdsPage } from './pages/AdsPage';
 import { PrintPage } from './pages/PrintPage';
 import { LoginPage } from './pages/LoginPage';
+import { SettingsPage } from './pages/SettingsPage';
 import { useAuth } from './hooks/useAuth';
 
 // Создаём QueryClient
@@ -51,6 +52,7 @@ function AppRoutes() {
         <Route path="products" element={<Navigate to="/unit-economics" replace />} />
         <Route path="ads" element={<AdsPage />} />
         <Route path="sync" element={<SyncPage />} />
+        <Route path="settings" element={<SettingsPage />} />
       </Route>
     </Routes>
   );

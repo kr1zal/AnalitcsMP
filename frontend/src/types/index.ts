@@ -313,6 +313,35 @@ export interface SyncAllResponse {
   };
 }
 
+// ==================== ТОКЕНЫ ====================
+
+export interface TokensStatus {
+  has_wb: boolean;
+  has_ozon_seller: boolean;
+  has_ozon_perf: boolean;
+}
+
+export interface TokensInput {
+  wb_api_token?: string;
+  ozon_client_id?: string;
+  ozon_api_key?: string;
+  ozon_perf_client_id?: string;
+  ozon_perf_secret?: string;
+}
+
+export interface TokenValidationResult {
+  valid: boolean;
+  error?: string;
+}
+
+export interface TokensValidateResponse {
+  results: {
+    wb?: TokenValidationResult;
+    ozon_seller?: TokenValidationResult;
+    ozon_perf?: TokenValidationResult;
+  };
+}
+
 // ==================== ФИЛЬТРЫ ====================
 
 export interface DashboardFilters {

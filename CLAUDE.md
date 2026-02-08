@@ -3,892 +3,192 @@ Use "npm run build" to check if code compiles or no. See results and fix code if
 
 # Analytics Dashboard - Marketplace WB & Ozon
 
-> 🚀 **Промпт для продолжения в новом чате:** см. файл `promt.md`
-
-## 🌐 Production: https://analitics.bixirun.ru
-
-### Деплой (03.02.2026):
-> - **VPS Beget:** 83.222.16.15, Ubuntu 24.04, 1 ядро / 1 GB RAM + **2 GB swap**
-> - **Домен:** analitics.bixirun.ru (субдомен от bixirun.ru)
-> - **SSL:** Let's Encrypt (автопродление настроено)
-> - **Структура:** `/var/www/analytics/` (backend + frontend + .env)
-> - **Сервисы:** systemd `analytics-api`, Nginx proxy
-> - **Playwright:** Chromium установлен для PDF экспорта
-> - **Пароль SSH:** `@vnDBp5VCt2+` (с символом @ в начале!)
-
-### Текущие задачи:
-> - ⏳ **Деплой SaaS Фаза 1 на VPS** — см. promt.md чеклист
-> - 🔄 **SaaS Фаза 2: Онбординг** — ввод токенов WB/Ozon
-> - 🔄 Улучшить AdsPage
-> - 🔄 Улучшить PDF экспорт — см. promt.md раздел "Предложения по PDF"
-
-### Что сделано:
-> - ✅ **SaaS Фаза 1: Auth + RLS — КОД ГОТОВ (08.02.2026):**
->   - Backend: JWT middleware (JWKS), auth на всех endpoints, sync_service с user_id
->   - Frontend: LoginPage, ProtectedRoute, auth interceptor, email+logout в Layout
->   - SQL: user_id во все 8 таблиц, RLS-политики, RPC с p_user_id, SET NOT NULL
->   - CORS ограничен, cron через X-Cron-Secret + X-Cron-User-Id
->   - Admin: exklante@gmail.com / UUID: 17e80396-86e1-4ec8-8cb2-f727462bf20c
-> - ✅ Деплой на Beget VPS с SSL
-> - ✅ DashboardPage работает, RPC оптимизация активна
-> - ✅ Mobile-first дизайн (боковая навигация, компактные карточки)
-> - ✅ OZON/WB мэтчинг начислений 1-в-1 с ЛК — **НЕ ЛОМАТЬ**
-> - ✅ Cron автосинхронизация (07:00, 13:00 — sales+costs; каждые 6ч — stocks)
-> - ✅ Ozon stocks 400 error исправлен (6 fallback стратегий + FBO analytics)
-> - ✅ Скелетоны на графиках и остатках (animate-pulse, LoadingSpinner, Suspense)
-> - ✅ **Ограничение календаря по 10:00 МСК** — до 10:00 max=вчера, после 10:00 max=сегодня
-> - ✅ **Tooltips не уезжают за край** — tooltipAlign="right" для правых карточек
-> - ✅ **CSS overflow исправлен** — текст не уезжает за границы карточек на мобиле
-> - ✅ **Верхняя плашка "Продажи"** — данные берутся из costs-tree (как OZON+WB карточки)
-> - ✅ **Мобильное меню улучшено (02.02.2026):**
->   - Swipe вправо для закрытия панели (threshold 60px)
->   - Ярлычок 16px с chevron внутри, усиленная тень, 48px touch target
->   - Панель компактнее: 240px вместо 280px, уменьшены отступы
->   - Подсказка "← свайп для закрытия" внизу панели
-> - ✅ **Tooltips с формулами (02.02.2026):** понятные расчёты вместо технических терминов
-> - ✅ **Система отступов (02.02.2026):** mb-4→5→6 между секциями, gap-2→3 между карточками
-> - ✅ **Экспорт в Excel/PDF (03.02.2026):**
->   - Excel: 6 листов (Сводка разбита по OZON/WB, Продажи по дням, Реклама, Удержания МП, Unit-экономика, Остатки)
->   - **PDF: Playwright на backend** — идеальное качество, 3 страницы (Dashboard, Unit-экономика, Реклама)
->   - Mobile: кнопки-иконки на уровне с МП селектором
->   - Toast notifications с заменой loading → success/error
->   - Зависимости: xlsx (frontend), playwright (backend)
->   - Сервер: добавлен swap 2GB для Playwright + Chromium
-
-### SSH доступ:
-> ```bash
-> ssh root@83.222.16.15
-> # пароль: @vnDBp5VCt2+ (с @ в начале!)
-> journalctl -u analytics-api -f  # логи
-> systemctl restart analytics-api  # перезапуск
-> ```
-
-### Деплой frontend:
-> ```bash
-> cd frontend && npm run build
-> sshpass -p '@vnDBp5VCt2+' rsync -avz --delete -e "ssh -o StrictHostKeyChecking=no" dist/ root@83.222.16.15:/var/www/analytics/frontend/
-> ```
-
-### Локальная разработка:
-> ```bash
-> # Терминал 1 — Backend
-> cd backend && source venv/bin/activate
-> uvicorn app.main:app --reload --port 8000
->
-> # Терминал 2 — Frontend
-> cd frontend && npm run dev
-> ```
->
-> **Первый запуск (установка Playwright):**
-> ```bash
-> cd backend && source venv/bin/activate
-> pip install playwright
-> playwright install chromium  # ~162 МБ
-> ```
->
-> **FRONTEND_URL:** В `.env` — `FRONTEND_URL=http://localhost:5173` (для PDF экспорта локально)
-
-## Описание проекта
-
 Интерактивный дашборд для аналитики продаж на Wildberries и Ozon.
+5 SKU (витамины/БАДы), SaaS-архитектура с per-user auth и токенами.
 
-## Статус: Backend ✅ | Frontend Pages ✅ | Данные синхронизированы ✅ | Ads sync ✅ | Ozon Accruals ✅ | WB Accruals ✅
+## Production: https://analitics.bixirun.ru
 
-### Выполнено (Backend):
+| Параметр | Значение |
+|----------|----------|
+| VPS | Beget 83.222.16.15, Ubuntu 24.04, 1 ядро / 1 GB RAM + 2 GB swap |
+| SSH | `ssh root@83.222.16.15` / пароль: `@vnDBp5VCt2+` (с @ в начале!) |
+| Структура | `/var/www/analytics/` (backend + frontend + .env) |
+| Сервисы | systemd `analytics-api`, Nginx proxy, Let's Encrypt SSL |
+| Admin | exklante@gmail.com / UUID: 17e80396-86e1-4ec8-8cb2-f727462bf20c |
 
-- [x] Сбор API ключей (WB, Ozon Seller, Ozon Performance, Supabase)
-- [x] Структура backend на FastAPI + Python
-- [x] API клиенты для WB и Ozon (проверены, работают)
-  - WildberriesClient: Content API, Statistics API, Analytics API, Ads API
-  - OzonClient: v3/v4 endpoints (products, stocks, finance, analytics)
-  - OzonPerformanceClient: OAuth 2.0, campaigns, statistics
-- [x] Таблицы в Supabase (mp_products, mp_sales, mp_stocks, mp_costs,
-      mp_costs_details, mp_sales_geo, mp_ad_costs, mp_sync_log)
-- [x] Сервис синхронизации данных (sync_service.py)
-  - sync_products() - обновление WB/Ozon ID
-  - sync_sales_wb/ozon() - продажи, заказы, возвраты
-  - sync_stocks_wb/ozon() - остатки на складах
-  - sync_costs_wb/ozon() - удержания МП
-  - sync_all() - полная синхронизация
-- [x] FastAPI endpoints (app/api/v1/)
-  - Products: GET /products, /products/{id}, /products/barcode/{barcode}
-  - Dashboard: GET /dashboard/summary, /unit-economics, /sales-chart, /stocks,
-    /costs-tree, /ad-costs
-  - Sync: POST /sync/products, /sales, /stocks, /costs, /all + GET /sync/logs
-  - Export: GET /export/pdf (Playwright)
-- [x] FastAPI сервер запущен (http://localhost:8000)
-- [x] Swagger документация (http://localhost:8000/docs)
-- [x] Backend README.md с полной документацией
-- [x] Тестирование: test_api.py, test_sync.py
-- [x] Данные синхронизированы:
-  - 5 товаров с WB и Ozon ID
-  - Продажи WB: ~51 запись, Ozon: 43 записи (по дням, 35 дней)
-  - Остатки WB: 2 склада
-  - Удержания WB: 46 записей, Ozon: 53 записи (mp_costs) + 353 записи
-    (mp_costs_details)
-  - Реклама: 1 запись WB (0.18₽), Ozon: 0
+```bash
+# Логи / перезапуск
+journalctl -u analytics-api -f
+systemctl restart analytics-api
 
-### Выполнено (Frontend v1.0):
-
-- [x] Vite + React 19.2 + TypeScript 5.9
-- [x] Tailwind CSS 3
-- [x] Все зависимости установлены (axios, react-query, recharts,
-      react-router-dom, sonner, date-fns, zustand, lucide-react)
-- [x] TypeScript типы на основе backend API
-- [x] Axios client с interceptors
-- [x] React Query hooks (useDashboard, useSalesChart, useStocks,
-      useUnitEconomics, useSync)
-- [x] Утилиты форматирования (formatCurrency, formatDate,
-      getDateRangeFromPreset)
-- [x] **Даты работают до сегодня** (автообновление каждые 5 мин)
-- [x] Компоненты:
-  - SummaryCard, MetricCard - карточки метрик
-  - FilterPanel - фильтры периода и маркетплейса
-  - SalesChart - график продаж с Recharts
-  - StocksTable - таблица остатков с раскрываемыми строками
-- MarketplaceBreakdown - разбивка WB/Ozon (OZON = OzonAccrualsCard, WB =
-  WbAccrualsCard)
-- OzonAccrualsCard - карточка начислений Ozon + детализация деревом
-- WbAccrualsCard - карточка начислений WB + детализация деревом
-- LoadingSpinner - индикатор загрузки
-- Layout - навигация между страницами
-- [x] Страницы:
-  - DashboardPage - главная с метриками, графиком, таблицей
-  - ProductsDetailPage - детализация по товарам
-  - UnitEconomicsPage - прибыль по товарам
-  - SyncPage - синхронизация данных
-  - AdsPage - реклама (метрики, графики ДРР, таблица по дням)
-  - PrintPage - страница для PDF экспорта (без Layout, 3 секции A4)
-- [x] React Router с 5 страницами
-- [x] Zustand store для фильтров
-- [x] Frontend запущен на http://localhost:5173
-
-### Выполнено (Предыдущие чаты):
-
-- [x] Orphan-затраты исправлены (синхронизация продаж за 35 дней)
-- [x] Backend: POST /sync/ads эндпоинт добавлен
-- [x] sync_ads_wb: обработка кампаний по одной + rate limit
-- [x] OzonPerformanceClient: UUID-based async + CSV-парсинг отчётов
-- [x] ProductsDetailPage: полная реализация (карточки, структура затрат, таблица
-      эффективности)
-- [x] AdsPage: реализация (метрики, графики ДРР, таблица по дням) — TS исправлен
-- [x] Frontend API: syncApi.syncAds() добавлен
-- [x] AdsPage.tsx — TS ошибки исправлены
-- [x] SyncPage — кнопка синхронизации рекламы добавлена
-- [x] Ads sync выполнена (WB: 1 запись 0.18₽, Ozon: 0)
-- [x] backend/diagnose_data.py удалён
-- [x] Dashboard: costs фильтруются по product_id с продажами (orphan-fix)
-- [x] Sync sales default: 7 → 35 дней (sync.py)
-- [x] Ozon sync по дням: dimensions=["sku","day"] вместо ["sku"]
-      (sync_service.py + ozon_client.py)
-- [x] Ozon пересинхронизирован: 43 записи по дням
-- [x] Unit-economics: orphan-costs тоже исключены (dashboard.py)
-
-### Выполнено (Текущий чат — WB matching + Accruals):
-
-- [x] Зафиксирован источник истины WB: `reportDetailByPeriod` (как в ЛК
-      "Финансовые отчёты")
-- [x] Исправлена комиссия WB (ранее ошибочно писали `commission_percent` как ₽)
-- [x] sync_sales_wb() переведён на `reportDetailByPeriod` (выручка/выкупы “как в
-      ЛК”)
-- [x] sync_costs_wb() переписан: пишет `mp_costs` + `mp_costs_details`
-      (категории/подкатегории как в кабинетной выгрузке)
-- [x] Добавлен системный товар `WB_ACCOUNT` (“WB: вне разреза товаров”) для
-      строк без товара/без маппинга
-- [x] `/dashboard/costs-tree` поддерживает WB дерево (order категорий) +
-      fallback на mp_costs/mp_sales при отсутствии деталей
-- [x] Frontend: WB карточка начислений `WbAccrualsCard` (как в ЛК) + унификация
-      названия колонки "Выручка" (WB+Ozon)
-- [x] Reconcile для WB: `wb/reconcile_wb.py` + `wb/RECONCILE.md` (CSV vs API),
-      рекомендуется обновлять выгрузки раз в 1–2 месяца
-
-### WB Stocks (gotchas / как в ЛК)
-
-- **Источник**: `statistics-api.wildberries.ru/api/v1/supplier/stocks`
-- **Критично про `dateFrom`**: чтобы получить **полный срез “как в ЛК WB”**,
-  `dateFrom` должен быть максимально ранним (например `2019-06-20`). Иначе WB
-  может вернуть только изменения, из-за чего склады без недавних изменений
-  (часто “Электросталь”) “пропадают”.
-- **Семантика**:
-  - `quantity` = **доступно к продаже** (сколько можно добавить в корзину)
-  - `quantityFull` = всего (включая “в пути”)
-  - `inWayToClient` / `inWayFromClient` = в пути к клиенту / от клиента
-- **Маппинг**: в sync маппим **сначала по `barcode`**, fallback по `nmId` (иначе
-  можно терять строки).
-- **UI/операционный вид**: на главной `StocksTable` показывает раздельные
-  статусы WB/Ozon, фильтры OOS/Low и “обновлено … назад”.
-- **Диагностика**:
-  - `GET /api/v1/sync/stocks/check?marketplace=wb&days_back=365` — сверка WB API
-    vs `mp_stocks` (ищем `diffs[]` и `unmapped_rows`)
-  - `POST /api/v1/sync/stocks?marketplace=wb` — пересинхронизация
-
-### Выполнено (OZON — предыдущие чаты):
-
-- [x] Ozon finance API проверен — 291 операция за 30 дней (5 типов: Доставка,
-      Звёздные товары, Бонусы, Эквайринг, Хранение)
-- [x] sync_costs_ozon() переписан: пагинация, маппинг SKU, параллельная запись
-      mp_costs + mp_costs_details
-- [x] _classify_ozon_operation() — маппинг operation_type → category/subcategory
-- [x] Операции хранения (без items) распределяются равномерно между товарами
-- [x] Комиссия сгруппирована: Витамины (D3+K2, L-карнитин, Магний) / Прочее
-      (Тестобустер) — группировка проекта, не ставка Ozon
-- [x] GET /dashboard/costs-tree endpoint — иерархия с % от выручки
-- [x] OzonAccrualsCard — карточка начислений (как в ЛК) + детализация деревом
-- [x] Данные синхронизированы: 53 mp_costs + 353 mp_costs_details
-
-### Выполнено (Текущий чат — MATCH верхних плашек + "нативная" семантика):
-
-- [x] Верхние плашки приведены к семантике карточек начислений (costs-tree),
-      чтобы цифры не противоречили "как в ЛК".
-- [x] Выручка: WB = mp_sales.revenue, Ozon = costs-tree категория "Продажи".
-- [x] Расходы МП: считаются из costs-tree (и должны мэтчиться с "Удержания" в
-      карточках OZON/WB).
-- [x] Добавлена плашка "К перечислению": costs-tree.total_accrued (Ozon
-      "Начислено", WB "К перечислению").
-- [x] Прибыль: помечена как "оценка" и считается как payout − закупка − ads,
-      добавлен debug tooltip.
-- [x] ДРР: пересчитан как Ads API / Выручка (на той же базе, что "Выручка").
-- [x] UI: сокращены заголовки (аббревиатуры) + добавлены расшифровки в tooltip
-      на каждой плашке; тултипы многострочные.
-- [x] Исправлены подписи % в деревьях OZON/WB: "% считаются от продаж" +
-      подсказка, что это доля от "Продажи", а не тариф.
-
-### Выполнено (Оптимизация загрузки — 29.01.2026):
-
-**Backend (Supabase RPC):**
-- [x] Создана RPC функция `get_dashboard_summary` — агрегирует sales/costs/ads/purchase_costs одним запросом вместо 5-6
-- [x] Создана RPC функция `get_costs_tree` — строит иерархию удержаний на стороне PostgreSQL
-- [x] Добавлены индексы: `idx_mp_sales_date_mp`, `idx_mp_costs_date_mp`, `idx_mp_costs_details_date_mp`, `idx_mp_ad_costs_date_mp`
-- [x] `/dashboard/summary` и `/dashboard/costs-tree` теперь вызывают `supabase.rpc()` вместо множества запросов
-
-**Frontend (устранение дублирования и каскадов):**
-- [x] `OzonAccrualsCard` и `WbAccrualsCard` получают данные через props из DashboardPage (не делают свои запросы)
-- [x] `MarketplaceBreakdown` передаёт `costsTreeData` и `isLoading` в дочерние карточки
-- [x] Убран механизм `deferredEnabled` — он создавал +2 каскадных ре-рендера при изменении фильтров
-- [x] Убран `useInView` для графиков/остатков — RPC теперь достаточно быстрые
-- [x] Графики lazy-load через `React.lazy()` (recharts ~500KB)
-- [x] Мемоизация `salesChartSeries` и `adCostsSeriesFull` через `useMemo`
-
-**Архитектура props drilling (оптимизировано 31.01.2026):**
-```
-DashboardPage
-  ├── useCostsTreeCombined() → { ozon, wb } (при marketplace=all — 1 запрос вместо 2)
-  ├── useCostsTree(single) → costsTreeData (при marketplace=ozon или wb)
-  │
-  └── MarketplaceBreakdown (props: ozonCostsTree, wbCostsTree)
-        ├── OzonAccrualsCard (props: costsTreeData, isLoading)
-        └── WbAccrualsCard (props: costsTreeData, isLoading)
+# Деплой frontend
+cd frontend && npm run build
+sshpass -p '@vnDBp5VCt2+' rsync -avz --delete -e "ssh -o StrictHostKeyChecking=no" dist/ root@83.222.16.15:/var/www/analytics/frontend/
 ```
 
-### Выполнено (Оптимизация — 30.01.2026):
+## Текущий статус
 
-**Backend (новые endpoints):**
-- [x] `/dashboard/summary` — добавлены параметры `include_prev_period`, `include_ozon_truth`
-- [x] `/dashboard/costs-tree-combined` — объединённый запрос для Ozon + WB
+### SaaS Phase 1: Auth + RLS — DEPLOYED (08.02.2026)
+- JWT middleware (JWKS), RLS на всех таблицах, user_id во всех данных
+- Cron: X-Cron-Secret + X-Cron-User-Id headers
+- Подробности: [backend/README.md](backend/README.md) раздел "Auth & Security"
 
-**SQL миграция (backend/migrations/002_optimized_rpc.sql):**
-- [x] Создана RPC `get_costs_tree_combined` — объединяет ozon и wb в 1 запрос
-- [x] Создана RPC `get_dashboard_summary_with_prev` — summary + prev-period в 1 запрос
-- ⚠️ **ВАЖНО:** Эти RPC зависят от `get_costs_tree`, которая должна быть создана в Supabase
+### SaaS Phase 2: Onboarding — CODE COMPLETE (08.02.2026)
+- Fernet encryption, mp_user_tokens таблица, SettingsPage
+- ProtectedRoute → redirect /settings если нет токенов
+- Подробности: [memory/saas-phase2.md](memory/saas-phase2.md)
 
-**Frontend (типы и hooks):**
-- [x] Добавлены типы: `CostsTreeCombinedResponse`, `DashboardSummaryWithPrevResponse`
-- [x] Добавлены API методы: `getCostsTreeCombined`, `getSummaryWithPrev`
-- [x] Добавлены hooks: `useCostsTreeCombined`, `useDashboardSummaryWithPrev`
-- [x] DashboardPage очищен от мёртвого кода и упрощён
+### Активные задачи
+- [ ] Деплой SaaS Фаза 2 на VPS — см. memory/saas-phase2.md чеклист
+- [ ] Улучшить AdsPage — графики ДРР по дням, сравнение периодов
 
-**Текущее состояние (обновлено 31.01.2026):**
-- ✅ **RPC `get_costs_tree_combined` АКТИВИРОВАН** — DashboardPage использует объединённый запрос
-- При `marketplace=all` делается **1 запрос** costs-tree вместо **3** (было: ozon + wb + ozon summary)
-- Выручка для плиток берётся напрямую из costs-tree (без отдельного ozon summary запроса)
-- **Экономия:** ~2 HTTP запроса на каждую загрузку страницы
-
-**Ошибки, которые были исправлены:**
-- `deferredEnabled` создавал каскадные ре-рендеры при каждом изменении фильтров
-- `useInView` с `rootMargin='600px'` не триггерился для элементов далеко внизу страницы
-- Каждая AccrualsCard делала свой useCostsTree — дублирование запросов
-- `include_children: false` возвращал пустое дерево в детализации
-
-### Выполнено (Адаптивный дизайн — 30.01.2026):
-
-**DateRangePicker (react-day-picker v9) — v3 compact:**
-- [x] Установлен react-day-picker v9.13.0 (совместим с date-fns 4.x)
-- [x] **Компактный размер:** ячейки 32px desktop / 34px mobile (было 40-44px)
-- [x] **Исправлен баг синхронизации года** между месяцами — `captionLayout="label"` вместо dropdown
-- [x] **Пресеты быстрого выбора:** Сегодня, Вчера, 7д, 30д, Месяц — в header
-- [x] **Кнопка "OK"** на всех экранах (убран auto-close)
-- [x] Мобильное позиционирование: `fixed inset-x-4 top-[15vh]` с safe-area
-- [x] `showOutsideDays={false}`, `fixedWeeks={false}` — меньше строк
-- [x] CSS класс `rdp-compact` с минимальными отступами
-
-**Layout с адаптивной навигацией:**
-- [x] Desktop: header (логотип + горизонтальная навигация), sticky, z-index: 40
-- [x] Mobile: верхнего меню нет; фиксированная плашка справа (язычок) на 25% от верха экрана
-- [x] Плашка: медленное переливание градиента (indigo→violet, 5s), hover — расширение полоски; тап — открытие панели
-- [x] Панель: выезд влево (280px / 85vw), сразу 4 ссылки (Дашборд, Unit-экономика, Реклама, Синхронизация)
-- [x] Закрытие: overlay, ESC, переход по ссылке; блокировка scroll body при открытой панели
-- [x] CSS: `.nav-tab-strip`, `.nav-tab-trigger` в index.css; `prefers-reduced-motion` отключает анимацию
-
-**Адаптивные компоненты Dashboard:**
-- [x] `SummaryCard` — адаптивные padding, шрифты, скрытые иконки на mobile
-- [x] `SalesChart` — горизонтальный scroll, адаптивная высота (220px mobile / 300px desktop)
-- [x] `StocksTable` — скрытые колонки на mobile, цветовая индикация OOS
-- [x] `FilterPanel` — компактные кнопки, скрытые labels на mobile
-
-**Хуки для responsive:**
-- [x] `useMediaQuery(query)` — универсальный хук
-- [x] `useIsMobile()` — `max-width: 639px`
-- [x] `useIsTablet()` — `640px - 1023px`
-- [x] `useIsDesktop()` — `min-width: 1024px`
-
-**CSS (index.css):**
-- [x] CSS классы `.rdp-compact` и `.rdp-custom` для react-day-picker v9
-- [x] Компактные размеры: `--rdp-day-height: 2rem`, `--rdp-day-width: 2rem`
-- [x] Mobile: `--rdp-day-height: 2.125rem` (34px) для touch
-- [x] Анимации fade-in, zoom-in для popover
-- [x] `.nav-tab-strip` — медленное переливание градиента (5s), hover 12px→16px; `prefers-reduced-motion` отключает анимацию
-
-### Выполнено (Mobile-first рефакторинг — 30.01.2026, сессия 2):
-
-**MarketplaceBreakdown (OZON/WB карточки):**
-- [x] Карточки всегда 50/50 горизонтально (`grid-cols-2` вместо `grid-cols-1 sm:grid-cols-2`)
-- [x] Компактный layout для узких колонок: Продажи + Начислено в одной строке
-- [x] WB: Продажи теперь включают СПП (возмещение), полоска разделена на продажи/СПП
-- [x] WB: "Возмещения" переименовано в "СПП" (Скидка постоянного покупателя)
-- [x] WB: "К перечисл." → "Начислено" (унификация терминологии)
-- [x] OZON: убран "+1 ещё" — показываются все категории удержаний
-- [x] Уменьшены шрифты для mobile: text-lg/text-[10px] vs text-2xl/text-xs desktop
-- [x] Уменьшены отступы: p-3 mobile / p-5 desktop
-
-**Графики (SalesChart, AvgCheckChart, DrrChart):**
-- [x] Высота уменьшена в ~2 раза: 100px mobile / 140px desktop (было 200-300px)
-- [x] Padding уменьшен: p-2 sm:p-3 (было p-5)
-- [x] Заголовки компактнее: text-xs sm:text-sm (было text-base)
-- [x] Табы SalesChart: h-5 sm:h-6 (было h-7 sm:h-8)
-- [x] При отсутствии данных: показывается нулевой график (flat line) вместо большого "Нет данных"
-- [x] Loading skeleton адаптирован под компактную высоту
-
-**DashboardPage (фильтры + графики):**
-- [x] Боковые фильтры всегда вертикально слева (убрана горизонтальная мобильная версия)
-- [x] `flex-row` вместо `flex-col lg:flex-row` — единый layout на всех экранах
-- [x] Ширина фильтров адаптивная: w-28 sm:w-32 lg:w-36
-- [x] Шрифты фильтров: text-[9px]/text-[11px] mobile, text-[10px]/text-xs desktop
-
-**Layout (навигация mobile — 30.01.2026):**
-- [x] На мобиле header убран: контент сразу под верхним краем
-- [x] Боковая плашка справа: фиксированный «язычок» (12px видимая полоска), позиция top 25% (удобно для большого пальца правой руки)
-- [x] Переливание: градиент indigo→violet в `.nav-tab-strip`, анимация 5s; при hover полоска 16px
-- [x] По тапу плашка открывает панель (slide-in слева), в панели сразу 4 пункта меню
-- [x] Desktop без изменений: header + горизонтальные ссылки
-
-### Выполнено (Синхронизация и UX — 31.01.2026):
-
-- [x] **SYNC_TOKEN убран** из .env — защита не нужна для внутреннего проекта
-- [x] Страница синхронизации (`/sync`) работает: логи видны, кнопки работают
-- [x] Данные синхронизированы за 23-30 января (sales: 8 записей, costs: 22 записи + 128 details)
-- [x] **WB карточка** — компактный fallback при отсутствии данных ("Нет данных за период")
-- [x] Убран громоздкий блок с прочерками и предупреждениями в WbAccrualsCard
-
-### Выполнено (CSS и UX фиксы — 01.02.2026):
-
-**CSS overflow на мобиле:**
-- [x] Исправлен текст, уезжающий за границы карточек (OzonAccrualsCard, WbAccrualsCard)
-- [x] Добавлены CSS классы: `truncate`, `flex-1`, `min-w-0`, `flex-shrink-0`
-- [x] TreeCategoryInline переписан с правильными overflow-safe стилями
-
-**UI cleanup в детализации:**
-- [x] "К перечислению" → "Начислено" (WB карточка, унификация с OZON)
-- [x] Убран чекбокс "% у подкатегор." — проценты показываются по умолчанию
-- [x] Убран текст "за период" из заголовков детализации
-- [x] Очищен мёртвый код (filters prop, showLeafPercents, LeafPercentsCfg)
-
-**Исправлено расхождение цифр:**
-- [x] Верхняя плашка "Продажи" теперь берёт данные из costs-tree (не из mp_sales)
-- [x] Добавлен `isCostsTreeLoading` флаг — skeleton показывается пока данные грузятся
-- [x] `revenueForTile` логика: costs-tree приоритет, fallback на summary.revenue только когда costs-tree пуст
-- [x] Цифры верхней плашки теперь совпадают с суммой OZON + WB карточек
-
-**Деплой:**
-- [x] Frontend задеплоен на production (rsync → 83.222.16.15:/var/www/analytics/frontend/)
-
-### Выполнено (Мобильное меню — 02.02.2026):
-
-**Swipe для закрытия:**
-- [x] Touch handlers: `touchstart`, `touchmove`, `touchend`
-- [x] Threshold: 60px — минимальное расстояние свайпа вправо для закрытия
-- [x] `swipeOffset` состояние для визуальной обратной связи при свайпе
-- [x] Панель следует за пальцем при свайпе вправо
-
-**Улучшенный ярлычок (UI/UX best practices):**
-- [x] Полоска увеличена: 12px → **16px** (лучше видна)
-- [x] Добавлен **chevron `‹`** внутри полоски (affordance — понятно что это кнопка)
-- [x] Touch target увеличен: 40px → **48px** (соответствует Apple HIG 44px+)
-- [x] Усиленная тень: `box-shadow: -3px 0 16px rgba(99, 102, 241, 0.35)`
-- [x] При hover: ширина 20px, ещё более яркая тень
-
-**Компактная панель:**
-- [x] Ширина уменьшена: 280px → **240px** (75vw вместо 85vw)
-- [x] Header компактнее: py-3 → py-2, иконки h-6 → h-5
-- [x] Пункты меню компактнее: py-3.5 → py-2.5, gap-3 → gap-2.5
-- [x] Добавлена подсказка внизу: "← свайп для закрытия"
-
-**Файлы изменены:**
-- `frontend/src/components/Shared/Layout.tsx` — swipe handlers, компактный UI
-- `frontend/src/index.css` — `.nav-tab-strip` 16px + усиленная тень
-
-### Выполнено (PDF Export через Playwright — 03.02.2026):
-
-**Архитектура:**
-- Frontend вызывает `GET /api/v1/export/pdf?date_from=...&date_to=...&marketplace=...`
-- Backend (Playwright + Chromium) открывает `/print?from=...&to=...&marketplace=...`
-- PrintPage загружает данные через React Query, рендерит 3 страницы A4
-- После `data-pdf-ready="true"` Playwright генерирует PDF и возвращает blob
-
-**Файлы:**
-- `backend/app/api/v1/export.py` — endpoint `/export/pdf`, функция `generate_pdf()`
-- `frontend/src/pages/PrintPage.tsx` — 3 страницы: Dashboard, Unit-экономика, Реклама
-- `frontend/src/hooks/useExport.ts` — hook с `exportPdf()` вызывающий backend API
-- `frontend/src/services/api.ts` — `exportApi.exportPdf()`
-
-**Сервер:**
-- Добавлен swap 2GB (`/swapfile`) — требуется для Playwright + Chromium
-- Playwright установлен: `pip install playwright && playwright install chromium`
-- Timeout: 120 сек (PDF генерация ~15-20 сек)
-
-**Качество:**
-- Идеальный рендеринг (настоящий браузер, не canvas)
-- PDF 3 страницы, ~76 КБ
-- Градиенты, шрифты, графики — всё корректно
-
-### Выполнено (SaaS Фаза 1: Auth + RLS — 08.02.2026):
-
-**Архитектура:** Hybrid — service_role_key на backend, RLS как safety net, JWT через JWKS.
-
-**SQL миграции (выполнены в Supabase):**
-- `004_add_user_id.sql` — user_id UUID + индексы + обновлённые UNIQUE constraints (8 таблиц)
-- `005_rls_policies.sql` — RLS ENABLE + CRUD-политики (auth.uid() = user_id)
-- `006_rpc_with_user_id.sql` — p_user_id во все 4 RPC функции
-- Данные привязаны к user 17e80396-86e1-4ec8-8cb2-f727462bf20c (exklante@gmail.com)
-- Все user_id колонки SET NOT NULL
-
-**Backend (новые файлы):**
-- `backend/app/auth.py` — JWT middleware (JWKS верификация через PyJWKClient, ES256+HS256)
-- `backend/requirements.txt` — +PyJWT[crypto]>=2.8.0
-- `backend/app/config.py` — +sync_cron_secret
-
-**Backend (изменённые файлы):**
-- `backend/app/main.py` — CORS ограничен (analitics.bixirun.ru + localhost:5173)
-- `backend/app/api/v1/dashboard.py` — auth + user_id в 7 endpoints
-- `backend/app/api/v1/products.py` — auth + user_id в 3 endpoints
-- `backend/app/api/v1/sync.py` — cron/jwt auth + user_id в 8 endpoints
-- `backend/app/api/v1/export.py` — auth + JWT pass-through для PDF
-- `backend/app/services/sync_service.py` — user_id во всех insert/upsert/delete (~30 мест)
-
-**Frontend (новые файлы):**
-- `frontend/src/lib/supabase.ts` — Supabase client (auth only)
-- `frontend/src/store/useAuthStore.ts` — Zustand auth store
-- `frontend/src/hooks/useAuth.ts` — auth listener (getSession + onAuthStateChange)
-- `frontend/src/pages/LoginPage.tsx` — login/register + eye toggle
-- `frontend/src/components/Shared/ProtectedRoute.tsx` — route guard
-
-**Frontend (изменённые файлы):**
-- `frontend/.env` — +VITE_SUPABASE_URL, +VITE_SUPABASE_ANON_KEY
-- `frontend/src/services/api.ts` — auth interceptor (Bearer token, PDF token, 401→/login)
-- `frontend/src/App.tsx` — useAuth(), /login route, ProtectedRoute wrapper
-- `frontend/src/components/Shared/Layout.tsx` — email + logout (desktop + mobile)
-- `frontend/src/pages/PrintPage.tsx` — reads ?token= from URL для PDF
-
-**Статус:** Код готов, SQL применён, ДЕПЛОЙ НА VPS PENDING.
-
-### Следующий этап - Доработки:
-
-- [x] ~~Затраты за декабрь 2025 без продаж~~ — исправлено
-- [x] ~~Метрика "Площади/настроений %"~~ — реализована через Prior Period + YoY
-- [x] ~~Визуализация комиссии МП~~ — CostsTreeView (backend готов, frontend визуал в процессе)
-- [x] ~~Оптимизация загрузки~~ — RPC функции, убраны дублирующие запросы, lazy-load
-
-**Средний приоритет (при необходимости):**
-- [x] ~~Скелетоны на тяжёлые блоки~~ — реализовано (animate-pulse, LoadingSpinner, Suspense)
-
-**Backlog:**
-- [x] Custom Date Picker для выбора произвольного периода ✅ (DateRangePicker готов)
-- [x] Адаптивный дизайн для мобильных устройств ✅
-- [x] CSS overflow на мобиле ✅ (01.02.2026)
-- [x] Расхождение цифр верхней плашки и карточек ✅ (01.02.2026)
-- [x] CostsTreeView визуал — довести до 1-в-1 как в ЛК ✅
-- [x] Excel и PDF export ✅ (03.02.2026)
-- [x] UnitEconomicsPage переделана ✅ (08.02.2026)
-- [x] SaaS Фаза 1: Auth + RLS — код готов ✅ (08.02.2026)
-- [ ] Деплой SaaS Фаза 1 на VPS
-- [ ] SaaS Фаза 2: Онбординг (токены)
-- [ ] Улучшить AdsPage
+### Известные баги
+- **Плашки "Пред.пер." и "Δ к пред." не показывают данные** — логика `useDashboardSummaryWithPrev` / `getSummaryWithPrev` сломана
+- `secret_key = "change-me-in-production"` в config.py
+- Нет concurrent sync protection на costs/stocks/ads endpoints
+- Ozon SKU mapping частично hardcoded в sync_service.py
 
 ## Технический стек
 
 - **Backend:** Python 3.14 + FastAPI + PyJWT[crypto] (JWKS)
 - **Database:** Supabase (PostgreSQL + RLS + RPC)
-- **Auth:** Supabase Auth (email/password) + JWT middleware (JWKS)
+- **Auth:** Supabase Auth (email/password) + JWT middleware
 - **Frontend:** React 19.2 + TypeScript 5.9 + Vite 7.2 + Tailwind CSS 3
-- **State Management:** React Query 5.90 + Zustand 5.0
-- **Деплой:** Beget VPS + Supabase + Let's Encrypt SSL
+- **State:** React Query 5.90 + Zustand 5.0
+- **Deploy:** Beget VPS + Supabase + Let's Encrypt SSL
 
-## Товары (5 SKU)
+## Локальная разработка
 
-| Штрихкод      | Название                 | Закупка | WB nmID   | Ozon product_id |
-| ------------- | ------------------------ | ------- | --------- | --------------- |
-| 4670157464824 | Магний + В6 хелат 800 мг | 280₽    | 254327396 | 1144779512      |
-| 4670157464831 | Магний цитрат 800 мг     | 250₽    | 254299021 | 1144795275      |
-| 4670157464848 | L-карнитин 720 мг        | 360₽    | 254278127 | 1145915272      |
-| 4670157464770 | Витамин D3 + К2 260 мг   | 280₽    | 254281289 | 1145845755      |
-| 4670227414995 | Тестобустер              | 404₽    | 260909523 | 1183426642      |
+```bash
+# Backend
+cd backend && source venv/bin/activate
+uvicorn app.main:app --reload --port 8000   # http://localhost:8000/docs
 
-## Ключевые метрики для дашборда
+# Frontend (НИКОГДА npm run dev для проверки — только npm run build)
+cd frontend && npm run dev                    # http://localhost:5173
 
-- Продажи (заказы, выкупы, возвраты)
-- Процент выкупа
-- Добавления в корзину
-- Остатки на складах
-- Удержания МП (комиссия, логистика, хранение, продвижение, штрафы, эквайринг)
-- Unit-экономика (прибыль на единицу)
-- География продаж
-- Рекламные расходы (ACOS, ДРР)
+# Playwright (первый запуск)
+cd backend && pip install playwright && playwright install chromium
+```
 
-## Структура БД (Supabase)
-
-Все таблицы с префиксом `mp_`, все имеют `user_id UUID NOT NULL REFERENCES auth.users(id)`:
-
-- `mp_products` - товары с закупочными ценами и идентификаторами МП
-- `mp_sales` - продажи (ежедневная агрегация)
-- `mp_stocks` - остатки на складах
-- `mp_costs` - удержания маркетплейса (агрегация: commission, logistics, storage...)
-- `mp_costs_details` - гранулярные удержания для tree-view (category, subcategory, amount)
-- `mp_sales_geo` - география продаж
-- `mp_ad_costs` - рекламные расходы
-- `mp_sync_log` - логи синхронизации
-
-**RLS:** Все таблицы с `ENABLE ROW LEVEL SECURITY`, политики `auth.uid() = user_id`.
-**RPC:** 4 функции с `p_user_id` параметром (get_dashboard_summary, get_costs_tree, get_costs_tree_combined, get_dashboard_summary_with_prev).
-**UNIQUE constraints:** Все включают `user_id` (напр. `(user_id, product_id, marketplace, date)`).
+**FRONTEND_URL** в `.env` = `http://localhost:5173` (для PDF экспорта локально)
 
 ## Структура проекта
 
 ```
 Analitics/
-├── backend/
+├── backend/                  # FastAPI + Supabase
 │   ├── app/
-│   │   ├── api/v1/          # FastAPI роуты (products, dashboard, sync, export)
-│   │   ├── services/        # WB и Ozon клиенты (готовы)
-│   │   ├── models/          # Pydantic модели
-│   │   ├── db/              # Supabase клиент
-│   │   ├── auth.py          # JWT middleware (JWKS, CurrentUser, get_current_user_or_cron)
-│   │   └── config.py        # Settings (+ sync_cron_secret)
-│   ├── migrations/          # SQL миграции (004-006: user_id, RLS, RPC)
-│   ├── tests/
-│   ├── requirements.txt     # + playwright>=1.40.0, PyJWT[crypto]>=2.8.0
-│   └── test_api.py          # Тест подключения к API
-├── frontend/                # React + TypeScript
-├── .env                     # API ключи (не коммитить!)
-├── .gitignore
-└── CLAUDE.md                # Основная документация проекта
+│   │   ├── api/v1/           # Роуты: dashboard, products, sync, export, tokens
+│   │   ├── services/         # WB/Ozon клиенты, sync_service
+│   │   ├── auth.py           # JWT middleware (JWKS)
+│   │   ├── crypto.py         # Fernet encrypt/decrypt (Phase 2)
+│   │   └── config.py         # Settings
+│   └── migrations/           # SQL: 004-007 (user_id, RLS, RPC, user_tokens)
+├── frontend/                 # React 19 + TS 5.9 + Vite 7 + Tailwind 3
+│   └── src/
+│       ├── components/       # Dashboard/, Shared/
+│       ├── hooks/            # useDashboard, useAuth, useTokens, useExport...
+│       ├── pages/            # Dashboard, Login, Settings, UnitEconomics, Ads, Sync, Print
+│       ├── services/api.ts   # Axios + auth interceptor + tokensApi
+│       └── store/            # useFiltersStore, useAuthStore (Zustand)
+├── CLAUDE.md                 # ← Вы здесь (компактный обзор)
+├── CHANGELOG.md              # Полная история изменений
+├── promt.md                  # Промпт для нового чата
+└── .env                      # API ключи (НЕ коммитить!)
 ```
 
-## API ключи (.env)
+## База данных (Supabase)
 
-Все ключи уже настроены в `.env`:
+Все таблицы `mp_*`, все имеют `user_id UUID NOT NULL REFERENCES auth.users(id)`:
 
-- WB_API_TOKEN - Wildberries (статистика, аналитика, финансы, продвижение)
-- OZON_CLIENT_ID, OZON_API_KEY - Ozon Seller API
-- OZON_PERFORMANCE_CLIENT_ID, OZON_PERFORMANCE_CLIENT_SECRET - Ozon реклама
-- SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY
+| Таблица | Назначение |
+|---------|-----------|
+| mp_products | Товары + закупочные цены + WB/Ozon ID |
+| mp_sales | Продажи (ежедневная агрегация) |
+| mp_stocks | Остатки на складах |
+| mp_costs | Удержания МП (агрегация) |
+| mp_costs_details | Гранулярные удержания (tree-view) |
+| mp_sales_geo | География продаж |
+| mp_ad_costs | Рекламные расходы |
+| mp_sync_log | Логи синхронизации |
+| mp_user_tokens | Зашифрованные API-токены пользователей (Phase 2) |
 
-## Текущая задача: Исправить данные и перейти к следующим страницам
-
-### Что работает (DashboardPage полностью готова ✅):
-
-✅ **8 карточек метрик** (6 основных + 2 сравнения при пресетах 7/30/90d)
-
-- Выручка: по “истине” (WB mp_sales, Ozon costs-tree “Продажи”)
-- Прибыль (оценка): payout − закупка − ads (debug tooltip)
-- ДРР: Ads API / Выручка
-- Реклама: Ads API (не равно “Бонусы продавца” в удержаниях)
-- Расх. МП: удержания из costs-tree (должно совпадать с карточками начислений)
-- К перечисл.: costs-tree.total_accrued
-- Пред. пер.: выручка предыдущего периода
-- Δ к пред.: изменение выручки к предыдущему периоду (не YoY) ✅ **2 блока
-  MarketplaceBreakdown** (OZON/WB) с реальными данными
-- OZON: 12,907₽ / 24 выкупа / 5,459₽ прибыль
-- WB: 3,598₽ / 6 выкупов / 1,707₽ прибыль
-- Детализация: Комиссия, Логистика, Хранение (раздельно) ✅ **FilterPanel**
-  (7/30/90d + custom date picker) ✅ **Боковые фильтры** (Маркетплейс:
-  все/WB/OZON + Товары: список из API) ✅ **3 графика**:
-- SalesChart с табами (Заказы/Выкупы/Выручка) — компактный 100/140px
-- AvgCheckChart (BarChart среднего чека) — компактный 80/100px
-- DrrChart (AreaChart ДРР) — компактный 80/100px, zero-line при отсутствии данных ✅ **StocksTable** с expandable rows (52 шт Витамин D3+K2 на
-  Электростали) ✅ **Ozon stocks (FBO) подтянуты**: sync пишет `mp_stocks` по
-  складам РФЦ, UI показывает Ozon остатки ✅ **Ozon данные синхронизированы** по
-  дням (43 записи через dimensions=["sku","day"]) ✅ **Orphan-costs исключены**
-  (costs фильтруются по product_id с продажами) ✅ **Логика периодов** проверена
-  (7/30/90d, предыдущий период рассчитывается корректно)
-
-### Текущее состояние:
-
-#### Важно про источники данных (01.02.2026):
-
-**Две разных таблицы — разная семантика:**
-- `mp_sales.revenue` — все заказы (включая непроведённые)
-- `mp_costs_details.Продажи` — только финализированные выкупы из финотчёта (как в ЛК)
-
-**Верхняя плашка "Продажи":**
-- Берёт данные из `costs-tree` (категория "Продажи"), НЕ из `summary.revenue`
-- Пока costs-tree грузится — показывается skeleton (`isCostsTreeLoading`)
-- Fallback на `summary.revenue` только если costs-tree загрузился и пуст
-- Это гарантирует, что плашка совпадает с суммой OZON + WB карточек
-
-#### Оптимизация (актуально на 01.02.2026):
-
-- **Backend:** `/dashboard/summary` и `/dashboard/costs-tree` используют Supabase RPC
-- **Frontend:** AccrualsCards получают данные через props (не дублируют запросы)
-- **Lazy-load:** графики загружаются через React.lazy()
-- **Убрано:** `deferredEnabled`, `useInView` для графиков/остатков
-
-#### Данные (актуально на 01.02.2026):
-
-- **WB продажи:** ~51 запись (по дням, 35 дней)
-- **Ozon продажи:** 43 записи (по дням, 35 дней)
-- **WB costs:** ~46 записей (комиссия, логистика, эквайринг)
-- **Ozon costs:** 53 записи mp_costs + 353 записи mp_costs_details (30 дней)
-- **Ozon finance API:** 291 операция за 30 дней (5 типов operation_type)
-- **Реклама:** 1 запись WB (0.18₽) — кампания неактивна
-
-#### Рекламная кампания WB неактивна
-
-- 1 запись (0.18₽, 1 показ за 23.01.2026)
-- Ozon Performance: 0 записей
-- ДРР = 0% на всех днях
-
-#### AccrualsCards (OZON / WB) — готово ✅
-
-- **OzonAccrualsCard** — компактная карточка + раскрываемое дерево удержаний
-- **WbAccrualsCard** — компактная карточка + раскрываемое дерево удержаний
-- Проценты показываются по умолчанию (% от продаж)
-- CSS: overflow-safe, адаптив для 50% ширины экрана
-- Синхронизированное открытие/закрытие деталей между карточками
-
-### Задачи для следующего чата:
-
-1. **Улучшить UnitEconomicsPage** — добавить графики, детализацию по товарам
-2. **Улучшить AdsPage** — графики ДРР по дням, сравнение периодов
-
-### Готовые файлы (можно использовать):
-
-- ✅ `src/types/index.ts` - все TypeScript типы (включая CostsTreeResponse,
-  CostsTreeItem, CostsTreeChild)
-- ✅ `src/services/api.ts` - axios client с endpoints (включая getCostsTree)
-- ✅ `src/hooks/useDashboard.ts` - React Query hooks (включая useCostsTree)
-- ✅ `src/lib/utils.ts` - утилиты форматирования
-- ✅ `src/components/Dashboard/SummaryCard.tsx` - карточка метрики
-- ✅ `src/components/Dashboard/CostsTreeView.tsx` - дерево удержаний Ozon
-  (ВИЗУАЛ В ПРОЦЕССЕ)
-- ✅ `src/components/Dashboard/MarketplaceBreakdown.tsx` - OZON=CostsTreeView,
-  WB=карточка
-- ✅ `src/components/Shared/LoadingSpinner.tsx` - спиннер
-
-### Текущая структура frontend/
-
-```
-frontend/
-├── src/
-│   ├── components/
-│   │   ├── Dashboard/
-│   │   │   ├── SummaryCard.tsx         ✅ Адаптивный
-│   │   │   ├── SalesChart.tsx          ✅ Компактный (100/140px), zero-line fallback
-│   │   │   ├── AvgCheckChart.tsx       ✅ Компактный (80/100px), zero-line fallback
-│   │   │   ├── DrrChart.tsx            ✅ Компактный (80/100px), zero-line fallback
-│   │   │   ├── StocksTable.tsx         ✅ Card-based на mobile
-│   │   │   ├── MarketplaceBreakdown.tsx ✅ grid-cols-2 всегда
-│   │   │   ├── OzonAccrualsCard.tsx    ✅ Compact layout (50% width)
-│   │   │   └── WbAccrualsCard.tsx      ✅ Compact layout (50% width), СПП
-│   │   ├── Shared/
-│   │   │   ├── LoadingSpinner.tsx      ✅ Готово
-│   │   │   ├── Layout.tsx              ✅ Mobile: панель + email/logout; Desktop: header + nav + email/logout
-│   │   │   ├── ProtectedRoute.tsx      ✅ Auth guard (Phase 1)
-│   │   │   ├── FilterPanel.tsx         ✅ Адаптивный
-│   │   │   └── DateRangePicker.tsx     ✅ v3 compact: 32px ячейки, пресеты, OK
-│   │   ├── Export/                     (удалён — PDF теперь через backend)
-│   │   ├── UnitEconomics/              (TODO)
-│   │   └── Sync/                       (TODO)
-│   ├── hooks/
-│   │   ├── useDashboard.ts             ✅ Готово
-│   │   ├── useSync.ts                  ✅ Готово
-│   │   ├── useAuth.ts                  ✅ Auth listener (Phase 1)
-│   │   ├── useMediaQuery.ts            ✅ useIsMobile, useIsTablet, useIsDesktop
-│   │   └── useExport.ts                ✅ Excel/PDF экспорт hook
-│   ├── lib/
-│   │   ├── utils.ts                    ✅ Готово
-│   │   ├── supabase.ts                 ✅ Supabase client (Phase 1)
-│   │   └── exportExcel.ts              ✅ Генерация Excel (6 листов)
-│   ├── pages/
-│   │   ├── DashboardPage.tsx           ✅ Фильтры слева, графики справа
-│   │   ├── LoginPage.tsx               ✅ Login/Register + eye toggle (Phase 1)
-│   │   └── PrintPage.tsx               ✅ PDF layout (3 страницы A4, token из URL)
-│   ├── services/
-│   │   └── api.ts                      ✅ Auth interceptor (Bearer, 401→/login)
-│   ├── store/
-│   │   ├── useFiltersStore.ts          ✅ Zustand store
-│   │   └── useAuthStore.ts             ✅ Auth store (Phase 1)
-│   ├── types/
-│   │   └── index.ts                    ✅ Готово
-│   ├── App.tsx                         ✅ useAuth() + ProtectedRoute + /login
-│   ├── index.css                       ✅ RDP v9 стили
-│   └── main.tsx                        ✅ Готово
-├── .env                                ✅ + VITE_SUPABASE_URL/KEY
-├── tailwind.config.js                  ✅ Готово
-├── postcss.config.js                   ✅ Готово
-└── package.json                        ✅ + @supabase/supabase-js
-```
-
-## Команды для работы
-
-### Backend
-
-```bash
-# Активация venv
-cd backend && source venv/bin/activate
-
-# Тест API подключения
-python test_api.py
-
-# Тест синхронизации
-python test_sync.py
-
-# Запуск FastAPI сервера
-uvicorn app.main:app --reload --port 8000
-```
-
-**Backend работает на:** http://localhost:8000 **Документация API:**
-http://localhost:8000/docs
-
-### Frontend
-
-```bash
-cd frontend
-
-# Установка зависимостей (уже установлено)
-npm install
-
-# Запуск dev сервера
-npm run dev
-
-# Сборка для продакшена
-npm run build
-```
-
-**Frontend работает на:** http://localhost:5173
-
-## Важные примечания
-
-### API маркетплейсов:
-
-- **Ozon:** `offer_id` = штрихкод (barcode пустой в API)
-- **WB:** использует `skus` в `sizes` для штрихкодов
-- **Ozon API версии:** v3 (products), v4 (stocks) - обновлено в коде
-- **WB Analytics API:** некоторые эндпоинты (воронка) возвращают 404, не
-  критично
-
-### База данных:
-
-- Supabase таблицы используют UUID для id
-- Unique constraints: `(product_id, marketplace, date)` для sales/costs
-- `total_costs` в mp_costs - computed column (автоматически рассчитывается)
-
-### Синхронизация:
-
-- Ozon FBO остатки берём через analytics `stock_on_warehouses` (кейс “Склад
-  Ozon”, когда FBS=0)
-- WB данные загружаются корректно (7 продаж, 46 удержаний, 2 склада)
-- Логи всех синхронизаций сохраняются в `mp_sync_log`
-
-### Frontend:
-
-- Используется Tailwind CSS v3 (v4 нестабильная, откатились)
-- React Query автоматически кэширует данные (staleTime: 5 минут)
-- Процент возвратов рассчитывается как: `returns / (sales + returns) * 100%`
-- Утилиты форматирования используют Intl API для локализации
-
-### API keys:
-
-- Supabase anon key: `sb_publishable_...` (НЕ JWT формат!)
-- WB токен валиден до 2025-09-04
-- Все ключи в `.env` - **НЕ КОММИТИТЬ В GIT!**
-- SYNC_CRON_SECRET: `analytics-cron-s3cr3t-2026`
+- **RLS:** Все таблицы, политики `auth.uid() = user_id`
+- **RPC:** 4 функции с `p_user_id` (get_dashboard_summary, get_costs_tree, get_costs_tree_combined, get_dashboard_summary_with_prev)
+- **UNIQUE:** Все constraints включают `user_id`
 - **Два проекта в одном Supabase:** auth.users общие, mp_* таблицы — только наши
 
-### Backend архитектура:
+## .env ключи
 
-- `auth.py` — JWT middleware (JWKS верификация, поддержка ES256+HS256)
-- `sync_service.py` - центральный сервис синхронизации (с user_id)
-- Асинхронные клиенты (httpx) для API запросов
-- FastAPI с CORS (ограничен конкретными origins)
-- Swagger docs автоматически генерируется
-- Cron: X-Cron-Secret + X-Cron-User-Id headers (вместо JWT)
+```
+WB_API_TOKEN                          # Wildberries API
+OZON_CLIENT_ID, OZON_API_KEY          # Ozon Seller API
+OZON_PERFORMANCE_CLIENT_ID/SECRET     # Ozon Performance (реклама)
+SUPABASE_URL, SUPABASE_ANON_KEY       # Supabase (anon key: sb_publishable_... НЕ JWT!)
+SUPABASE_SERVICE_ROLE_KEY             # Backend service role
+SYNC_CRON_SECRET                      # Cron auth (analytics-cron-s3cr3t-2026)
+FERNET_KEY                            # Шифрование токенов (Phase 2)
+FRONTEND_URL                          # Для Playwright PDF (http://localhost:5173)
+```
 
-## Полная документация
+## Товары (5 SKU)
 
-📖 Детальная документация:
+| Штрихкод | Название | Закупка | WB nmID | Ozon product_id |
+|----------|----------|---------|---------|-----------------|
+| 4670157464824 | Магний + В6 хелат 800 мг | 280 | 254327396 | 1144779512 |
+| 4670157464831 | Магний цитрат 800 мг | 250 | 254299021 | 1144795275 |
+| 4670157464848 | L-карнитин 720 мг | 360 | 254278127 | 1145915272 |
+| 4670157464770 | Витамин D3 + К2 260 мг | 280 | 254281289 | 1145845755 |
+| 4670227414995 | Тестобустер | 404 | 260909523 | 1183426642 |
 
-- [backend/README.md](backend/README.md) - Backend API, схема БД, примеры
-- [frontend/README.md](frontend/README.md) - Frontend структура, компоненты
-- [DESIGN_REFERENCE.md](frontend/DESIGN_REFERENCE.md) - Гайд по дизайну (цвета, шрифты, spacing)
-- [promt.md](promt.md) - Промпт для нового чата + чеклист деплоя
+Плюс системный товар `WB_ACCOUNT` (для строк WB без привязки к конкретному товару).
 
-## Согласованные решения
+## Архитектурные решения (НЕ МЕНЯТЬ)
 
-### Процент возвратов (вместо процента выкупа)
+1. **Costs-tree:** отдельные параллельные запросы per marketplace (НЕ combined). Progressive rendering + изоляция ошибок важнее 50-100ms экономии.
+2. **AccrualsCards:** данные через props из DashboardPage (НЕ свои запросы).
+3. **DateRangePicker:** `captionLayout="label"` (НЕ dropdown — баг синхронизации года).
+4. **Tailwind v3** (НЕ v4 — нестабильна).
+5. **PDF:** Playwright на backend (НЕ html2canvas).
+6. **Auth:** Hybrid — service_role_key на backend, RLS как safety net, JWT через JWKS.
+7. **Шифрование токенов:** Fernet на backend (НЕ pgcrypto/Vault).
 
-**Формула:** `return_rate = (returns / (sales + returns)) * 100%`
+## Важные нюансы
 
-- Пример: 1 возврат, 7 продаж → 12.5%
-- Всегда ≤ 100%
-- Логичная метрика качества товара
+### Источники данных
+- `mp_sales.revenue` — все заказы (включая непроведённые)
+- `mp_costs_details."Продажи"` — финализированные выкупы из финотчёта (как в ЛК)
+- Верхняя плашка "Продажи" берёт из costs-tree, НЕ из summary
 
-### Приоритет разработки
+### WB Stocks
+- `dateFrom` должен быть максимально ранним (2019-06-20) — иначе WB вернёт только изменения
+- Маппинг: сначала по `barcode`, fallback по `nmId`
+- Подробности в [backend/README.md](backend/README.md)
 
-1. ✅ Overview (главный дашборд) - **полностью готов**
-2. ✅ Фильтры, графики, таблица — **готово**
-3. ✅ Mobile-first адаптив — **готово**
-4. ✅ Excel/PDF export — **готово (Playwright)**
-5. ✅ UnitEconomicsPage — **переделана (08.02.2026)**
-6. ✅ SaaS Фаза 1: Auth + RLS — **код готов (08.02.2026), деплой pending**
-7. ⏳ Деплой SaaS Фаза 1 на VPS
-8. ⏳ SaaS Фаза 2: Онбординг (токены)
-9. ⏳ AdsPage — улучшить графики
+### Cron автосинхронизация
+- 07:00, 13:00 — sales+costs; каждые 6ч — stocks
+- Headers: X-Cron-Secret + X-Cron-User-Id
 
-### Дизайн
+### Формулы
+- **Процент возвратов:** `returns / (sales + returns) * 100%`
+- **Прибыль (оценка):** payout - закупка - ads
+- **ДРР:** Ads API / Выручка
 
-- Стиль: Stripe Dashboard (минималистичный)
-- Цвета: WB #8B3FFD (фиолетовый), Ozon #005BFF (синий)
-- Tailwind CSS v3
-- Иконки: lucide-react
+## Roadmap
 
-### Автообновление
+1. ~~Phase 1: Auth+RLS~~ — DEPLOYED
+2. ~~Phase 2: Onboarding~~ — CODE COMPLETE, deploy pending
+3. Phase 3: Subscription tiers
+4. Phase 4: Sync queue
 
-- ✅ Автообновление каждые 5 минут (React Query refetchInterval)
-- ✅ Кнопка "Обновить" удалена (не нужна при автообновлении)
-- ✅ Даты до сегодня (вместо "до вчера")
+## Документация
 
-### Архитектура costs-tree запросов (31.01.2026)
-
-**Решение:** Отдельные параллельные запросы для каждого маркетплейса.
-
-**НЕ использовать:** `useCostsTreeCombined` / `get_costs_tree_combined` RPC (код существует, но не активирован).
-
-**Обоснование:**
-1. **Progressive rendering** — показываем карточку Ozon сразу, пока WB ещё грузится
-2. **Изоляция ошибок** — если API одного МП упал, остальные работают
-3. **Масштабируемость** — при добавлении 3+ маркетплейсов отдельные запросы эффективнее
-4. **Кэширование** — React Query кэширует каждый запрос отдельно
-5. **HTTP/2 multiplexing** — браузер эффективно параллелит запросы
-
-**Экономия от combined минимальна** (~50-100ms), гибкость важнее.
-
-**К этому вопросу не возвращаемся.**
+| Файл | Содержимое |
+|------|-----------|
+| [backend/README.md](backend/README.md) | API endpoints, схема БД, auth, sync, .env |
+| [frontend/README.md](frontend/README.md) | Компоненты, hooks, pages, mobile-first, export |
+| [CHANGELOG.md](CHANGELOG.md) | Полная история всех изменений |
+| [promt.md](promt.md) | Промпт для нового чата + чеклист деплоя |
+| [frontend/DESIGN_REFERENCE.md](frontend/DESIGN_REFERENCE.md) | Гайд по дизайну (цвета, шрифты, spacing) |
+| [memory/](memory/) | Session memory (saas-phase1.md, saas-phase2.md) |

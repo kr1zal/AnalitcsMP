@@ -19,53 +19,33 @@
 - Деплой завершён, сайт работает на https://analitics.bixirun.ru
 - SSL настроен (Let's Encrypt, автопродление)
 - DashboardPage работает, RPC оптимизация активна, mobile-first дизайн готов
-- ✅ Cron настроен (07:00, 13:00 — sales+costs; каждые 6ч — stocks)
-- ✅ **UnitEconomicsPage переделана (08.02.2026):**
-  - 4 KPI-карточки (Выручка, Прибыль, Ср.маржа, Прибыль/ед.)
-  - Horizontal bars ТОП-5 + BOTTOM-3 по прибыли
-  - Сортируемая таблица (клик по заголовку), поиск по названию
-  - Пагинация по 20 (масштабируется на 100+ товаров)
-  - Mobile-first: карточки вместо таблицы на мобиле
-  - Цветовая маржа: зелёный >20%, жёлтый 10-20%, красный <10%
-- ✅ Удалены мёртвые зависимости (html2canvas, jspdf) и файлы (Export/PdfExportContent.tsx, lib/exportPdf.ts)
-- ✅ Excel/PDF экспорт работает (Playwright на backend)
-- ✅ Мобильное меню, скелетоны, tooltips — всё готово
-- ✅ **SaaS Фаза 1: Auth + RLS — КОД ГОТОВ (08.02.2026), ДЕПЛОЙ PENDING**
-  - Supabase Auth (email/password, Confirm Email OFF)
-  - JWT middleware на backend (JWKS верификация, ES256+HS256)
-  - user_id во все 8 mp_* таблиц + RLS-политики + RPC с p_user_id
-  - Frontend: LoginPage, ProtectedRoute, auth interceptor в axios
-  - CORS ограничен (было `*`, стало конкретные origins)
-  - Cron: X-Cron-Secret + X-Cron-User-Id headers
+- ✅ Cron настроен с auth headers (07:00, 13:00 — sales+costs; каждые 6ч — stocks)
+- ✅ UnitEconomicsPage, Excel/PDF экспорт, мобильное меню — всё готово
+- ✅ **SaaS Фаза 1: Auth + RLS — DEPLOYED (08.02.2026)**
+  - Commit: 0cd9ec8 on analitics_main_v1
+  - Supabase Auth, JWT middleware (JWKS), RLS, user_id во всех таблицах
+  - Frontend: LoginPage, ProtectedRoute, auth interceptor
+  - CORS ограничен, Cron с X-Cron-Secret + X-Cron-User-Id
   - Admin: exklante@gmail.com / 123456 / UUID: 17e80396-86e1-4ec8-8cb2-f727462bf20c
+- ✅ **SaaS Фаза 2: Onboarding — КОД ГОТОВ (08.02.2026), ДЕПЛОЙ PENDING**
+  - Backend: mp_user_tokens (Fernet encryption), CRUD + validate endpoints, _load_tokens fallback
+  - Frontend: SettingsPage (профиль + 3 секции токенов + подсказки + авто-синхронизация)
+  - ProtectedRoute: redirect на /settings если нет токенов (onboarding)
+  - Навигация: добавлен пункт «Настройки»
+
+**⚠ БАГИ ДЛЯ ФИКСА:**
+- **Предыдущий период в плашках DashboardPage не работает** — нет данных сравнения (Пред.пер., Δ к пред.). Логика `useDashboardSummaryWithPrev` / `getSummaryWithPrev` может быть сломана или не подключена. Нужно исследовать и починить.
 
 **ГЛАВНАЯ ЗАДАЧА — SaaS-трансформация:**
 
-Превратить проект из одно-пользовательского дашборда в подписочный SaaS:
-1. ✅ **Auth + RLS** — Supabase Auth, JWT middleware, RLS, user_id — **КОД ГОТОВ, ДЕПЛОЙ PENDING**
-2. **Онбординг** — пользователь вводит токены WB/Ozon → валидация → первичный sync
-3. **Тарифы** — Free (7 дней, 10 SKU, без экспорта) / Pro (всё)
-4. **Категории из API** — WB subjectName + Ozon category_id (автоматически при sync)
-5. **Очередь sync** — APScheduler с приоритетами для нескольких пользователей
-
-**Порядок реализации SaaS:**
 ```
-Фаза 1: Auth + RLS (фундамент) ✅ КОД ГОТОВ, ДЕПЛОЙ PENDING
-  ├── ✅ Supabase Auth настройка (email/password, Confirm Email OFF)
-  ├── ✅ user_id во все 8 таблиц (004_add_user_id.sql) + SET NOT NULL
-  ├── ✅ RLS-политики (005_rls_policies.sql)
-  ├── ✅ RPC с p_user_id (006_rpc_with_user_id.sql)
-  ├── ✅ Backend: JWT middleware (JWKS), auth в endpoints, sync_service с user_id
-  ├── ✅ Frontend: Login/Register, ProtectedRoute, auth interceptor
-  ├── ✅ Данные привязаны к exklante@gmail.com (UUID: 17e80396...)
-  └── ⏳ ДЕПЛОЙ на VPS (см. чеклист ниже)
-
-Фаза 2: Онбординг (ввод токенов)
-  ├── Таблица user_marketplace_tokens (зашифрованные)
-  ├── Страница "Подключить маркетплейс" (WB token + Ozon tokens)
-  ├── Валидация токенов (тестовый API-запрос)
-  ├── Первичная синхронизация с прогресс-баром
-  └── sync_service.py → токены из БД (не из .env)
+Фаза 1: Auth + RLS ✅ DEPLOYED (08.02.2026)
+Фаза 2: Onboarding (токены per user) ✅ КОД ГОТОВ (08.02.2026), ДЕПЛОЙ PENDING
+  ├── ✅ mp_user_tokens (Fernet encryption, CRUD + validate endpoints)
+  ├── ✅ SettingsPage (профиль + 3 секции WB/Ozon/OzonPerf + подсказки)
+  ├── ✅ ProtectedRoute → redirect /settings если нет токенов
+  ├── ✅ sync_service._load_tokens() — БД → fallback .env
+  └── ⏳ Деплой на VPS
 
 Фаза 3: Тарифы + feature gating
   ├── Таблица user_subscriptions
@@ -75,8 +55,8 @@
 
 Фаза 4: Масштабирование
   ├── Очередь sync (Pro → Basic → Free)
-  ├── Категории из WB/Ozon API (автоматически)
-  └── Rate limiting для API маркетплейсов
+  ├── Категории из WB/Ozon API
+  └── Rate limiting
 ```
 
 **Фичи ПОСЛЕ SaaS (не раньше):**
@@ -88,35 +68,26 @@
 
 ---
 
-## ⏳ Деплой SaaS Фаза 1 — ЧЕКЛИСТ:
+## ⏳ Деплой SaaS Фаза 2 — ЧЕКЛИСТ:
 
 ```bash
-# 1. Backend: скопировать файлы + установить PyJWT
+# 1. Backend: скопировать файлы (включая новые crypto.py, tokens.py)
 sshpass -p '@vnDBp5VCt2+' rsync -avz --exclude 'venv' --exclude '__pycache__' backend/ root@83.222.16.15:/var/www/analytics/backend/
-ssh root@83.222.16.15 "cd /var/www/analytics/backend && source venv/bin/activate && pip install 'PyJWT[crypto]>=2.8.0'"
 
-# 2. Скопировать .env с SYNC_CRON_SECRET
+# 2. Скопировать .env с FERNET_KEY
 sshpass -p '@vnDBp5VCt2+' scp .env root@83.222.16.15:/var/www/analytics/.env
 
-# 3. Frontend: обновить .env на сервере + build + deploy
-# ВАЖНО: на сервере frontend/.env должен содержать:
-#   VITE_SUPABASE_URL=https://wesrkttwjuvclvfkuxzx.supabase.co
-#   VITE_SUPABASE_ANON_KEY=sb_publishable_LDbqC5uAVqU5N9evkAR7ag_7XQw5tAA
+# 3. Frontend: build + deploy
 cd frontend && npm run build
 sshpass -p '@vnDBp5VCt2+' rsync -avz --delete dist/ root@83.222.16.15:/var/www/analytics/frontend/
 
 # 4. Перезапуск backend
 ssh root@83.222.16.15 "systemctl restart analytics-api"
 
-# 5. Обновить cron на сервере — добавить headers:
-#   -H "X-Cron-Secret: analytics-cron-s3cr3t-2026"
-#   -H "X-Cron-User-Id: 17e80396-86e1-4ec8-8cb2-f727462bf20c"
-
-# 6. Проверить
-# - https://analitics.bixirun.ru/login — должна открыться форма входа
-# - Войти: exklante@gmail.com / 123456
-# - Dashboard должен загрузить данные
-# - Cron sync должен работать с новыми headers
+# 5. Проверить
+# - /settings — должна открыться страница настроек
+# - Ввести токены → Проверить → Сохранить
+# - GET /api/v1/tokens → has_wb: true, has_ozon_seller: true
 ```
 
 ---

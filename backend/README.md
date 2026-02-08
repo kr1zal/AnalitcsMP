@@ -19,22 +19,30 @@ backend/
 │   │   └── v1/
 │   │       ├── products.py      # Эндпоинты для товаров
 │   │       ├── dashboard.py     # Эндпоинты для дашборда
-│   │       └── sync.py          # Эндпоинты для синхронизации
+│   │       ├── sync.py          # Эндпоинты для синхронизации
+│   │       ├── export.py        # PDF экспорт (Playwright)
+│   │       └── tokens.py        # CRUD API-токенов пользователей (Phase 2)
 │   ├── services/
 │   │   ├── wb_client.py         # Клиент Wildberries API
 │   │   ├── ozon_client.py       # Клиент Ozon API + Performance
-│   │   └── sync_service.py      # Сервис синхронизации данных
+│   │   └── sync_service.py      # Сервис синхронизации данных (с user_id + _load_tokens)
 │   ├── db/
 │   │   └── supabase.py          # Подключение к Supabase
 │   ├── models/                  # Pydantic модели
-│   ├── config.py                # Конфигурация приложения
-│   └── main.py                  # Точка входа FastAPI
+│   ├── auth.py                  # JWT middleware (JWKS, ES256+HS256, cron auth)
+│   ├── crypto.py                # Fernet encrypt/decrypt для токенов
+│   ├── config.py                # Settings (+ sync_cron_secret, fernet_key)
+│   └── main.py                  # Точка входа FastAPI (CORS restricted)
 ├── migrations/
 │   ├── 001_initial.sql          # SQL схема базы данных
-│   └── 002_optimized_rpc.sql    # RPC функции для оптимизации (get_dashboard_summary, get_costs_tree)
+│   ├── 002_optimized_rpc.sql    # RPC функции (get_dashboard_summary, get_costs_tree)
+│   ├── 004_add_user_id.sql      # user_id во все таблицы + UNIQUE constraints
+│   ├── 005_rls_policies.sql     # RLS ENABLE + CRUD-политики
+│   ├── 006_rpc_with_user_id.sql # p_user_id во все RPC
+│   └── 007_user_tokens.sql      # mp_user_tokens + RLS
 ├── tests/
 ├── venv/                        # Виртуальное окружение
-├── requirements.txt             # Зависимости
+├── requirements.txt             # + playwright, PyJWT[crypto]
 ├── test_api.py                  # Тест подключения к API МП
 └── test_sync.py                 # Тест синхронизации
 ```
@@ -71,15 +79,16 @@ SUPABASE_URL=https://your-project.supabase.co
 SUPABASE_ANON_KEY=your_anon_key
 SUPABASE_SERVICE_ROLE_KEY=your_service_role_key
 
-# Sync security (protect /api/v1/sync/* endpoints)
-# Send token via:
-# - X-Sync-Token: <token>
-# - Authorization: Bearer <token>
-SYNC_TOKEN=your_random_token
+# Auth (Phase 1)
+SYNC_CRON_SECRET=your_cron_secret    # для cron auth (X-Cron-Secret header)
+
+# Encryption (Phase 2)
+FERNET_KEY=your_fernet_key           # для шифрования токенов пользователей
 
 # App
 DEBUG=true
 SECRET_KEY=your-secret-key
+FRONTEND_URL=http://localhost:5173   # для PDF экспорта
 ```
 
 ### 3. Инициализация базы данных
@@ -96,6 +105,38 @@ uvicorn app.main:app --reload --port 8000
 ```
 
 **Сервер:** http://localhost:8000 **Swagger:** http://localhost:8000/docs
+
+---
+
+## Auth & Security (SaaS Phase 1+2)
+
+### JWT Middleware (auth.py)
+- JWKS верификация через PyJWKClient (ES256 + HS256 fallback)
+- `get_current_user(authorization)` → CurrentUser(user_id, email)
+- `get_current_user_or_cron(authorization, x_cron_secret, x_cron_user_id)` — для cron jobs
+- Все endpoints защищены (кроме `/`, `/health`, `/docs`)
+- CORS ограничен: `analitics.bixirun.ru` + `localhost:5173`
+
+### Cron Auth
+- НЕ JWT — вместо этого X-Cron-Secret + X-Cron-User-Id headers
+- SYNC_CRON_SECRET в .env
+
+### Token Encryption (crypto.py, Phase 2)
+- Fernet symmetric encryption (cryptography library)
+- FERNET_KEY в .env → config.py
+- Функции: `encrypt_token(value)`, `decrypt_token(encrypted)`
+
+### Tokens API (tokens.py, Phase 2)
+- `GET /api/v1/tokens` — статус (has_wb, has_ozon_seller, has_ozon_perf) — booleans
+- `PUT /api/v1/tokens` — сохранить/обновить (encrypt before store, upsert)
+- `POST /api/v1/tokens/validate` — проверить токены через API МП
+- `POST /api/v1/tokens/save-and-sync` — сохранить + sync_all(days_back=30)
+
+### SyncService._load_tokens (Phase 2)
+- Запрашивает mp_user_tokens по user_id
+- Дешифрует каждое поле через Fernet
+- Fallback на .env per-field если DB пустое
+- Создаёт API клиенты с resolved токенами
 
 ---
 
@@ -481,9 +522,32 @@ Unique: `(product_id, marketplace, date, campaign_id)`.
 | clicks        | INTEGER       | Клики            |
 | cost          | DECIMAL(10,2) | Расход           |
 
+#### `mp_user_tokens` (API-токены пользователей, Phase 2)
+
+Зашифрованные токены, one row per user. Unique: `(user_id)`.
+
+| Поле                | Тип         | Описание                          |
+| ------------------- | ----------- | --------------------------------- |
+| user_id             | UUID        | FK → auth.users, UNIQUE           |
+| wb_api_token        | TEXT (null) | Fernet-encrypted WB token         |
+| ozon_client_id      | TEXT (null) | Fernet-encrypted Ozon Client ID   |
+| ozon_api_key        | TEXT (null) | Fernet-encrypted Ozon API Key     |
+| ozon_perf_client_id | TEXT (null) | Fernet-encrypted Ozon Perf Client |
+| ozon_perf_secret    | TEXT (null) | Fernet-encrypted Ozon Perf Secret |
+
+RLS: 4 политики (SELECT/INSERT/UPDATE/DELETE WHERE auth.uid() = user_id).
+
 #### `mp_sales_geo` (География продаж)
 
 #### `mp_sync_log` (Логи синхронизации)
+
+**Все таблицы (кроме mp_user_tokens) имеют:**
+- `user_id UUID NOT NULL REFERENCES auth.users(id)` — добавлен в Phase 1
+- RLS ENABLE + политики `auth.uid() = user_id`
+- UNIQUE constraints включают user_id
+
+**RPC функции:** 4 функции с `p_user_id` параметром:
+- `get_dashboard_summary`, `get_costs_tree`, `get_costs_tree_combined`, `get_dashboard_summary_with_prev`
 
 ---
 

@@ -20,14 +20,14 @@ class SyncService:
 
     def __init__(self, user_id: str | None = None):
         settings = get_settings()
-        self.wb_client = WildberriesClient(settings.wb_api_token)
-        self.ozon_client = OzonClient(settings.ozon_client_id, settings.ozon_api_key)
-        self.ozon_perf_client = OzonPerformanceClient(
-            settings.ozon_performance_client_id,
-            settings.ozon_performance_client_secret
-        )
         self.supabase = get_supabase_client()
         self.user_id = user_id
+
+        # Загружаем токены: сначала из БД (per-user), fallback на .env
+        wb_tok, oz_cid, oz_key, oz_perf_cid, oz_perf_sec = self._load_tokens(user_id, settings)
+        self.wb_client = WildberriesClient(wb_tok)
+        self.ozon_client = OzonClient(oz_cid, oz_key)
+        self.ozon_perf_client = OzonPerformanceClient(oz_perf_cid, oz_perf_sec)
 
         # Штрихкоды наших товаров
         self.barcodes = [
@@ -47,6 +47,40 @@ class SyncService:
             "1658273141": "4670157464824",  # Магний + В6 хелат
             "1658286198": "4670157464831",  # Магний цитрат
         }
+
+    def _load_tokens(self, user_id: str | None, settings) -> tuple:
+        """Загрузить токены: БД (per-user) → fallback на .env."""
+        from ..crypto import decrypt_token
+
+        if user_id:
+            try:
+                result = (
+                    self.supabase.table("mp_user_tokens")
+                    .select("wb_api_token, ozon_client_id, ozon_api_key, ozon_perf_client_id, ozon_perf_secret")
+                    .eq("user_id", user_id)
+                    .limit(1)
+                    .execute()
+                )
+                if result.data:
+                    row = result.data[0]
+                    return (
+                        decrypt_token(row.get("wb_api_token") or "") or settings.wb_api_token,
+                        decrypt_token(row.get("ozon_client_id") or "") or settings.ozon_client_id,
+                        decrypt_token(row.get("ozon_api_key") or "") or settings.ozon_api_key,
+                        decrypt_token(row.get("ozon_perf_client_id") or "") or settings.ozon_performance_client_id,
+                        decrypt_token(row.get("ozon_perf_secret") or "") or settings.ozon_performance_client_secret,
+                    )
+            except Exception as e:
+                logger.warning(f"Failed to load user tokens from DB, falling back to .env: {e}")
+
+        # Fallback: .env
+        return (
+            settings.wb_api_token,
+            settings.ozon_client_id,
+            settings.ozon_api_key,
+            settings.ozon_performance_client_id,
+            settings.ozon_performance_client_secret,
+        )
 
     def _log_sync(self, marketplace: str, sync_type: str, status: str,
                   records_count: int = 0, error_message: str = None,
