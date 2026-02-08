@@ -30,6 +30,8 @@ class Settings(BaseSettings):
     secret_key: str = "change-me-in-production"
 
     # Frontend URL for PDF export (Playwright opens this)
+    # Локально: добавь FRONTEND_URL=http://localhost:5173 в .env
+    # Production: дефолт https://analitics.bixirun.ru
     frontend_url: str = "https://analitics.bixirun.ru"
 
     class Config:

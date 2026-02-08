@@ -129,9 +129,10 @@ export const dashboardApi = {
   /**
    * Получить остатки на складах
    */
-  getStocks: async (marketplace?: string) => {
+  getStocks: async (marketplace?: string, timeout?: number) => {
     const { data } = await api.get<StocksResponse>('/dashboard/stocks', {
       params: { marketplace },
+      timeout: timeout ?? 30000,
     });
     return data;
   },
@@ -139,9 +140,10 @@ export const dashboardApi = {
   /**
    * Получить рекламные расходы и ДРР
    */
-  getAdCosts: async (filters?: DashboardFilters) => {
+  getAdCosts: async (filters?: DashboardFilters, timeout?: number) => {
     const { data } = await api.get<AdCostsResponse>('/dashboard/ad-costs', {
       params: filters,
+      timeout: timeout ?? 30000,
     });
     return data;
   },

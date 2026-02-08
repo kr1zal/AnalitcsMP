@@ -30,6 +30,7 @@
   - Backend: playwright + chromium, swap 2GB на сервере
 
 **Текущие задачи:**
+- 🔄 **Улучшить PDF экспорт (PrintPage.tsx)** — см. раздел "Предложения по PDF"
 - 🔄 Улучшить UnitEconomicsPage (графики, детализация)
 - 🔄 Улучшить AdsPage (графики ДРР)
 
@@ -113,8 +114,47 @@ systemctl restart analytics-api
 ---
 
 ## Текущие задачи:
+- 🔄 **Улучшить PDF экспорт (PrintPage.tsx)** — см. раздел "Предложения по PDF"
 - 🔄 Улучшить UnitEconomicsPage (графики, детализация по товарам)
 - 🔄 Улучшить AdsPage (графики ДРР по дням)
+
+---
+
+## 📋 Предложения по улучшению PDF (PrintPage.tsx)
+
+**Текущее состояние (3 страницы):**
+- Страница 1: Dashboard (OZON/WB карточки + 6 метрик)
+- Страница 2: Unit-экономика (таблица товаров)
+- Страница 3: Реклама (почти пустая — данных мало)
+
+**Проблемы:**
+- ❌ Нет Δ% сравнения с предыдущим периодом
+- ❌ Нет % выкупа как KPI
+- ❌ Страница рекламы почти пустая (0.18₽ всего)
+- ❌ Нет остатков на складах
+- ❌ Нет сортировки товаров по прибыльности
+
+**Предложение — новая структура:**
+
+### Страница 1 — Executive Summary
+- 4 главных KPI с Δ%: Выручка, Прибыль, % выкупа, ДРР
+- Карточки OZON/WB (Продажи, Начислено, Выкупы)
+- Визуализация структуры расходов (текстовый bar chart)
+- Нужен endpoint `getSummaryWithPrev()` для Δ%
+
+### Страница 2 — Unit-экономика
+- Топ-5 по прибыли (horizontal bars)
+- Таблица товаров (сортировка по прибыли)
+- Аналитические выводы ("требует внимания: Тестобустер 7% маржа")
+- Средняя маржинальность, самый прибыльный товар
+
+### Страница 3 — Остатки + Удержания (вместо пустой рекламы)
+- Таблица остатков по складам (WB/OZON) со статусами OK/LOW/OOS
+- Полная детализация удержаний (costs-tree)
+- Реклама компактно внизу (пока данных мало)
+- Нужен endpoint `getStocks()`
+
+**Файл:** `frontend/src/pages/PrintPage.tsx`
 
 ---
 
@@ -149,8 +189,27 @@ Backend:
 - Не делать git команды без явного согласия
 
 **Локальная разработка:**
-- Backend: `cd backend && source venv/bin/activate && uvicorn app.main:app --reload --port 8000`
-- Frontend: `cd frontend && npm run dev`
+```bash
+# 1. Backend (терминал 1)
+cd backend && source venv/bin/activate
+uvicorn app.main:app --reload --port 8000
+
+# 2. Frontend (терминал 2)
+cd frontend && npm run dev
+```
+
+**Первый запуск локально (установка playwright):**
+```bash
+cd backend
+source venv/bin/activate
+pip install playwright
+playwright install chromium  # ~162 МБ, качает Chromium
+```
+
+**FRONTEND_URL для PDF:**
+- В `.env` добавлено: `FRONTEND_URL=http://localhost:5173`
+- На сервере используется дефолт: `https://analitics.bixirun.ru`
+- PDF экспорт открывает эту страницу через Playwright
 
 **Деплой изменений:**
 ```bash

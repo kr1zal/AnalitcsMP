@@ -17,7 +17,9 @@ Use "npm run build" to check if code compiles or no. See results and fix code if
 > - **Пароль SSH:** `@vnDBp5VCt2+` (с символом @ в начале!)
 
 ### Текущие задачи:
-> *(нет активных задач)*
+> - 🔄 **Улучшить PDF экспорт** — см. promt.md раздел "Предложения по PDF"
+> - 🔄 Улучшить UnitEconomicsPage
+> - 🔄 Улучшить AdsPage
 
 ### Что сделано:
 > - ✅ Деплой на Beget VPS с SSL
@@ -59,6 +61,25 @@ Use "npm run build" to check if code compiles or no. See results and fix code if
 > cd frontend && npm run build
 > sshpass -p '@vnDBp5VCt2+' rsync -avz --delete -e "ssh -o StrictHostKeyChecking=no" dist/ root@83.222.16.15:/var/www/analytics/frontend/
 > ```
+
+### Локальная разработка:
+> ```bash
+> # Терминал 1 — Backend
+> cd backend && source venv/bin/activate
+> uvicorn app.main:app --reload --port 8000
+>
+> # Терминал 2 — Frontend
+> cd frontend && npm run dev
+> ```
+>
+> **Первый запуск (установка Playwright):**
+> ```bash
+> cd backend && source venv/bin/activate
+> pip install playwright
+> playwright install chromium  # ~162 МБ
+> ```
+>
+> **FRONTEND_URL:** В `.env` — `FRONTEND_URL=http://localhost:5173` (для PDF экспорта локально)
 
 ## Описание проекта
 
