@@ -2,6 +2,47 @@
 
 > Полная история выполненных задач. Для текущего статуса см. [CLAUDE.md](CLAUDE.md).
 
+## 09.02.2026 — SaaS Phase 3: Subscription Tiers
+
+**3 тарифа:** Free / Pro (990₽/мес) / Business (2990₽/мес). MVP без оплаты — admin назначает тариф.
+
+**SQL миграция (выполнена в Supabase):**
+- `008_subscriptions.sql` — mp_user_subscriptions (user_id UNIQUE, plan CHECK, status CHECK)
+- RLS: SELECT own row only, INSERT/UPDATE через service_role
+- Admin (17e80396-...) → business plan
+
+**Backend (новые файлы):**
+- `backend/app/plans.py` — PLANS dict (лимиты SKU, маркетплейсы, фичи для каждого тарифа)
+- `backend/app/subscription.py` — UserSubscription dataclass, get_user_subscription (Depends), require_feature factory
+- `backend/app/api/v1/subscription.py` — GET /subscription, GET /subscription/plans, PUT /subscription (admin-only)
+
+**Backend (изменённые файлы):**
+- `backend/app/main.py` — registered subscription router
+- `backend/app/api/v1/dashboard.py` — feature gates: unit-economics, ads, costs-tree details, period comparison
+- `backend/app/api/v1/export.py` — require_feature("pdf_export")
+- `backend/app/api/v1/sync.py` — marketplace restriction via allowed_mps
+
+**Frontend (новые файлы):**
+- `frontend/src/hooks/useSubscription.ts` — useSubscription, usePlans (React Query)
+- `frontend/src/components/Shared/FeatureGate.tsx` — blur + lock overlay для заблокированных фич
+- `frontend/src/components/Settings/SubscriptionCard.tsx` — карточка тарифа + таблица сравнения
+
+**Frontend (изменённые файлы):**
+- `frontend/src/types/index.ts` — SubscriptionPlan, UserSubscriptionResponse, PlanDefinition и др.
+- `frontend/src/services/api.ts` — subscriptionApi (getMy, getPlans)
+- `frontend/src/components/Shared/ProtectedRoute.tsx` — prefetch подписки
+- `frontend/src/components/Shared/Layout.tsx` — бейдж тарифа (Free/Pro/Business) рядом с email
+- `frontend/src/pages/SettingsPage.tsx` — секция "Тариф" с SubscriptionCard
+- `frontend/src/pages/UnitEconomicsPage.tsx` — FeatureGate wrapper
+- `frontend/src/pages/AdsPage.tsx` — FeatureGate wrapper
+- `frontend/src/pages/DashboardPage.tsx` — условный PDF экспорт + период comparison
+
+## 09.02.2026 — Bugfix: Previous period comparison
+
+- DashboardPage вызывал `useDashboardSummary` вместо `useDashboardSummaryWithPrev`
+- Плашки "Пред.пер." и "Δ к пред." теперь показывают данные
+- Commit: 1aa095f
+
 ## 08.02.2026 — SaaS Phase 2: Onboarding (Per-User Tokens)
 
 **Архитектура:** Fernet encryption на backend, mp_user_tokens таблица (one row per user).

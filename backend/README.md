@@ -21,7 +21,8 @@ backend/
 │   │       ├── dashboard.py     # Эндпоинты для дашборда
 │   │       ├── sync.py          # Эндпоинты для синхронизации
 │   │       ├── export.py        # PDF экспорт (Playwright)
-│   │       └── tokens.py        # CRUD API-токенов пользователей (Phase 2)
+│   │       ├── tokens.py        # CRUD API-токенов пользователей (Phase 2)
+│   │       └── subscription.py  # Subscription management (Phase 3)
 │   ├── services/
 │   │   ├── wb_client.py         # Клиент Wildberries API
 │   │   ├── ozon_client.py       # Клиент Ozon API + Performance
@@ -31,6 +32,8 @@ backend/
 │   ├── models/                  # Pydantic модели
 │   ├── auth.py                  # JWT middleware (JWKS, ES256+HS256, cron auth)
 │   ├── crypto.py                # Fernet encrypt/decrypt для токенов
+│   ├── plans.py                 # Subscription plans config (Phase 3)
+│   ├── subscription.py          # Subscription dependencies (Phase 3)
 │   ├── config.py                # Settings (+ sync_cron_secret, fernet_key)
 │   └── main.py                  # Точка входа FastAPI (CORS restricted)
 ├── migrations/
@@ -39,7 +42,8 @@ backend/
 │   ├── 004_add_user_id.sql      # user_id во все таблицы + UNIQUE constraints
 │   ├── 005_rls_policies.sql     # RLS ENABLE + CRUD-политики
 │   ├── 006_rpc_with_user_id.sql # p_user_id во все RPC
-│   └── 007_user_tokens.sql      # mp_user_tokens + RLS
+│   ├── 007_user_tokens.sql      # mp_user_tokens + RLS
+│   └── 008_subscriptions.sql    # mp_user_subscriptions + RLS (Phase 3)
 ├── tests/
 ├── venv/                        # Виртуальное окружение
 ├── requirements.txt             # + playwright, PyJWT[crypto]
@@ -131,6 +135,31 @@ uvicorn app.main:app --reload --port 8000
 - `PUT /api/v1/tokens` — сохранить/обновить (encrypt before store, upsert)
 - `POST /api/v1/tokens/validate` — проверить токены через API МП
 - `POST /api/v1/tokens/save-and-sync` — сохранить + sync_all(days_back=30)
+
+### Subscription System (Phase 3)
+
+**Тарифы (plans.py):**
+- `free` — 3 SKU, WB only, без auto-sync, без unit-economics/ads/pdf/period-comparison
+- `pro` (990₽/мес) — 20 SKU, WB+Ozon, auto-sync 6h, все фичи кроме API
+- `business` (2990₽/мес) — unlimited SKU, WB+Ozon, auto-sync 2h, все фичи
+
+**subscription.py — FastAPI Dependencies:**
+- `get_user_subscription` — Depends(), загружает подписку из БД (lazy-create `free`)
+- `get_subscription_or_cron` — для cron endpoints (cron = bypass)
+- `require_feature(feature)` — dependency factory, возвращает 403 если фича недоступна
+
+**Feature gates на endpoints:**
+- `dashboard/unit-economics` → `require_feature("unit_economics")`
+- `dashboard/ad-costs` → `require_feature("ads_page")`
+- `dashboard/costs-tree` → принудительно `include_children=False` для Free
+- `dashboard/summary` → silently disable `include_prev_period` без `period_comparison`
+- `export/pdf` → `require_feature("pdf_export")`
+- `sync/*` → marketplace restriction via `allowed_mps`
+
+**Subscription API (subscription.py router):**
+- `GET /subscription` — текущий план + лимиты + SKU usage
+- `GET /subscription/plans` — все планы для UI сравнения
+- `PUT /subscription` — admin-only смена тарифа
 
 ### SyncService._load_tokens (Phase 2)
 - Запрашивает mp_user_tokens по user_id
@@ -536,6 +565,21 @@ Unique: `(product_id, marketplace, date, campaign_id)`.
 | ozon_perf_secret    | TEXT (null) | Fernet-encrypted Ozon Perf Secret |
 
 RLS: 4 политики (SELECT/INSERT/UPDATE/DELETE WHERE auth.uid() = user_id).
+
+#### `mp_user_subscriptions` (Подписки пользователей, Phase 3)
+
+Один тариф на пользователя. Unique: `(user_id)`.
+
+| Поле       | Тип         | Описание                                      |
+| ---------- | ----------- | --------------------------------------------- |
+| user_id    | UUID        | FK → auth.users, UNIQUE                       |
+| plan       | TEXT        | `free` / `pro` / `business`                   |
+| status     | TEXT        | `active` / `cancelled` / `expired`            |
+| started_at | TIMESTAMPTZ | Начало подписки                               |
+| expires_at | TIMESTAMPTZ | NULL = без срока (free / admin-managed)       |
+| changed_by | TEXT        | Email админа, изменившего тариф               |
+
+RLS: SELECT own row only. INSERT/UPDATE — через service_role (backend).
 
 #### `mp_sales_geo` (География продаж)
 

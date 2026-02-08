@@ -33,17 +33,22 @@ sshpass -p '@vnDBp5VCt2+' rsync -avz --delete -e "ssh -o StrictHostKeyChecking=n
 - Cron: X-Cron-Secret + X-Cron-User-Id headers
 - Подробности: [backend/README.md](backend/README.md) раздел "Auth & Security"
 
-### SaaS Phase 2: Onboarding — CODE COMPLETE (08.02.2026)
+### SaaS Phase 2: Onboarding — DEPLOYED (09.02.2026)
 - Fernet encryption, mp_user_tokens таблица, SettingsPage
 - ProtectedRoute → redirect /settings если нет токенов
 - Подробности: [memory/saas-phase2.md](memory/saas-phase2.md)
 
+### SaaS Phase 3: Subscription Tiers — DEPLOYED (09.02.2026)
+- 3 тарифа: Free / Pro (990₽) / Business (2990₽), без оплаты (admin-managed)
+- Backend: plans.py, subscription.py (Depends), feature gates на dashboard/export/sync
+- Frontend: FeatureGate (blur+lock), SubscriptionCard, plan badge в header
+- Подробности: [memory/saas-phase3.md](memory/saas-phase3.md)
+
 ### Активные задачи
-- [ ] Деплой SaaS Фаза 2 на VPS — см. memory/saas-phase2.md чеклист
-- [ ] Улучшить AdsPage — графики ДРР по дням, сравнение периодов
+- [ ] Phase 4: Sync queue
 
 ### Известные баги
-- **Плашки "Пред.пер." и "Δ к пред." не показывают данные** — логика `useDashboardSummaryWithPrev` / `getSummaryWithPrev` сломана
+- ~~Плашки "Пред.пер." не показывают данные~~ FIXED (commit 1aa095f)
 - `secret_key = "change-me-in-production"` в config.py
 - Нет concurrent sync protection на costs/stocks/ads endpoints
 - Ozon SKU mapping частично hardcoded в sync_service.py
@@ -79,18 +84,20 @@ cd backend && pip install playwright && playwright install chromium
 Analitics/
 ├── backend/                  # FastAPI + Supabase
 │   ├── app/
-│   │   ├── api/v1/           # Роуты: dashboard, products, sync, export, tokens
+│   │   ├── api/v1/           # Роуты: dashboard, products, sync, export, tokens, subscription
 │   │   ├── services/         # WB/Ozon клиенты, sync_service
 │   │   ├── auth.py           # JWT middleware (JWKS)
 │   │   ├── crypto.py         # Fernet encrypt/decrypt (Phase 2)
+│   │   ├── plans.py          # Определения тарифов Free/Pro/Business (Phase 3)
+│   │   ├── subscription.py   # FastAPI Depends для подписок (Phase 3)
 │   │   └── config.py         # Settings
-│   └── migrations/           # SQL: 004-007 (user_id, RLS, RPC, user_tokens)
+│   └── migrations/           # SQL: 004-008 (user_id, RLS, RPC, user_tokens, subscriptions)
 ├── frontend/                 # React 19 + TS 5.9 + Vite 7 + Tailwind 3
 │   └── src/
-│       ├── components/       # Dashboard/, Shared/
-│       ├── hooks/            # useDashboard, useAuth, useTokens, useExport...
+│       ├── components/       # Dashboard/, Shared/, Settings/
+│       ├── hooks/            # useDashboard, useAuth, useTokens, useSubscription, useExport...
 │       ├── pages/            # Dashboard, Login, Settings, UnitEconomics, Ads, Sync, Print
-│       ├── services/api.ts   # Axios + auth interceptor + tokensApi
+│       ├── services/api.ts   # Axios + auth interceptor + tokensApi + subscriptionApi
 │       └── store/            # useFiltersStore, useAuthStore (Zustand)
 ├── CLAUDE.md                 # ← Вы здесь (компактный обзор)
 ├── CHANGELOG.md              # Полная история изменений
@@ -113,6 +120,7 @@ Analitics/
 | mp_ad_costs | Рекламные расходы |
 | mp_sync_log | Логи синхронизации |
 | mp_user_tokens | Зашифрованные API-токены пользователей (Phase 2) |
+| mp_user_subscriptions | Подписки пользователей: plan, status, expires_at (Phase 3) |
 
 - **RLS:** Все таблицы, политики `auth.uid() = user_id`
 - **RPC:** 4 функции с `p_user_id` (get_dashboard_summary, get_costs_tree, get_costs_tree_combined, get_dashboard_summary_with_prev)
@@ -153,6 +161,7 @@ FRONTEND_URL                          # Для Playwright PDF (http://localhost:
 5. **PDF:** Playwright на backend (НЕ html2canvas).
 6. **Auth:** Hybrid — service_role_key на backend, RLS как safety net, JWT через JWKS.
 7. **Шифрование токенов:** Fernet на backend (НЕ pgcrypto/Vault).
+8. **Подписки:** планы в коде (plans.py), НЕ в БД. Lazy creation free плана.
 
 ## Важные нюансы
 
@@ -177,9 +186,9 @@ FRONTEND_URL                          # Для Playwright PDF (http://localhost:
 
 ## Roadmap
 
-1. ~~Phase 1: Auth+RLS~~ — DEPLOYED
-2. ~~Phase 2: Onboarding~~ — CODE COMPLETE, deploy pending
-3. Phase 3: Subscription tiers
+1. ~~Phase 1: Auth+RLS~~ — DEPLOYED (08.02.2026)
+2. ~~Phase 2: Onboarding~~ — DEPLOYED (09.02.2026)
+3. ~~Phase 3: Subscription tiers~~ — DEPLOYED (09.02.2026)
 4. Phase 4: Sync queue
 
 ## Документация
@@ -191,4 +200,4 @@ FRONTEND_URL                          # Для Playwright PDF (http://localhost:
 | [CHANGELOG.md](CHANGELOG.md) | Полная история всех изменений |
 | [promt.md](promt.md) | Промпт для нового чата + чеклист деплоя |
 | [frontend/DESIGN_REFERENCE.md](frontend/DESIGN_REFERENCE.md) | Гайд по дизайну (цвета, шрифты, spacing) |
-| [memory/](memory/) | Session memory (saas-phase1.md, saas-phase2.md) |
+| [memory/](memory/) | Session memory (saas-phase1.md, saas-phase2.md, saas-phase3.md) |

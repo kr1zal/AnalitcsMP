@@ -29,24 +29,9 @@ class SyncService:
         self.ozon_client = OzonClient(oz_cid, oz_key)
         self.ozon_perf_client = OzonPerformanceClient(oz_perf_cid, oz_perf_sec)
 
-        # Штрихкоды наших товаров
-        self.barcodes = [
-            "4670157464824",  # Магний + В6 хелат 800 мг
-            "4670157464831",  # Магний цитрат 800 мг
-            "4670157464848",  # L-карнитин 720 мг
-            "4670157464770",  # Витамин D3 + К2 260 мг
-            "4670227414995",  # Тестобустер
-        ]
-
-        # Маппинг Ozon Analytics SKU → barcode (временное решение)
-        # TODO: добавить колонку ozon_sku в mp_products
-        self.ozon_sku_map = {
-            "1659212207": "4670157464770",  # Витамин D3 + К2
-            "1659298299": "4670157464848",  # L-карнитин
-            "1691361926": "4670227414995",  # Тестобустер
-            "1658273141": "4670157464824",  # Магний + В6 хелат
-            "1658286198": "4670157464831",  # Магний цитрат
-        }
+        # Barcodes и Ozon SKU map загружаются из БД (mp_products)
+        self._barcodes_cache: list[str] | None = None
+        self._ozon_sku_map_cache: dict[str, str] | None = None
 
     def _load_tokens(self, user_id: str | None, settings) -> tuple:
         """Загрузить токены: БД (per-user) → fallback на .env."""
@@ -81,6 +66,29 @@ class SyncService:
             settings.ozon_performance_client_id,
             settings.ozon_performance_client_secret,
         )
+
+    @property
+    def barcodes(self) -> list[str]:
+        """Загрузить штрихкоды товаров из БД (кеш на время жизни SyncService)."""
+        if self._barcodes_cache is None:
+            products_map = self._get_products_map()
+            self._barcodes_cache = [
+                bc for bc in products_map.keys()
+                if bc and bc != "WB_ACCOUNT"
+            ]
+        return self._barcodes_cache
+
+    @property
+    def ozon_sku_map(self) -> dict[str, str]:
+        """Загрузить маппинг Ozon SKU → barcode из БД (поле ozon_sku в mp_products)."""
+        if self._ozon_sku_map_cache is None:
+            products_map = self._get_products_map()
+            self._ozon_sku_map_cache = {}
+            for barcode, product in products_map.items():
+                ozon_sku = product.get("ozon_sku")
+                if ozon_sku and barcode:
+                    self._ozon_sku_map_cache[str(ozon_sku)] = barcode
+        return self._ozon_sku_map_cache
 
     def _log_sync(self, marketplace: str, sync_type: str, status: str,
                   records_count: int = 0, error_message: str = None,
@@ -193,11 +201,16 @@ class SyncService:
             ozon_result = await self.ozon_client.get_product_list(limit=100)
             ozon_products = ozon_result.get("result", {}).get("items", [])
 
+            ozon_product_ids = []
+            offer_id_to_product_id = {}
             for product in ozon_products:
                 product_id = product.get("product_id")
                 offer_id = product.get("offer_id")  # offer_id = штрихкод в Ozon
 
                 if offer_id in self.barcodes:
+                    offer_id_to_product_id[offer_id] = product_id
+                    if product_id:
+                        ozon_product_ids.append(product_id)
                     query = self.supabase.table("mp_products").update({
                         "ozon_product_id": product_id,
                         "ozon_offer_id": offer_id,
@@ -208,6 +221,44 @@ class SyncService:
                     query.execute()
                     updated_count += 1
                     logger.info(f"Ozon: обновлен товар {offer_id} -> product_id={product_id}")
+
+            # Получаем FBO SKU из product info и сохраняем в ozon_sku
+            if ozon_product_ids:
+                try:
+                    info = await self.ozon_client.get_product_info(product_ids=ozon_product_ids)
+                    for item in info.get("result", {}).get("items", []):
+                        item_offer_id = item.get("offer_id", "")
+                        # SKU может быть на верхнем уровне или в sources[].sku
+                        ozon_sku = None
+                        for src in item.get("sources", []):
+                            if src.get("source") == "fbo" and src.get("sku"):
+                                ozon_sku = str(src["sku"])
+                                break
+                        if not ozon_sku:
+                            # Fallback: поле sku на верхнем уровне
+                            top_sku = item.get("sku")
+                            if top_sku:
+                                ozon_sku = str(top_sku)
+                        if not ozon_sku:
+                            # Fallback: fbo_sku field
+                            fbo_sku = item.get("fbo_sku")
+                            if fbo_sku:
+                                ozon_sku = str(fbo_sku)
+
+                        if ozon_sku and item_offer_id in self.barcodes:
+                            query = self.supabase.table("mp_products").update({
+                                "ozon_sku": ozon_sku,
+                            }).eq("barcode", item_offer_id)
+                            if self.user_id:
+                                query = query.eq("user_id", self.user_id)
+                            query.execute()
+                            logger.info(f"Ozon: обновлен SKU {item_offer_id} -> ozon_sku={ozon_sku}")
+                except Exception as e:
+                    logger.warning(f"Failed to fetch Ozon product info for SKU mapping: {e}")
+
+            # Invalidate caches after product sync
+            self._barcodes_cache = None
+            self._ozon_sku_map_cache = None
 
             self._log_sync("all", "products", "success", updated_count, started_at=started_at)
             return {"status": "success", "updated": updated_count}

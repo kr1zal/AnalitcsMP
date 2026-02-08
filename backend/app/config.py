@@ -30,7 +30,6 @@ class Settings(BaseSettings):
 
     # App
     debug: bool = True
-    secret_key: str = "change-me-in-production"
 
     # Frontend URL for PDF export (Playwright opens this)
     # Локально: добавь FRONTEND_URL=http://localhost:5173 в .env

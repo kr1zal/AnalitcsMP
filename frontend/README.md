@@ -39,9 +39,12 @@ frontend/src/
 │   │   ├── MarketplaceBreakdown.tsx # OZON+WB grid-cols-2
 │   │   ├── OzonAccrualsCard.tsx    # Начисления Ozon + дерево
 │   │   └── WbAccrualsCard.tsx      # Начисления WB + СПП
+│   ├── Settings/
+│   │   └── SubscriptionCard.tsx    # Карточка тарифа + сравнение планов (Phase 3)
 │   └── Shared/
-│       ├── Layout.tsx              # Desktop header + Mobile slide-in panel
-│       ├── ProtectedRoute.tsx      # Auth guard + onboarding redirect
+│       ├── Layout.tsx              # Desktop header + Mobile slide-in panel + plan badge
+│       ├── ProtectedRoute.tsx      # Auth guard + onboarding redirect + subscription prefetch
+│       ├── FeatureGate.tsx         # Blur+lock overlay для заблокированных фич (Phase 3)
 │       ├── FilterPanel.tsx         # Пресеты 7/30/90д
 │       ├── DateRangePicker.tsx     # v9 compact, 32px cells
 │       └── LoadingSpinner.tsx
@@ -50,6 +53,7 @@ frontend/src/
 │   ├── useSync.ts                  # React Query: sync mutations
 │   ├── useAuth.ts                  # Auth listener (getSession + onAuthStateChange)
 │   ├── useTokens.ts               # Token CRUD (Phase 2)
+│   ├── useSubscription.ts         # useSubscription, usePlans (Phase 3)
 │   ├── useMediaQuery.ts            # useIsMobile, useIsTablet, useIsDesktop
 │   └── useExport.ts                # Excel/PDF экспорт
 ├── lib/
@@ -65,7 +69,7 @@ frontend/src/
 │   ├── SettingsPage.tsx            # Настройки: профиль + API-токены + подсказки
 │   └── PrintPage.tsx               # PDF layout (3 страницы A4)
 ├── services/
-│   └── api.ts                      # Axios + auth interceptor + tokensApi
+│   └── api.ts                      # Axios + auth interceptor + tokensApi + subscriptionApi
 ├── store/
 │   ├── useFiltersStore.ts          # Zustand: даты, маркетплейс, товар
 │   └── useAuthStore.ts             # Zustand: user, isLoading, setUser
@@ -95,6 +99,19 @@ frontend/src/
   - Подсказки: как получить токены в ЛК каждого МП
   - "Сохранить и синхронизировать" — автосинк после сохранения
 - **useTokens.ts** — useTokensStatus, useSaveTokens, useValidateTokens, useSaveAndSync
+
+## Subscription Tiers (SaaS Phase 3)
+
+- **FeatureGate** — компонент-обёртка: blur + lock overlay + upgrade prompt
+  - Оборачивает UnitEconomicsPage, AdsPage
+  - `hide` prop для полного скрытия (вместо blur)
+- **SubscriptionCard** — карточка текущего тарифа + таблица сравнения планов
+  - SKU usage bar (текущие / максимум)
+  - Feature check/x иконки для каждого плана
+- **Layout** — бейдж тарифа (Free=gray, Pro=indigo, Business=amber) рядом с email
+- **DashboardPage** — условный PDF экспорт + условное сравнение периодов
+- **useSubscription.ts** — useSubscription (staleTime 10min), usePlans (staleTime 1h)
+- **ProtectedRoute** — prefetch подписки через useSubscription()
 
 ---
 

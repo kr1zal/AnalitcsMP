@@ -15,43 +15,36 @@
 **Production:** https://analitics.bixirun.ru (Beget VPS 83.222.16.15)
 **Local:** Backend http://localhost:8000, Frontend http://localhost:5173
 
-**Текущее состояние (08.02.2026):**
+**Текущее состояние (09.02.2026):**
 - Деплой завершён, сайт работает на https://analitics.bixirun.ru
 - SSL настроен (Let's Encrypt, автопродление)
 - DashboardPage работает, RPC оптимизация активна, mobile-first дизайн готов
 - ✅ Cron настроен с auth headers (07:00, 13:00 — sales+costs; каждые 6ч — stocks)
 - ✅ UnitEconomicsPage, Excel/PDF экспорт, мобильное меню — всё готово
 - ✅ **SaaS Фаза 1: Auth + RLS — DEPLOYED (08.02.2026)**
-  - Commit: 0cd9ec8 on analitics_main_v1
   - Supabase Auth, JWT middleware (JWKS), RLS, user_id во всех таблицах
   - Frontend: LoginPage, ProtectedRoute, auth interceptor
   - CORS ограничен, Cron с X-Cron-Secret + X-Cron-User-Id
   - Admin: exklante@gmail.com / 123456 / UUID: 17e80396-86e1-4ec8-8cb2-f727462bf20c
-- ✅ **SaaS Фаза 2: Onboarding — КОД ГОТОВ (08.02.2026), ДЕПЛОЙ PENDING**
+- ✅ **SaaS Фаза 2: Onboarding — DEPLOYED (09.02.2026)**
   - Backend: mp_user_tokens (Fernet encryption), CRUD + validate endpoints, _load_tokens fallback
   - Frontend: SettingsPage (профиль + 3 секции токенов + подсказки + авто-синхронизация)
   - ProtectedRoute: redirect на /settings если нет токенов (onboarding)
-  - Навигация: добавлен пункт «Настройки»
-
-**⚠ БАГИ ДЛЯ ФИКСА:**
-- **Предыдущий период в плашках DashboardPage не работает** — нет данных сравнения (Пред.пер., Δ к пред.). Логика `useDashboardSummaryWithPrev` / `getSummaryWithPrev` может быть сломана или не подключена. Нужно исследовать и починить.
+- ✅ **SaaS Фаза 3: Subscription Tiers — DEPLOYED (09.02.2026)**
+  - 3 тарифа: Free / Pro (990₽) / Business (2990₽), без оплаты (admin-managed)
+  - Backend: plans.py, subscription.py (Depends), feature gates на dashboard/export/sync
+  - Frontend: FeatureGate (blur+lock), SubscriptionCard, бейдж тарифа в header
+- ✅ **Bugfix:** Предыдущий период в плашках DashboardPage — commit 1aa095f
 
 **ГЛАВНАЯ ЗАДАЧА — SaaS-трансформация:**
 
 ```
 Фаза 1: Auth + RLS ✅ DEPLOYED (08.02.2026)
-Фаза 2: Onboarding (токены per user) ✅ КОД ГОТОВ (08.02.2026), ДЕПЛОЙ PENDING
-  ├── ✅ mp_user_tokens (Fernet encryption, CRUD + validate endpoints)
-  ├── ✅ SettingsPage (профиль + 3 секции WB/Ozon/OzonPerf + подсказки)
-  ├── ✅ ProtectedRoute → redirect /settings если нет токенов
-  ├── ✅ sync_service._load_tokens() — БД → fallback .env
-  └── ⏳ Деплой на VPS
-
-Фаза 3: Тарифы + feature gating
-  ├── Таблица user_subscriptions
-  ├── Free: 7 дней, 10 SKU, без Excel/PDF
-  ├── Pro: всё безлимитно
-  └── UI: paywall компоненты
+Фаза 2: Onboarding ✅ DEPLOYED (09.02.2026)
+Фаза 3: Subscription Tiers ✅ DEPLOYED (09.02.2026)
+  ├── ✅ mp_user_subscriptions (Free/Pro/Business, admin-managed)
+  ├── ✅ Backend: plans.py, subscription.py, feature gates
+  └── ✅ Frontend: FeatureGate, SubscriptionCard, plan badge
 
 Фаза 4: Масштабирование
   ├── Очередь sync (Pro → Basic → Free)
@@ -68,27 +61,13 @@
 
 ---
 
-## ⏳ Деплой SaaS Фаза 2 — ЧЕКЛИСТ:
+## ✅ Деплой SaaS Фаза 2 + 3 — ВЫПОЛНЕН (09.02.2026)
 
-```bash
-# 1. Backend: скопировать файлы (включая новые crypto.py, tokens.py)
-sshpass -p '@vnDBp5VCt2+' rsync -avz --exclude 'venv' --exclude '__pycache__' backend/ root@83.222.16.15:/var/www/analytics/backend/
-
-# 2. Скопировать .env с FERNET_KEY
-sshpass -p '@vnDBp5VCt2+' scp .env root@83.222.16.15:/var/www/analytics/.env
-
-# 3. Frontend: build + deploy
-cd frontend && npm run build
-sshpass -p '@vnDBp5VCt2+' rsync -avz --delete dist/ root@83.222.16.15:/var/www/analytics/frontend/
-
-# 4. Перезапуск backend
-ssh root@83.222.16.15 "systemctl restart analytics-api"
-
-# 5. Проверить
-# - /settings — должна открыться страница настроек
-# - Ввести токены → Проверить → Сохранить
-# - GET /api/v1/tokens → has_wb: true, has_ozon_seller: true
-```
+- Backend: rsync 18 файлов, .env с FERNET_KEY
+- Frontend: npm run build + rsync dist/
+- systemctl restart analytics-api — OK
+- Проверено: /api/v1/subscription/plans → 200 OK (3 тарифа)
+- SQL миграции 007 + 008 применены в Supabase
 
 ---
 
@@ -170,9 +149,7 @@ systemctl restart analytics-api
 ---
 
 ## Текущие задачи:
-- ⏳ **Деплой SaaS Фаза 1 на VPS** — см. чеклист выше
-- 🔄 **SaaS Фаза 2: Онбординг** — пользователь вводит свои токены WB/Ozon
-- 🔄 Улучшить AdsPage (графики ДРР по дням)
+- 🔄 **SaaS Фаза 4: Sync queue** — приоритетная очередь по тарифам
 - 🔄 Улучшить PDF экспорт (PrintPage.tsx) — см. раздел "Предложения по PDF"
 
 ---
@@ -240,15 +217,26 @@ Backend (Auth — Фаза 1):
 - `backend/app/config.py` — настройки (+ sync_cron_secret)
 - `backend/app/main.py` — CORS ограничен конкретными origins
 
+Backend (Subscriptions — Фаза 3):
+- `backend/app/plans.py` — PLANS dict (Free/Pro/Business лимиты и фичи)
+- `backend/app/subscription.py` — get_user_subscription (Depends), require_feature factory
+- `backend/app/api/v1/subscription.py` — GET/PUT /subscription, GET /subscription/plans
+
+Frontend (Subscriptions — Фаза 3):
+- `frontend/src/hooks/useSubscription.ts` — useSubscription, usePlans (React Query)
+- `frontend/src/components/Shared/FeatureGate.tsx` — blur+lock для заблокированных фич
+- `frontend/src/components/Settings/SubscriptionCard.tsx` — карточка тарифа + сравнение
+
 Backend (основные):
-- `backend/app/api/v1/dashboard.py` — API endpoints (auth + user_id + RPC)
+- `backend/app/api/v1/dashboard.py` — API endpoints (auth + user_id + RPC + feature gates)
 - `backend/app/api/v1/products.py` — продукты (auth + user_id)
-- `backend/app/api/v1/sync.py` — синхронизация (cron/jwt auth + user_id)
-- `backend/app/api/v1/export.py` — PDF экспорт (auth + JWT pass-through)
+- `backend/app/api/v1/sync.py` — синхронизация (cron/jwt auth + user_id + marketplace restriction)
+- `backend/app/api/v1/export.py` — PDF экспорт (auth + JWT pass-through + require_feature)
 - `backend/app/services/sync_service.py` — sync с user_id (~30 мест)
 - `backend/migrations/004_add_user_id.sql` — user_id + constraints
 - `backend/migrations/005_rls_policies.sql` — RLS на все mp_*
 - `backend/migrations/006_rpc_with_user_id.sql` — RPC с p_user_id
+- `backend/migrations/008_subscriptions.sql` — mp_user_subscriptions + RLS
 
 ---
 

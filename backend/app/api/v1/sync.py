@@ -1,13 +1,13 @@
 """
 Роутер для запуска синхронизации данных
 """
-from fastapi import APIRouter, HTTPException, BackgroundTasks, Depends, Query
+from fastapi import APIRouter, HTTPException, BackgroundTasks, Depends
 from typing import Optional
 from datetime import datetime, timedelta, timezone
 
 from ...services.sync_service import SyncService
 from ...db.supabase import get_supabase_client
-from ...auth import CurrentUser, get_current_user, get_current_user_or_cron
+from ...auth import CurrentUser, get_current_user_or_cron
 from ...subscription import get_subscription_or_cron, UserSubscription
 
 router = APIRouter()
@@ -33,6 +33,94 @@ def _parse_dt(value: str | None) -> datetime | None:
     if dt.tzinfo is None:
         return dt.replace(tzinfo=timezone.utc)
     return dt
+
+
+def _check_sync_guard(
+    user_id: str,
+    sync_type: str,
+    force: bool = False,
+    lock_ttl_hours: int = 2,
+    cooldown_hours: int = 1,
+) -> dict | None:
+    """
+    Check running-lock + recent-success guard for sync endpoints.
+    Returns a 'skipped' dict if guard triggers, None if OK to proceed.
+    """
+    supabase = get_supabase_client()
+    now = datetime.now(timezone.utc)
+
+    # 1) Running lock
+    running = (
+        supabase.table("mp_sync_log")
+        .select("id, started_at")
+        .eq("marketplace", "all")
+        .eq("sync_type", sync_type)
+        .eq("status", "running")
+        .eq("user_id", user_id)
+        .order("started_at", desc=True)
+        .limit(1)
+        .execute()
+    )
+    if running.data:
+        started = _parse_dt(running.data[0].get("started_at"))
+        if started and (now - started) < timedelta(hours=lock_ttl_hours):
+            return {
+                "status": "skipped",
+                "reason": "already_running",
+                "running_since": running.data[0].get("started_at"),
+            }
+
+    # 2) Recent success cooldown
+    if not force:
+        last_ok = (
+            supabase.table("mp_sync_log")
+            .select("finished_at")
+            .eq("marketplace", "all")
+            .eq("sync_type", sync_type)
+            .eq("status", "success")
+            .eq("user_id", user_id)
+            .order("finished_at", desc=True)
+            .limit(1)
+            .execute()
+        )
+        if last_ok.data:
+            finished = _parse_dt(last_ok.data[0].get("finished_at"))
+            if finished and (now - finished) < timedelta(hours=cooldown_hours):
+                return {
+                    "status": "skipped",
+                    "reason": "already_synced_recently",
+                    "last_finished_at": last_ok.data[0].get("finished_at"),
+                }
+    return None
+
+
+def _create_sync_lock(user_id: str, sync_type: str) -> str | None:
+    """Create a running lock row in mp_sync_log, return its id."""
+    supabase = get_supabase_client()
+    result = supabase.table("mp_sync_log").insert({
+        "marketplace": "all",
+        "sync_type": sync_type,
+        "status": "running",
+        "records_count": 0,
+        "error_message": None,
+        "started_at": _now_utc_iso(),
+        "finished_at": None,
+        "user_id": user_id,
+    }).execute()
+    return result.data[0]["id"] if result.data else None
+
+
+def _finish_sync_lock(lock_id: str | None, status: str, records: int = 0, error: str | None = None):
+    """Mark a sync lock row as finished."""
+    if not lock_id:
+        return
+    supabase = get_supabase_client()
+    supabase.table("mp_sync_log").update({
+        "status": status,
+        "records_count": records,
+        "error_message": error,
+        "finished_at": _now_utc_iso(),
+    }).eq("id", lock_id).execute()
 
 
 @router.post("/sync/products")
@@ -67,129 +155,39 @@ async def sync_sales(
     - **marketplace**: wb, ozon или all (по умолчанию)
     - **force**: игнорировать idempotency-guard (по умолчанию false)
     """
+    lock_id = None
     try:
-        # Marketplace restriction per plan
         allowed_mps = sub.plan_config["marketplaces"]
-        # Idempotency + lock (protect from double-trigger / concurrent cron)
-        supabase = get_supabase_client()
-        now = datetime.now(timezone.utc)
 
-        # 1) Running lock (2h TTL)
-        running = (
-            supabase.table("mp_sync_log")
-            .select("id, started_at")
-            .eq("marketplace", "all")
-            .eq("sync_type", "sales")
-            .eq("status", "running")
-            .eq("user_id", current_user.id)
-            .order("started_at", desc=True)
-            .limit(1)
-            .execute()
-        )
-        if running.data:
-            started = _parse_dt(running.data[0].get("started_at"))
-            if started and (now - started) < timedelta(hours=2):
-                return {
-                    "status": "skipped",
-                    "reason": "already_running",
-                    "running_since": running.data[0].get("started_at"),
-                }
+        guard = _check_sync_guard(current_user.id, "sales", force=force, cooldown_hours=20)
+        if guard:
+            return guard
 
-        # 2) Recent success guard (20h window)
-        if not force:
-            last_ok = (
-                supabase.table("mp_sync_log")
-                .select("finished_at")
-                .eq("marketplace", "all")
-                .eq("sync_type", "sales")
-                .eq("status", "success")
-                .eq("user_id", current_user.id)
-                .order("finished_at", desc=True)
-                .limit(1)
-                .execute()
-            )
-            if last_ok.data:
-                finished = _parse_dt(last_ok.data[0].get("finished_at"))
-                if finished and (now - finished) < timedelta(hours=20):
-                    return {
-                        "status": "skipped",
-                        "reason": "already_synced_recently",
-                        "last_finished_at": last_ok.data[0].get("finished_at"),
-                    }
-
-        # Create a single "job" log row as a lock + summary (marketplace=all)
-        lock_insert = (
-            supabase.table("mp_sync_log")
-            .insert(
-                {
-                    "marketplace": "all",
-                    "sync_type": "sales",
-                    "status": "running",
-                    "records_count": 0,
-                    "error_message": None,
-                    "started_at": _now_utc_iso(),
-                    "finished_at": None,
-                    "user_id": current_user.id,
-                }
-            )
-            .execute()
-        )
-        lock_id = lock_insert.data[0]["id"] if lock_insert.data else None
+        lock_id = _create_sync_lock(current_user.id, "sales")
 
         sync_service = SyncService(user_id=current_user.id)
         date_from = datetime.now() - timedelta(days=days_back)
         date_to = datetime.now()
-
         results = {}
 
         if marketplace in [None, "wb", "all"] and "wb" in allowed_mps:
             results["wb"] = await sync_service.sync_sales_wb(date_from, date_to)
-
         if marketplace in [None, "ozon", "all"] and "ozon" in allowed_mps:
             results["ozon"] = await sync_service.sync_sales_ozon(date_from, date_to)
 
-        total_records = 0
-        for k, v in results.items():
-            if isinstance(v, dict):
-                total_records += int(v.get("records") or 0)
-
-        # Mark lock as success
-        if lock_id:
-            supabase.table("mp_sync_log").update(
-                {
-                    "status": "success",
-                    "records_count": total_records,
-                    "error_message": None,
-                    "finished_at": _now_utc_iso(),
-                }
-            ).eq("id", lock_id).execute()
+        total_records = sum(int(v.get("records") or 0) for v in results.values() if isinstance(v, dict))
+        _finish_sync_lock(lock_id, "success", total_records)
 
         return {
             "status": "completed",
-            "period": {
-                "from": date_from.strftime("%Y-%m-%d"),
-                "to": date_to.strftime("%Y-%m-%d")
-            },
+            "period": {"from": date_from.strftime("%Y-%m-%d"), "to": date_to.strftime("%Y-%m-%d")},
             "results": results,
             "job": {"marketplace": "all", "sync_type": "sales", "records": total_records},
         }
     except HTTPException:
         raise
     except Exception as e:
-        # Best-effort: mark lock as error (if created)
-        try:
-            if "lock_id" in locals() and locals().get("lock_id"):
-                supabase = get_supabase_client()
-                supabase.table("mp_sync_log").update(
-                    {
-                        "status": "error",
-                        "records_count": 0,
-                        "error_message": str(e),
-                        "finished_at": _now_utc_iso(),
-                    }
-                ).eq("id", locals()["lock_id"]).execute()
-        except Exception:
-            pass
+        _finish_sync_lock(lock_id, "error", error=str(e))
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -198,30 +196,40 @@ async def sync_stocks(
     current_user: CurrentUser = Depends(get_current_user_or_cron),
     sub: UserSubscription = Depends(get_subscription_or_cron),
     marketplace: Optional[str] = None,
+    force: bool = False,
 ):
     """
     Синхронизация остатков на складах
 
     - **marketplace**: wb, ozon или all (по умолчанию)
+    - **force**: игнорировать cooldown (по умолчанию false)
     """
+    lock_id = None
     try:
         allowed_mps = sub.plan_config["marketplaces"]
+
+        guard = _check_sync_guard(current_user.id, "stocks", force=force, cooldown_hours=2)
+        if guard:
+            return guard
+
+        lock_id = _create_sync_lock(current_user.id, "stocks")
+
         sync_service = SyncService(user_id=current_user.id)
         results = {}
 
         if marketplace in [None, "wb", "all"] and "wb" in allowed_mps:
             results["wb"] = await sync_service.sync_stocks_wb()
-
         if marketplace in [None, "ozon", "all"] and "ozon" in allowed_mps:
             results["ozon"] = await sync_service.sync_stocks_ozon()
 
-        return {
-            "status": "completed",
-            "results": results
-        }
+        total_records = sum(int(v.get("records") or 0) for v in results.values() if isinstance(v, dict))
+        _finish_sync_lock(lock_id, "success", total_records)
+
+        return {"status": "completed", "results": results}
     except HTTPException:
         raise
     except Exception as e:
+        _finish_sync_lock(lock_id, "error", error=str(e))
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -256,38 +264,47 @@ async def sync_costs(
     sub: UserSubscription = Depends(get_subscription_or_cron),
     days_back: int = 30,
     marketplace: Optional[str] = None,
+    force: bool = False,
 ):
     """
     Синхронизация удержаний МП за последние N дней
 
     - **days_back**: количество дней для загрузки (по умолчанию 30)
     - **marketplace**: wb, ozon или all (по умолчанию)
+    - **force**: игнорировать cooldown (по умолчанию false)
     """
+    lock_id = None
     try:
         allowed_mps = sub.plan_config["marketplaces"]
+
+        guard = _check_sync_guard(current_user.id, "costs", force=force, cooldown_hours=4)
+        if guard:
+            return guard
+
+        lock_id = _create_sync_lock(current_user.id, "costs")
+
         sync_service = SyncService(user_id=current_user.id)
         date_from = datetime.now() - timedelta(days=days_back)
         date_to = datetime.now()
-
         results = {}
 
         if marketplace in [None, "wb", "all"] and "wb" in allowed_mps:
             results["wb"] = await sync_service.sync_costs_wb(date_from, date_to)
-
         if marketplace in [None, "ozon", "all"] and "ozon" in allowed_mps:
             results["ozon"] = await sync_service.sync_costs_ozon(date_from, date_to)
 
+        total_records = sum(int(v.get("records") or 0) for v in results.values() if isinstance(v, dict))
+        _finish_sync_lock(lock_id, "success", total_records)
+
         return {
             "status": "completed",
-            "period": {
-                "from": date_from.strftime("%Y-%m-%d"),
-                "to": date_to.strftime("%Y-%m-%d")
-            },
-            "results": results
+            "period": {"from": date_from.strftime("%Y-%m-%d"), "to": date_to.strftime("%Y-%m-%d")},
+            "results": results,
         }
     except HTTPException:
         raise
     except Exception as e:
+        _finish_sync_lock(lock_id, "error", error=str(e))
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -297,38 +314,47 @@ async def sync_ads(
     sub: UserSubscription = Depends(get_subscription_or_cron),
     days_back: int = 30,
     marketplace: Optional[str] = None,
+    force: bool = False,
 ):
     """
     Синхронизация рекламных расходов за последние N дней
 
     - **days_back**: количество дней для загрузки (по умолчанию 30)
     - **marketplace**: wb, ozon или all (по умолчанию)
+    - **force**: игнорировать cooldown (по умолчанию false)
     """
+    lock_id = None
     try:
         allowed_mps = sub.plan_config["marketplaces"]
+
+        guard = _check_sync_guard(current_user.id, "ads", force=force, cooldown_hours=4)
+        if guard:
+            return guard
+
+        lock_id = _create_sync_lock(current_user.id, "ads")
+
         sync_service = SyncService(user_id=current_user.id)
         date_from = datetime.now() - timedelta(days=days_back)
         date_to = datetime.now()
-
         results = {}
 
         if marketplace in [None, "wb", "all"] and "wb" in allowed_mps:
             results["wb"] = await sync_service.sync_ads_wb(date_from, date_to)
-
         if marketplace in [None, "ozon", "all"] and "ozon" in allowed_mps:
             results["ozon"] = await sync_service.sync_ads_ozon(date_from, date_to)
 
+        total_records = sum(int(v.get("records") or 0) for v in results.values() if isinstance(v, dict))
+        _finish_sync_lock(lock_id, "success", total_records)
+
         return {
             "status": "completed",
-            "period": {
-                "from": date_from.strftime("%Y-%m-%d"),
-                "to": date_to.strftime("%Y-%m-%d")
-            },
-            "results": results
+            "period": {"from": date_from.strftime("%Y-%m-%d"), "to": date_to.strftime("%Y-%m-%d")},
+            "results": results,
         }
     except HTTPException:
         raise
     except Exception as e:
+        _finish_sync_lock(lock_id, "error", error=str(e))
         raise HTTPException(status_code=500, detail=str(e))
 
 
