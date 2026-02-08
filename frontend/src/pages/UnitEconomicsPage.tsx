@@ -1,13 +1,66 @@
 /**
- * Страница Unit-экономики (объединено с "Товары")
+ * Страница Unit-экономики
+ * KPI-карточки + ТОП/аутсайдеры bars + прогресс-бар + сортируемая таблица с пагинацией
  */
-import { useProducts, useUnitEconomics } from '../hooks/useDashboard';
+import { useState, useMemo } from 'react';
+import { useUnitEconomics } from '../hooks/useDashboard';
 import { useFiltersStore } from '../store/useFiltersStore';
 import { FilterPanel } from '../components/Shared/FilterPanel';
 import { LoadingSpinner } from '../components/Shared/LoadingSpinner';
-import { formatCurrency, formatPercent, getDateRangeFromPreset } from '../lib/utils';
-import { Package, TrendingUp, TrendingDown, DollarSign, Truck, BarChart3 } from 'lucide-react';
+import { formatCurrency, formatPercent, getDateRangeFromPreset, cn } from '../lib/utils';
+import {
+  TrendingUp,
+  TrendingDown,
+  DollarSign,
+  ShoppingCart,
+  Percent,
+  ArrowUpDown,
+  ChevronLeft,
+  ChevronRight,
+  Search,
+  ArrowUp,
+  ArrowDown,
+} from 'lucide-react';
 import type { UnitEconomicsItem } from '../types';
+
+// ==================== TYPES ====================
+
+type SortField = 'name' | 'sales_count' | 'revenue' | 'purchase_costs' | 'mp_costs' | 'net_profit' | 'unit_profit' | 'margin';
+type SortDirection = 'asc' | 'desc';
+
+const ITEMS_PER_PAGE = 20;
+const TOP_COUNT = 5;
+const BOTTOM_COUNT = 3;
+
+// ==================== HELPERS ====================
+
+function getMargin(item: UnitEconomicsItem): number {
+  return item.metrics.revenue > 0
+    ? (item.metrics.net_profit / item.metrics.revenue) * 100
+    : 0;
+}
+
+function getMarginColor(margin: number): string {
+  if (margin >= 20) return 'text-green-600';
+  if (margin >= 10) return 'text-yellow-600';
+  return 'text-red-600';
+}
+
+function getMarginBg(margin: number): string {
+  if (margin >= 20) return 'bg-green-50';
+  if (margin >= 10) return 'bg-yellow-50';
+  return 'bg-red-50';
+}
+
+function getSortValue(item: UnitEconomicsItem, field: SortField): number | string {
+  switch (field) {
+    case 'name': return item.product.name.toLowerCase();
+    case 'margin': return getMargin(item);
+    default: return item.metrics[field as keyof typeof item.metrics] ?? 0;
+  }
+}
+
+// ==================== COMPONENT ====================
 
 export const UnitEconomicsPage = () => {
   const { datePreset, marketplace, customDateFrom, customDateTo } = useFiltersStore();
@@ -19,20 +72,87 @@ export const UnitEconomicsPage = () => {
     marketplace,
   };
 
-  const {
-    data: productsData,
-    isLoading: productsLoading,
-    error: productsError,
-  } = useProducts(marketplace);
+  const { data: unitData, isLoading, error } = useUnitEconomics(filters);
 
-  const {
-    data: unitData,
-    isLoading: unitLoading,
-    error: unitError,
-  } = useUnitEconomics(filters);
+  // State
+  const [sortField, setSortField] = useState<SortField>('net_profit');
+  const [sortDir, setSortDir] = useState<SortDirection>('desc');
+  const [page, setPage] = useState(1);
+  const [search, setSearch] = useState('');
 
-  const isLoading = productsLoading || unitLoading;
-  const error = productsError || unitError;
+  // Reset page on filter/search change
+  const unitProducts = unitData?.products || [];
+
+  // Aggregates
+  const totals = useMemo(() => {
+    const t = { revenue: 0, purchase: 0, mpCosts: 0, profit: 0, sales: 0 };
+    for (const p of unitProducts) {
+      t.revenue += p.metrics.revenue;
+      t.purchase += p.metrics.purchase_costs;
+      t.mpCosts += p.metrics.mp_costs;
+      t.profit += p.metrics.net_profit;
+      t.sales += p.metrics.sales_count;
+    }
+    return t;
+  }, [unitProducts]);
+
+  const avgMargin = totals.revenue > 0 ? (totals.profit / totals.revenue) * 100 : 0;
+  const avgUnitProfit = totals.sales > 0 ? totals.profit / totals.sales : 0;
+
+  // Filtered + sorted
+  const sortedProducts = useMemo(() => {
+    let filtered = unitProducts;
+    if (search.trim()) {
+      const q = search.toLowerCase();
+      filtered = filtered.filter(
+        (p) =>
+          p.product.name.toLowerCase().includes(q) ||
+          p.product.barcode.toLowerCase().includes(q)
+      );
+    }
+
+    return [...filtered].sort((a, b) => {
+      const va = getSortValue(a, sortField);
+      const vb = getSortValue(b, sortField);
+      const cmp = typeof va === 'string' && typeof vb === 'string'
+        ? va.localeCompare(vb)
+        : (va as number) - (vb as number);
+      return sortDir === 'asc' ? cmp : -cmp;
+    });
+  }, [unitProducts, search, sortField, sortDir]);
+
+  // Pagination
+  const totalPages = Math.max(1, Math.ceil(sortedProducts.length / ITEMS_PER_PAGE));
+  const safePage = Math.min(page, totalPages);
+  const paginatedProducts = sortedProducts.slice(
+    (safePage - 1) * ITEMS_PER_PAGE,
+    safePage * ITEMS_PER_PAGE
+  );
+  const showPagination = sortedProducts.length > ITEMS_PER_PAGE;
+
+  // TOP/BOTTOM bars
+  const barsData = useMemo(() => {
+    const byProfit = [...unitProducts].sort((a, b) => b.metrics.net_profit - a.metrics.net_profit);
+    if (byProfit.length <= TOP_COUNT + BOTTOM_COUNT) return { top: byProfit, bottom: [], restProfit: 0 };
+
+    const top = byProfit.slice(0, TOP_COUNT);
+    const bottom = byProfit.slice(-BOTTOM_COUNT).reverse();
+    const restProfit = byProfit
+      .slice(TOP_COUNT, -BOTTOM_COUNT)
+      .reduce((s, p) => s + p.metrics.net_profit, 0);
+    return { top, bottom, restProfit };
+  }, [unitProducts]);
+
+  // Sort handler
+  const handleSort = (field: SortField) => {
+    if (sortField === field) {
+      setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortField(field);
+      setSortDir(field === 'name' ? 'asc' : 'desc');
+    }
+    setPage(1);
+  };
 
   if (isLoading) {
     return <LoadingSpinner text="Загрузка unit-экономики..." />;
@@ -40,228 +160,223 @@ export const UnitEconomicsPage = () => {
 
   if (error) {
     return (
-      <div className="p-6">
+      <div className="p-4 sm:p-6">
         <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-          <p className="text-red-800">Ошибка загрузки данных: {(error as Error).message}</p>
+          <p className="text-red-800 text-sm">Ошибка: {(error as Error).message}</p>
         </div>
       </div>
     );
   }
 
-  const products = productsData?.products || [];
-  const unitProducts = unitData?.products || [];
-
-  // Агрегированная структура затрат
-  const totalRevenue = unitProducts.reduce((s, p) => s + p.metrics.revenue, 0);
-  const totalPurchase = unitProducts.reduce((s, p) => s + p.metrics.purchase_costs, 0);
-  const totalMpCosts = unitProducts.reduce((s, p) => s + p.metrics.mp_costs, 0);
-  const totalProfit = unitProducts.reduce((s, p) => s + p.metrics.net_profit, 0);
-  const totalSales = unitProducts.reduce((s, p) => s + p.metrics.sales_count, 0);
-
-  const costCategories = [
-    { label: 'Продажи', value: totalRevenue, icon: BarChart3, color: 'text-blue-600', bg: 'bg-blue-50' },
-    { label: 'Закупка товаров', value: totalPurchase, icon: Package, color: 'text-amber-600', bg: 'bg-amber-50' },
-    { label: 'Удержания МП', value: totalMpCosts, icon: Truck, color: 'text-purple-600', bg: 'bg-purple-50' },
-    { label: 'Чистая прибыль', value: totalProfit, icon: DollarSign, color: totalProfit >= 0 ? 'text-green-600' : 'text-red-600', bg: totalProfit >= 0 ? 'bg-green-50' : 'bg-red-50' },
-  ];
+  const maxBarProfit = Math.max(
+    ...barsData.top.map((p) => Math.abs(p.metrics.net_profit)),
+    ...barsData.bottom.map((p) => Math.abs(p.metrics.net_profit)),
+    1
+  );
 
   return (
-    <div className="max-w-7xl mx-auto px-6 py-8">
+    <div className="max-w-7xl mx-auto px-3 sm:px-6 py-4 sm:py-8">
       {/* Header */}
-      <div className="mb-6">
-        <h2 className="text-2xl font-bold text-gray-900">Unit-экономика</h2>
-        <p className="text-sm text-gray-600 mt-1">
-          Товары + прибыль на единицу с учётом удержаний и закупки
+      <div className="mb-4 sm:mb-6">
+        <h2 className="text-lg sm:text-2xl font-bold text-gray-900">Unit-экономика</h2>
+        <p className="text-xs sm:text-sm text-gray-500 mt-0.5">
+          Прибыль на единицу · {unitProducts.length} товаров · {dateRange.from} — {dateRange.to}
         </p>
       </div>
 
       {/* Фильтры */}
       <FilterPanel />
 
-      {/* Period label */}
-      <div className="text-sm text-gray-500 mb-6">
-        Период: {dateRange.from} — {dateRange.to}
+      {/* ① KPI Cards */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3 mt-4 sm:mt-6 mb-4 sm:mb-6">
+        <KpiCard
+          label="Выручка"
+          value={formatCurrency(totals.revenue)}
+          sub={`${totals.sales} шт`}
+          icon={<ShoppingCart className="w-3.5 h-3.5" />}
+          color="blue"
+        />
+        <KpiCard
+          label="Прибыль"
+          value={formatCurrency(totals.profit)}
+          sub={totals.profit >= 0 ? 'в плюсе' : 'убыток'}
+          icon={<DollarSign className="w-3.5 h-3.5" />}
+          color={totals.profit >= 0 ? 'green' : 'red'}
+        />
+        <KpiCard
+          label="Ср. маржа"
+          value={formatPercent(avgMargin)}
+          sub={avgMargin >= 20 ? 'хорошо' : avgMargin >= 10 ? 'средне' : 'низкая'}
+          icon={<Percent className="w-3.5 h-3.5" />}
+          color={avgMargin >= 20 ? 'green' : avgMargin >= 10 ? 'yellow' : 'red'}
+        />
+        <KpiCard
+          label="Прибыль/ед."
+          value={formatCurrency(avgUnitProfit)}
+          sub="среднее"
+          icon={avgUnitProfit >= 0 ? <TrendingUp className="w-3.5 h-3.5" /> : <TrendingDown className="w-3.5 h-3.5" />}
+          color={avgUnitProfit >= 0 ? 'green' : 'red'}
+        />
       </div>
 
-      {/* Карточки товаров */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 mb-8">
-        {products.map((product) => {
-          const unit = unitProducts.find((u) => u.product.id === product.id);
-          return (
-            <div
-              key={product.id}
-              className="bg-gradient-to-br from-slate-800 to-slate-900 rounded-lg p-4 text-white"
-            >
-              <h3 className="font-semibold text-sm mb-3 leading-tight">{product.name}</h3>
-              <div className="space-y-1.5 text-xs">
-                <div className="flex justify-between">
-                  <span className="text-gray-400">Кол-во:</span>
-                  <span className="font-medium">{unit?.metrics.sales_count ?? 0} шт</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-400">Продажи:</span>
-                  <span className="font-medium">{formatCurrency(unit?.metrics.revenue ?? 0)}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-400">Прибыль/шт:</span>
-                  <span className={`font-semibold ${(unit?.metrics.unit_profit ?? 0) >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                    {formatCurrency(unit?.metrics.unit_profit ?? 0)}
-                  </span>
-                </div>
-                <div className="flex justify-between pt-1 border-t border-slate-700">
-                  <span className="text-gray-400">Закупка:</span>
-                  <span>{formatCurrency(product.purchase_price)}</span>
-                </div>
-              </div>
-            </div>
-          );
-        })}
-      </div>
+      {/* ② TOP/BOTTOM Bars */}
+      {unitProducts.length > 0 && (
+        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-3 sm:p-5 mb-4 sm:mb-6">
+          <h3 className="text-sm sm:text-base font-semibold text-gray-900 mb-3 sm:mb-4">
+            Прибыль по товарам
+          </h3>
 
-      {/* Структура затрат (агрегированная) */}
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 mb-8">
-        <h3 className="text-lg font-bold text-gray-900 mb-6">Структура затрат (все товары)</h3>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
-          {costCategories.map((cat, idx) => {
-            const Icon = cat.icon;
-            return (
-              <div key={idx} className={`rounded-lg p-4 ${cat.bg}`}>
-                <div className="flex items-center gap-2 mb-2">
-                  <Icon className={`w-4 h-4 ${cat.color}`} />
-                  <span className="text-xs text-gray-600">{cat.label}</span>
-                </div>
-                <div className={`text-xl font-bold ${cat.color}`}>
-                  {formatCurrency(cat.value)}
-                </div>
-                {totalRevenue > 0 && cat.label !== 'Продажи' && (
-                  <div className="text-xs text-gray-500 mt-1">
-                    {formatPercent(Math.abs(cat.value) / totalRevenue * 100)} от продаж
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
-
-        {/* Прогресс-бар распределения */}
-        {totalRevenue > 0 && (
-          <div className="mt-6">
-            <div className="flex items-center gap-0.5 h-4 rounded-full overflow-hidden bg-gray-100">
-              <div
-                className="h-full bg-amber-400"
-                style={{ width: `${(totalPurchase / totalRevenue) * 100}%` }}
-              />
-              <div
-                className="h-full bg-purple-400"
-                style={{ width: `${(totalMpCosts / totalRevenue) * 100}%` }}
-              />
-              <div
-                className={`h-full ${totalProfit >= 0 ? 'bg-green-400' : 'bg-red-400'}`}
-                style={{ width: `${(Math.abs(totalProfit) / totalRevenue) * 100}%` }}
-              />
-            </div>
-            <div className="flex justify-between mt-2 text-xs text-gray-500">
-              <span>Закупка ({formatPercent(totalPurchase / totalRevenue * 100)})</span>
-              <span>Удержания МП ({formatPercent(totalMpCosts / totalRevenue * 100)})</span>
-              <span>Прибыль ({formatPercent(Math.abs(totalProfit) / totalRevenue * 100)})</span>
-            </div>
+          {/* TOP */}
+          <div className="space-y-1.5 sm:space-y-2">
+            {barsData.top.map((item) => (
+              <ProfitBar key={item.product.id} item={item} maxValue={maxBarProfit} />
+            ))}
           </div>
-        )}
-      </div>
 
-      {/* Таблица эффективности */}
+          {/* Rest summary */}
+          {barsData.bottom.length > 0 && (
+            <>
+              <div className="my-2 sm:my-3 text-xs text-gray-400 text-center">
+                ещё {unitProducts.length - TOP_COUNT - BOTTOM_COUNT} товаров: {formatCurrency(barsData.restProfit)}
+              </div>
+              {/* BOTTOM (losers) */}
+              <div className="space-y-1.5 sm:space-y-2">
+                {barsData.bottom.map((item) => (
+                  <ProfitBar key={item.product.id} item={item} maxValue={maxBarProfit} />
+                ))}
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
+      {/* ③ Cost Structure Bar */}
+      {totals.revenue > 0 && (
+        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-3 sm:p-5 mb-4 sm:mb-6">
+          <h3 className="text-sm sm:text-base font-semibold text-gray-900 mb-3">Структура затрат</h3>
+
+          <div className="flex items-center gap-0.5 h-3 sm:h-4 rounded-full overflow-hidden bg-gray-100">
+            <div
+              className="h-full bg-amber-400 transition-all"
+              style={{ width: `${(totals.purchase / totals.revenue) * 100}%` }}
+            />
+            <div
+              className="h-full bg-purple-400 transition-all"
+              style={{ width: `${(totals.mpCosts / totals.revenue) * 100}%` }}
+            />
+            <div
+              className={cn('h-full transition-all', totals.profit >= 0 ? 'bg-green-400' : 'bg-red-400')}
+              style={{ width: `${(Math.abs(totals.profit) / totals.revenue) * 100}%` }}
+            />
+          </div>
+
+          <div className="flex justify-between mt-1.5 sm:mt-2 text-[10px] sm:text-xs text-gray-500">
+            <span>Закупка {formatPercent((totals.purchase / totals.revenue) * 100)}</span>
+            <span>Удержания МП {formatPercent((totals.mpCosts / totals.revenue) * 100)}</span>
+            <span>Прибыль {formatPercent((Math.abs(totals.profit) / totals.revenue) * 100)}</span>
+          </div>
+        </div>
+      )}
+
+      {/* ④ Sortable Table */}
       <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
-        <div className="p-6 border-b border-gray-100">
-          <h3 className="text-lg font-bold text-gray-900">Таблица эффективности по товарам</h3>
-          <p className="text-xs text-gray-500 mt-1">Unit-экономика за выбранный период</p>
+        {/* Table header: search + count */}
+        <div className="p-3 sm:p-4 border-b border-gray-100 flex flex-col sm:flex-row sm:items-center gap-2">
+          <h3 className="text-sm sm:text-base font-semibold text-gray-900 flex-shrink-0">
+            Таблица эффективности
+          </h3>
+          <div className="flex-1" />
+          <div className="relative">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
+            <input
+              type="text"
+              placeholder="Поиск товара..."
+              value={search}
+              onChange={(e) => { setSearch(e.target.value); setPage(1); }}
+              className="w-full sm:w-48 pl-8 pr-3 py-1.5 text-xs border border-gray-200 rounded-md focus:outline-none focus:ring-1 focus:ring-indigo-400 focus:border-indigo-400"
+            />
+          </div>
         </div>
 
-        <div className="overflow-x-auto">
+        {/* Desktop table */}
+        <div className="hidden sm:block overflow-x-auto">
           <table className="w-full">
             <thead className="bg-gray-50">
               <tr>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Товар</th>
-                <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Кол-во</th>
-                <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Продажи</th>
-                <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Закупка</th>
-                <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Удержания МП</th>
-                <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Прибыль</th>
-                <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">На ед.</th>
-                <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Маржа</th>
+                <SortableHeader field="name" label="Товар" current={sortField} dir={sortDir} onSort={handleSort} align="left" />
+                <SortableHeader field="sales_count" label="Кол-во" current={sortField} dir={sortDir} onSort={handleSort} />
+                <SortableHeader field="revenue" label="Продажи" current={sortField} dir={sortDir} onSort={handleSort} />
+                <SortableHeader field="purchase_costs" label="Закупка" current={sortField} dir={sortDir} onSort={handleSort} />
+                <SortableHeader field="mp_costs" label="Удерж. МП" current={sortField} dir={sortDir} onSort={handleSort} />
+                <SortableHeader field="net_profit" label="Прибыль" current={sortField} dir={sortDir} onSort={handleSort} />
+                <SortableHeader field="unit_profit" label="На ед." current={sortField} dir={sortDir} onSort={handleSort} />
+                <SortableHeader field="margin" label="Маржа" current={sortField} dir={sortDir} onSort={handleSort} />
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {unitProducts.length === 0 ? (
+              {paginatedProducts.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="px-4 py-8 text-center text-gray-400">
-                    Нет данных за выбранный период
+                  <td colSpan={8} className="px-4 py-8 text-center text-sm text-gray-400">
+                    {search ? 'Ничего не найдено' : 'Нет данных за период'}
                   </td>
                 </tr>
               ) : (
-                unitProducts.map((item: UnitEconomicsItem) => {
-                  const margin = item.metrics.revenue > 0
-                    ? (item.metrics.net_profit / item.metrics.revenue) * 100
-                    : 0;
-                  const isPositive = item.metrics.net_profit >= 0;
-
+                paginatedProducts.map((item) => {
+                  const margin = getMargin(item);
+                  const positive = item.metrics.net_profit >= 0;
                   return (
-                    <tr key={item.product.id} className="hover:bg-gray-50 transition-colors">
-                      <td className="px-4 py-3">
-                        <div className="text-sm font-medium text-gray-900">{item.product.name}</div>
-                        <div className="text-xs text-gray-400">{item.product.barcode}</div>
+                    <tr key={item.product.id} className="hover:bg-gray-50/50">
+                      <td className="px-3 py-2.5">
+                        <div className="text-sm font-medium text-gray-900 truncate max-w-[200px]">{item.product.name}</div>
+                        <div className="text-[10px] text-gray-400">{item.product.barcode}</div>
                       </td>
-                      <td className="px-4 py-3 text-right text-sm">{item.metrics.sales_count}</td>
-                      <td className="px-4 py-3 text-right text-sm font-medium">{formatCurrency(item.metrics.revenue)}</td>
-                      <td className="px-4 py-3 text-right text-sm text-amber-600">{formatCurrency(item.metrics.purchase_costs)}</td>
-                      <td className="px-4 py-3 text-right text-sm text-purple-600">{formatCurrency(item.metrics.mp_costs)}</td>
-                      <td className="px-4 py-3 text-right">
-                        <span className={`text-sm font-semibold ${isPositive ? 'text-green-600' : 'text-red-600'}`}>
+                      <td className="px-3 py-2.5 text-right text-sm tabular-nums">{item.metrics.sales_count}</td>
+                      <td className="px-3 py-2.5 text-right text-sm tabular-nums font-medium">{formatCurrency(item.metrics.revenue)}</td>
+                      <td className="px-3 py-2.5 text-right text-sm tabular-nums text-amber-600">{formatCurrency(item.metrics.purchase_costs)}</td>
+                      <td className="px-3 py-2.5 text-right text-sm tabular-nums text-purple-600">{formatCurrency(item.metrics.mp_costs)}</td>
+                      <td className="px-3 py-2.5 text-right">
+                        <span className={cn('text-sm font-semibold tabular-nums', positive ? 'text-green-600' : 'text-red-600')}>
                           {formatCurrency(item.metrics.net_profit)}
                         </span>
                       </td>
-                      <td className="px-4 py-3 text-right">
-                        <span className={`text-sm ${isPositive ? 'text-green-600' : 'text-red-600'}`}>
+                      <td className="px-3 py-2.5 text-right">
+                        <span className={cn('text-sm tabular-nums', positive ? 'text-green-600' : 'text-red-600')}>
                           {formatCurrency(item.metrics.unit_profit)}
                         </span>
                       </td>
-                      <td className="px-4 py-3 text-right">
-                        <div className="flex items-center justify-end gap-1">
-                          {isPositive ? (
-                            <TrendingUp className="w-3 h-3 text-green-500" />
-                          ) : (
-                            <TrendingDown className="w-3 h-3 text-red-500" />
-                          )}
-                          <span className={`text-sm font-medium ${isPositive ? 'text-green-600' : 'text-red-600'}`}>
-                            {formatPercent(margin)}
-                          </span>
-                        </div>
+                      <td className="px-3 py-2.5 text-right">
+                        <span className={cn('text-xs font-medium px-1.5 py-0.5 rounded', getMarginColor(margin), getMarginBg(margin))}>
+                          {formatPercent(margin)}
+                        </span>
                       </td>
                     </tr>
                   );
                 })
               )}
             </tbody>
+            {/* TOTALS row - always shows totals for ALL products (not just current page) */}
             {unitProducts.length > 0 && (
-              <tfoot className="bg-gray-50 font-semibold">
+              <tfoot className="bg-gray-50 font-semibold border-t border-gray-200">
                 <tr>
-                  <td className="px-4 py-3 text-sm">ИТОГО</td>
-                  <td className="px-4 py-3 text-right text-sm">{totalSales}</td>
-                  <td className="px-4 py-3 text-right text-sm">{formatCurrency(totalRevenue)}</td>
-                  <td className="px-4 py-3 text-right text-sm text-amber-600">{formatCurrency(totalPurchase)}</td>
-                  <td className="px-4 py-3 text-right text-sm text-purple-600">{formatCurrency(totalMpCosts)}</td>
-                  <td className="px-4 py-3 text-right text-sm">
-                    <span className={totalProfit >= 0 ? 'text-green-600' : 'text-red-600'}>
-                      {formatCurrency(totalProfit)}
+                  <td className="px-3 py-2.5 text-sm">
+                    ИТОГО
+                    <span className="font-normal text-gray-400 text-xs ml-1">({unitProducts.length})</span>
+                  </td>
+                  <td className="px-3 py-2.5 text-right text-sm tabular-nums">{totals.sales}</td>
+                  <td className="px-3 py-2.5 text-right text-sm tabular-nums">{formatCurrency(totals.revenue)}</td>
+                  <td className="px-3 py-2.5 text-right text-sm tabular-nums text-amber-600">{formatCurrency(totals.purchase)}</td>
+                  <td className="px-3 py-2.5 text-right text-sm tabular-nums text-purple-600">{formatCurrency(totals.mpCosts)}</td>
+                  <td className="px-3 py-2.5 text-right text-sm tabular-nums">
+                    <span className={totals.profit >= 0 ? 'text-green-600' : 'text-red-600'}>{formatCurrency(totals.profit)}</span>
+                  </td>
+                  <td className="px-3 py-2.5 text-right text-sm tabular-nums">
+                    <span className={totals.profit >= 0 ? 'text-green-600' : 'text-red-600'}>
+                      {totals.sales > 0 ? formatCurrency(totals.profit / totals.sales) : '—'}
                     </span>
                   </td>
-                  <td className="px-4 py-3 text-right text-sm">
-                    <span className={totalProfit >= 0 ? 'text-green-600' : 'text-red-600'}>
-                      {totalSales > 0 ? formatCurrency(totalProfit / totalSales) : '—'}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 text-right text-sm">
-                    <span className={totalProfit >= 0 ? 'text-green-600' : 'text-red-600'}>
-                      {totalRevenue > 0 ? formatPercent(totalProfit / totalRevenue * 100) : '—'}
+                  <td className="px-3 py-2.5 text-right text-sm">
+                    <span className={cn('text-xs font-medium px-1.5 py-0.5 rounded', getMarginColor(avgMargin), getMarginBg(avgMargin))}>
+                      {formatPercent(avgMargin)}
                     </span>
                   </td>
                 </tr>
@@ -269,7 +384,225 @@ export const UnitEconomicsPage = () => {
             )}
           </table>
         </div>
+
+        {/* Mobile cards */}
+        <div className="sm:hidden divide-y divide-gray-100">
+          {paginatedProducts.length === 0 ? (
+            <div className="px-3 py-8 text-center text-sm text-gray-400">
+              {search ? 'Ничего не найдено' : 'Нет данных за период'}
+            </div>
+          ) : (
+            paginatedProducts.map((item) => {
+              const margin = getMargin(item);
+              const positive = item.metrics.net_profit >= 0;
+              return (
+                <div key={item.product.id} className="px-3 py-2.5">
+                  <div className="flex items-center justify-between mb-1.5">
+                    <div className="text-sm font-medium text-gray-900 truncate flex-1 min-w-0 mr-2">
+                      {item.product.name}
+                    </div>
+                    <span className={cn('text-xs font-medium px-1.5 py-0.5 rounded flex-shrink-0', getMarginColor(margin), getMarginBg(margin))}>
+                      {formatPercent(margin)}
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-3 gap-x-2 text-[11px]">
+                    <div>
+                      <span className="text-gray-400">Продажи</span>
+                      <div className="font-medium tabular-nums">{formatCurrency(item.metrics.revenue)}</div>
+                    </div>
+                    <div>
+                      <span className="text-gray-400">Прибыль</span>
+                      <div className={cn('font-semibold tabular-nums', positive ? 'text-green-600' : 'text-red-600')}>
+                        {formatCurrency(item.metrics.net_profit)}
+                      </div>
+                    </div>
+                    <div>
+                      <span className="text-gray-400">На ед.</span>
+                      <div className={cn('font-medium tabular-nums', positive ? 'text-green-600' : 'text-red-600')}>
+                        {formatCurrency(item.metrics.unit_profit)}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })
+          )}
+
+          {/* Mobile totals */}
+          {unitProducts.length > 0 && (
+            <div className="px-3 py-2.5 bg-gray-50">
+              <div className="text-xs font-semibold text-gray-700 mb-1">ИТОГО ({unitProducts.length})</div>
+              <div className="grid grid-cols-3 gap-x-2 text-[11px]">
+                <div>
+                  <span className="text-gray-400">Продажи</span>
+                  <div className="font-semibold tabular-nums">{formatCurrency(totals.revenue)}</div>
+                </div>
+                <div>
+                  <span className="text-gray-400">Прибыль</span>
+                  <div className={cn('font-semibold tabular-nums', totals.profit >= 0 ? 'text-green-600' : 'text-red-600')}>
+                    {formatCurrency(totals.profit)}
+                  </div>
+                </div>
+                <div>
+                  <span className="text-gray-400">Маржа</span>
+                  <div className={cn('font-semibold', getMarginColor(avgMargin))}>
+                    {formatPercent(avgMargin)}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Pagination */}
+        {showPagination && (
+          <div className="flex items-center justify-between px-3 sm:px-4 py-2.5 border-t border-gray-100 bg-gray-50/50">
+            <span className="text-xs text-gray-500">
+              {(safePage - 1) * ITEMS_PER_PAGE + 1}–{Math.min(safePage * ITEMS_PER_PAGE, sortedProducts.length)} из {sortedProducts.length}
+            </span>
+            <div className="flex items-center gap-1">
+              <button
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                disabled={safePage <= 1}
+                className="p-1.5 rounded hover:bg-gray-200 disabled:opacity-30 disabled:cursor-not-allowed"
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+              {Array.from({ length: totalPages }, (_, i) => i + 1)
+                .filter((p) => p === 1 || p === totalPages || Math.abs(p - safePage) <= 1)
+                .map((p, idx, arr) => (
+                  <span key={p}>
+                    {idx > 0 && arr[idx - 1] !== p - 1 && (
+                      <span className="text-xs text-gray-300 px-0.5">…</span>
+                    )}
+                    <button
+                      onClick={() => setPage(p)}
+                      className={cn(
+                        'w-7 h-7 text-xs rounded',
+                        p === safePage
+                          ? 'bg-indigo-600 text-white font-medium'
+                          : 'hover:bg-gray-200 text-gray-600'
+                      )}
+                    >
+                      {p}
+                    </button>
+                  </span>
+                ))}
+              <button
+                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                disabled={safePage >= totalPages}
+                className="p-1.5 rounded hover:bg-gray-200 disabled:opacity-30 disabled:cursor-not-allowed"
+              >
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
 };
+
+// ==================== SUB-COMPONENTS ====================
+
+/** KPI Card */
+function KpiCard({
+  label,
+  value,
+  sub,
+  icon,
+  color,
+}: {
+  label: string;
+  value: string;
+  sub: string;
+  icon: React.ReactNode;
+  color: 'blue' | 'green' | 'red' | 'yellow';
+}) {
+  const colors = {
+    blue: 'bg-blue-50 border-blue-100 text-blue-700',
+    green: 'bg-green-50 border-green-100 text-green-700',
+    red: 'bg-red-50 border-red-100 text-red-700',
+    yellow: 'bg-yellow-50 border-yellow-100 text-yellow-700',
+  };
+
+  return (
+    <div className={cn('rounded-lg border p-2.5 sm:p-4', colors[color])}>
+      <div className="flex items-center gap-1.5 mb-1">
+        {icon}
+        <span className="text-[10px] sm:text-xs opacity-80">{label}</span>
+      </div>
+      <div className="text-base sm:text-xl font-bold truncate">{value}</div>
+      <div className="text-[10px] sm:text-xs opacity-60 mt-0.5">{sub}</div>
+    </div>
+  );
+}
+
+/** Horizontal profit bar */
+function ProfitBar({ item, maxValue }: { item: UnitEconomicsItem; maxValue: number }) {
+  const profit = item.metrics.net_profit;
+  const positive = profit >= 0;
+  const width = Math.max(2, (Math.abs(profit) / maxValue) * 100);
+  const margin = getMargin(item);
+
+  return (
+    <div className="flex items-center gap-2 sm:gap-3">
+      <div className="w-24 sm:w-40 text-xs sm:text-sm text-gray-700 truncate flex-shrink-0" title={item.product.name}>
+        {item.product.name}
+      </div>
+      <div className="flex-1 flex items-center gap-1.5">
+        <div className="flex-1 h-4 sm:h-5 bg-gray-50 rounded overflow-hidden">
+          <div
+            className={cn('h-full rounded transition-all', positive ? 'bg-green-400' : 'bg-red-400')}
+            style={{ width: `${width}%` }}
+          />
+        </div>
+        <span className={cn('text-xs sm:text-sm font-medium tabular-nums w-16 sm:w-20 text-right flex-shrink-0', positive ? 'text-green-600' : 'text-red-600')}>
+          {formatCurrency(profit)}
+        </span>
+        <span className={cn('text-[10px] px-1 py-0.5 rounded flex-shrink-0 hidden sm:inline', getMarginColor(margin), getMarginBg(margin))}>
+          {formatPercent(margin)}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+/** Sortable table header */
+function SortableHeader({
+  field,
+  label,
+  current,
+  dir,
+  onSort,
+  align = 'right',
+}: {
+  field: SortField;
+  label: string;
+  current: SortField;
+  dir: SortDirection;
+  onSort: (f: SortField) => void;
+  align?: 'left' | 'right';
+}) {
+  const active = current === field;
+  return (
+    <th
+      className={cn(
+        'px-3 py-2.5 text-xs font-medium text-gray-500 uppercase cursor-pointer select-none hover:text-gray-700 transition-colors',
+        align === 'left' ? 'text-left' : 'text-right'
+      )}
+      onClick={() => onSort(field)}
+    >
+      <span className="inline-flex items-center gap-0.5">
+        {align === 'right' && active && (
+          dir === 'asc' ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />
+        )}
+        {label}
+        {align === 'left' && active && (
+          dir === 'asc' ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />
+        )}
+        {!active && <ArrowUpDown className="w-3 h-3 opacity-30" />}
+      </span>
+    </th>
+  );
+}
