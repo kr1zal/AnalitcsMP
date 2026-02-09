@@ -4,14 +4,17 @@ Subscription endpoints:
 - GET /subscription/plans  - all available plans (public comparison)
 - PUT /subscription        - admin-only: change a user's plan
 """
+import logging
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
-from datetime import datetime
+from datetime import datetime, timezone
 
 from ...auth import CurrentUser, get_current_user
 from ...db.supabase import get_supabase_client
 from ...subscription import get_user_subscription, UserSubscription
-from ...plans import PLANS
+from ...plans import PLANS, get_plan, get_next_sync_utc
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -63,6 +66,7 @@ async def list_plans():
             "marketplaces": plan["marketplaces"],
             "auto_sync": plan["auto_sync"],
             "sync_interval_hours": plan["sync_interval_hours"],
+            "manual_sync_limit": plan.get("manual_sync_limit", 0),
             "features": plan["features"],
         })
     return {"plans": result}
@@ -86,6 +90,18 @@ async def change_user_plan(
         raise HTTPException(status_code=400, detail=f"Invalid plan: {body.plan}")
 
     supabase = get_supabase_client()
+
+    # Load old plan to detect marketplace changes
+    old_row = (
+        supabase.table("mp_user_subscriptions")
+        .select("plan")
+        .eq("user_id", body.user_id)
+        .limit(1)
+        .execute()
+    )
+    old_plan_name = old_row.data[0]["plan"] if old_row.data else "free"
+
+    # Update subscription
     supabase.table("mp_user_subscriptions").upsert({
         "user_id": body.user_id,
         "plan": body.plan,
@@ -94,4 +110,34 @@ async def change_user_plan(
         "updated_at": datetime.now().isoformat(),
     }, on_conflict="user_id").execute()
 
-    return {"status": "updated", "user_id": body.user_id, "plan": body.plan}
+    # Update sync queue (priority + schedule)
+    new_plan = get_plan(body.plan)
+    next_sync = get_next_sync_utc(body.plan)
+    supabase.table("mp_sync_queue").upsert({
+        "user_id": body.user_id,
+        "next_sync_at": next_sync.isoformat(),
+        "priority": new_plan.get("sync_priority", 2),
+        "status": "pending",
+        "updated_at": datetime.now(tz=timezone.utc).isoformat(),
+    }, on_conflict="user_id").execute()
+
+    # Detect upgrade: new marketplaces unlocked → trigger system sync
+    old_mps = set(get_plan(old_plan_name).get("marketplaces", []))
+    new_mps = set(new_plan.get("marketplaces", []))
+    sync_triggered = False
+
+    if new_mps - old_mps:
+        try:
+            from .sync_queue import _run_full_sync
+            logger.info(f"Plan upgrade {old_plan_name}→{body.plan} for {body.user_id}: triggering sync for new marketplaces")
+            await _run_full_sync(body.user_id, trigger="system")
+            sync_triggered = True
+        except Exception as e:
+            logger.warning(f"Post-upgrade sync failed for {body.user_id}: {e}")
+
+    return {
+        "status": "updated",
+        "user_id": body.user_id,
+        "plan": body.plan,
+        "sync_triggered": sync_triggered,
+    }

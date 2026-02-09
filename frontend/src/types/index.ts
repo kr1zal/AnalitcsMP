@@ -313,6 +313,27 @@ export interface SyncAllResponse {
   };
 }
 
+// ==================== СТАТУС СИНХРОНИЗАЦИИ (Phase 4) ====================
+
+export interface SyncStatusResponse {
+  plan: SubscriptionPlan;
+  plan_name: string;
+  last_sync_at: string | null;
+  last_sync_ago_minutes: number | null;
+  next_sync_at: string | null;
+  sync_interval_hours: number | null;
+  manual_syncs_today: number;
+  manual_sync_limit: number;
+  manual_syncs_remaining: number;
+  is_syncing: boolean;
+}
+
+export interface ManualSyncResponse {
+  status: 'completed';
+  syncs_remaining: number;
+  next_auto_sync: string;
+}
+
 // ==================== ТОКЕНЫ ====================
 
 export interface TokensStatus {
@@ -383,6 +404,7 @@ export interface PlanDefinition {
   marketplaces: string[];
   auto_sync: boolean;
   sync_interval_hours: number | null;
+  manual_sync_limit: number;
   features: SubscriptionFeatures;
 }
 

@@ -129,7 +129,19 @@ export function SubscriptionCard() {
                   {plan.auto_sync ? (
                     <span className="text-xs">каждые {plan.sync_interval_hours}ч</span>
                   ) : (
-                    <span className="text-xs text-gray-400">ручная</span>
+                    <span className="text-xs">2 раза/день</span>
+                  )}
+                </td>
+              ))}
+            </tr>
+            <tr>
+              <td className="py-1.5 px-2 text-gray-500">Ручные обновления</td>
+              {plans.map((plan: PlanDefinition) => (
+                <td key={plan.id} className="py-1.5 px-2 text-center text-xs">
+                  {plan.manual_sync_limit === 0 ? (
+                    <span className="text-gray-400">—</span>
+                  ) : (
+                    <span>{plan.manual_sync_limit}/день</span>
                   )}
                 </td>
               ))}

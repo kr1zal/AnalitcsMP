@@ -12,6 +12,8 @@ import type {
   StocksResponse,
   SyncLogsResponse,
   SyncAllResponse,
+  SyncStatusResponse,
+  ManualSyncResponse,
   DashboardFilters,
   AdCostsResponse,
   CostsTreeResponse,
@@ -356,6 +358,24 @@ export const syncApi = {
   getLogs: async (limit: number = 50) => {
     const { data } = await api.get<SyncLogsResponse>('/sync/logs', {
       params: { limit },
+    });
+    return data;
+  },
+
+  /**
+   * Получить статус синхронизации (Phase 4)
+   */
+  getStatus: async (): Promise<SyncStatusResponse> => {
+    const { data } = await api.get<SyncStatusResponse>('/sync/status');
+    return data;
+  },
+
+  /**
+   * Ручная синхронизация с дневным лимитом (Phase 4)
+   */
+  manualSync: async (): Promise<ManualSyncResponse> => {
+    const { data } = await api.post<ManualSyncResponse>('/sync/manual', null, {
+      timeout: 300000, // 5 мин — полная синхронизация
     });
     return data;
   },

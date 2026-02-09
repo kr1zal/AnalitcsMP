@@ -94,7 +94,7 @@ def _check_sync_guard(
     return None
 
 
-def _create_sync_lock(user_id: str, sync_type: str) -> str | None:
+def _create_sync_lock(user_id: str, sync_type: str, trigger: str = "manual") -> str | None:
     """Create a running lock row in mp_sync_log, return its id."""
     supabase = get_supabase_client()
     result = supabase.table("mp_sync_log").insert({
@@ -106,6 +106,7 @@ def _create_sync_lock(user_id: str, sync_type: str) -> str | None:
         "started_at": _now_utc_iso(),
         "finished_at": None,
         "user_id": user_id,
+        "trigger": trigger,
     }).execute()
     return result.data[0]["id"] if result.data else None
 

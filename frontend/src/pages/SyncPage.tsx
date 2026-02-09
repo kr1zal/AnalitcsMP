@@ -1,65 +1,61 @@
 /**
- * Страница синхронизации данных
+ * Страница синхронизации данных (Phase 4)
+ * - Статус-панель с информацией о последнем и следующем sync
+ * - Кнопка "Обновить сейчас" с дневным лимитом по тарифу
+ * - История синхронизации (таблица логов)
  */
-import { useState } from 'react';
 import { syncApi } from '../services/api';
 import { useQuery } from '@tanstack/react-query';
+import { useSyncStatus, useManualSync } from '../hooks/useSync';
 import { LoadingSpinner } from '../components/Shared/LoadingSpinner';
-import { RefreshCw, CheckCircle, XCircle, Clock } from 'lucide-react';
-import { toast } from 'sonner';
+import { RefreshCw, CheckCircle, XCircle, Clock, Calendar, Zap, Lock } from 'lucide-react';
 import { formatDate } from '../lib/utils';
 
-export const SyncPage = () => {
-  const [syncing, setSyncing] = useState<string | null>(null);
+/**
+ * Форматирует "N минут назад" в человекочитаемый вид
+ */
+function formatTimeAgo(minutes: number | null): string {
+  if (minutes === null || minutes === undefined) return 'нет данных';
+  if (minutes < 1) return 'только что';
+  if (minutes < 60) return `${minutes} мин назад`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}ч назад`;
+  const days = Math.floor(hours / 24);
+  return `${days}д назад`;
+}
 
-  const { data: logsData, isLoading, refetch } = useQuery({
+/**
+ * Форматирует ISO дату в МСК время (HH:mm)
+ */
+function formatMskTime(isoStr: string | null | undefined): string {
+  if (!isoStr) return '—';
+  try {
+    const date = new Date(isoStr);
+    // Добавляем 3 часа для МСК
+    const msk = new Date(date.getTime() + 3 * 60 * 60 * 1000);
+    return msk.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+  } catch {
+    return '—';
+  }
+}
+
+export const SyncPage = () => {
+  const { data: syncStatus, isLoading: statusLoading } = useSyncStatus();
+  const manualSync = useManualSync();
+
+  const { data: logsData, isLoading: logsLoading } = useQuery({
     queryKey: ['sync-logs'],
     queryFn: () => syncApi.getLogs(20),
-    refetchInterval: 5000, // Обновляем каждые 5 секунд
+    refetchInterval: 5000,
   });
 
-  const handleSync = async (type: string, label: string) => {
-    setSyncing(type);
-    try {
-      switch (type) {
-        case 'all':
-          await syncApi.syncAll(30, false);
-          break;
-        case 'products':
-          await syncApi.syncProducts();
-          break;
-        case 'sales':
-          await syncApi.syncSales(30);
-          break;
-        case 'stocks':
-          await syncApi.syncStocks();
-          break;
-        case 'costs':
-          await syncApi.syncCosts(30);
-          break;
-        case 'ads':
-          await syncApi.syncAds(30);
-          break;
-      }
-      toast.success(`${label} завершена успешно!`);
-      refetch();
-    } catch (error) {
-      toast.error(`Ошибка синхронизации: ${(error as Error).message}`);
-    } finally {
-      setSyncing(null);
-    }
-  };
-
-  const syncButtons = [
-    { type: 'all', label: 'Полная синхронизация', description: 'Обновить все данные (WB + Ozon)', color: 'indigo' },
-    { type: 'products', label: 'Товары', description: 'Обновить список товаров', color: 'blue' },
-    { type: 'sales', label: 'Продажи', description: 'Обновить данные продаж за 30 дней', color: 'green' },
-    { type: 'stocks', label: 'Остатки', description: 'Обновить остатки на складах', color: 'purple' },
-    { type: 'costs', label: 'Удержания', description: 'Обновить удержания МП за 30 дней', color: 'orange' },
-    { type: 'ads', label: 'Реклама', description: 'Обновить рекламные расходы (WB Ads + Ozon Performance)', color: 'red' },
-  ];
-
   const logs = logsData?.logs || [];
+
+  const canManualSync = syncStatus
+    ? syncStatus.manual_sync_limit > 0 && syncStatus.manual_syncs_remaining > 0 && !syncStatus.is_syncing
+    : false;
+
+  const isFreePlan = syncStatus?.plan === 'free';
 
   return (
     <div className="max-w-7xl mx-auto px-6 py-8">
@@ -67,40 +63,132 @@ export const SyncPage = () => {
       <div className="mb-8">
         <h2 className="text-2xl font-bold text-gray-900">Синхронизация данных</h2>
         <p className="text-sm text-gray-600 mt-1">
-          Обновление данных с Wildberries и Ozon
+          Автоматическое обновление данных с маркетплейсов
         </p>
       </div>
 
-      {/* Кнопки синхронизации */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
-        {syncButtons.map((btn) => (
-          <button
-            key={btn.type}
-            onClick={() => handleSync(btn.type, btn.label)}
-            disabled={syncing !== null}
-            className={`
-              relative p-6 rounded-lg border-2 transition-all text-left
-              ${syncing === btn.type ? 'border-' + btn.color + '-500 bg-' + btn.color + '-50' : 'border-gray-200 hover:border-' + btn.color + '-300 bg-white'}
-              ${syncing !== null && syncing !== btn.type ? 'opacity-50 cursor-not-allowed' : 'hover:shadow-md'}
-            `}
-          >
-            <div className="flex items-start justify-between">
-              <div className="flex-1">
-                <h3 className="text-lg font-semibold text-gray-900 mb-1">
-                  {btn.label}
-                </h3>
-                <p className="text-sm text-gray-600">
-                  {btn.description}
-                </p>
-              </div>
-              <RefreshCw
-                className={`w-6 h-6 text-${btn.color}-600 ${
-                  syncing === btn.type ? 'animate-spin' : ''
-                }`}
-              />
+      {/* Статус-панель */}
+      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 mb-6">
+        {statusLoading ? (
+          <LoadingSpinner text="Загрузка статуса..." />
+        ) : syncStatus ? (
+          <div className="space-y-4">
+            {/* Тариф и интервал */}
+            <div className="flex items-center gap-2 text-sm">
+              <Zap className="w-4 h-4 text-indigo-500" />
+              <span className="text-gray-600">Тариф:</span>
+              <span className="font-semibold text-gray-900">{syncStatus.plan_name}</span>
+              {syncStatus.sync_interval_hours ? (
+                <span className="text-gray-500">
+                  — обновление каждые {syncStatus.sync_interval_hours}ч
+                </span>
+              ) : (
+                <span className="text-gray-500">— 2 раза в день</span>
+              )}
             </div>
-          </button>
-        ))}
+
+            {/* Последнее и следующее обновление */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg">
+                <Clock className="w-5 h-5 text-gray-400 mt-0.5" />
+                <div>
+                  <div className="text-xs text-gray-500 uppercase font-medium">Последнее обновление</div>
+                  <div className="text-sm font-semibold text-gray-900 mt-0.5">
+                    {syncStatus.last_sync_at
+                      ? `${formatMskTime(syncStatus.last_sync_at)} (${formatTimeAgo(syncStatus.last_sync_ago_minutes)})`
+                      : 'Ещё не было'
+                    }
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg">
+                <Calendar className="w-5 h-5 text-gray-400 mt-0.5" />
+                <div>
+                  <div className="text-xs text-gray-500 uppercase font-medium">Следующее обновление</div>
+                  <div className="text-sm font-semibold text-gray-900 mt-0.5">
+                    {syncStatus.next_sync_at
+                      ? formatMskTime(syncStatus.next_sync_at)
+                      : '—'
+                    }
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Индикатор текущей синхронизации */}
+            {syncStatus.is_syncing && (
+              <div className="flex items-center gap-2 p-3 bg-indigo-50 rounded-lg border border-indigo-200">
+                <RefreshCw className="w-4 h-4 text-indigo-600 animate-spin" />
+                <span className="text-sm font-medium text-indigo-700">
+                  Синхронизация выполняется...
+                </span>
+              </div>
+            )}
+          </div>
+        ) : (
+          <p className="text-gray-500 text-sm">Не удалось загрузить статус</p>
+        )}
+      </div>
+
+      {/* Ручное обновление */}
+      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 mb-8">
+        <h3 className="text-lg font-semibold text-gray-900 mb-4">Ручное обновление</h3>
+
+        {isFreePlan && syncStatus?.manual_sync_limit === 0 ? (
+          /* Free-план: кнопка заблокирована */
+          <div className="flex items-center gap-3 p-4 bg-gray-50 rounded-lg border border-gray-200">
+            <Lock className="w-5 h-5 text-gray-400" />
+            <div>
+              <p className="text-sm font-medium text-gray-700">
+                Ручное обновление доступно на тарифе Pro
+              </p>
+              <p className="text-xs text-gray-500 mt-0.5">
+                На бесплатном тарифе данные обновляются автоматически 2 раза в день
+              </p>
+            </div>
+          </div>
+        ) : (
+          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
+            <button
+              onClick={() => manualSync.mutate()}
+              disabled={!canManualSync || manualSync.isPending}
+              className={`
+                flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-medium transition-all
+                ${canManualSync && !manualSync.isPending
+                  ? 'bg-indigo-600 text-white hover:bg-indigo-700 shadow-sm'
+                  : 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                }
+              `}
+            >
+              <RefreshCw className={`w-4 h-4 ${manualSync.isPending ? 'animate-spin' : ''}`} />
+              {manualSync.isPending ? 'Обновление...' : 'Обновить сейчас'}
+            </button>
+
+            <div className="text-sm text-gray-600">
+              {syncStatus && syncStatus.manual_syncs_remaining > 0 ? (
+                <span>
+                  Осталось обновлений:{' '}
+                  <span className="font-semibold text-gray-900">
+                    {syncStatus.manual_syncs_remaining}
+                  </span>
+                  {' из '}
+                  <span className="font-semibold text-gray-900">
+                    {syncStatus.manual_sync_limit}
+                  </span>
+                  {' сегодня'}
+                </span>
+              ) : syncStatus && syncStatus.manual_sync_limit > 0 ? (
+                <span className="text-amber-600">
+                  Лимит исчерпан. Следующее обновление:{' '}
+                  <span className="font-semibold">
+                    {formatMskTime(syncStatus.next_sync_at)}
+                  </span>
+                </span>
+              ) : null}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* История синхронизации */}
@@ -109,7 +197,7 @@ export const SyncPage = () => {
           <h3 className="text-lg font-semibold text-gray-900">История синхронизации</h3>
         </div>
 
-        {isLoading ? (
+        {logsLoading ? (
           <LoadingSpinner text="Загрузка логов..." />
         ) : logs.length === 0 ? (
           <div className="p-12 text-center text-gray-500">
