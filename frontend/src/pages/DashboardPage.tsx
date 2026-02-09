@@ -371,22 +371,30 @@ export const DashboardPage = () => {
     return undefined;
   })();
 
+  // Коэффициент коррекции: costs-tree (фин. отчёт) / mp_sales (аналитика).
+  // Ozon analytics API возвращает ВСЕ заказы, а финансовый отчёт — только проведённые.
+  // Применяем к закупке и к счётчику выкупов, чтобы всё было консистентно.
+  const summaryRevenue = summary?.revenue ?? 0;
+  const costsTreeRatio =
+    summaryRevenue > 0 && revenueForTile < summaryRevenue
+      ? revenueForTile / summaryRevenue
+      : 1;
+
   const netProfitForTile = (() => {
     if (!summary) return 0;
 
-    // Истина по начислениям:
-    // - Ozon: total_accrued = "Начислено за период" (Продажи + расходы)
-    // - WB: total_accrued = "К перечислению за период"
-    // Прибыль в нашей модели: payout - закупка - реклама.
     const ad = summary.ad_cost ?? 0;
 
-    // Fallback: если по какой-то причине нет дерева — используем backend summary (лучше чем 0).
+    // Fallback: если по какой-то причине нет дерева — используем backend summary.
     if (payoutForTile === null) {
       return summary.net_profit;
     }
 
-    return payoutForTile - purchaseCostsForTile - ad;
+    const adjustedPurchase = purchaseCostsForTile * costsTreeRatio;
+    return payoutForTile - adjustedPurchase - ad;
   })();
+
+  const salesCountForTile = Math.round((summary?.sales ?? 0) * costsTreeRatio);
 
   // Количество колонок зависит от наличия карточек сравнения
   const gridCols = showPeriodComparison ? 'lg:grid-cols-8' : 'lg:grid-cols-6';
@@ -431,7 +439,7 @@ export const DashboardPage = () => {
           title="Продажи"
           value={revenueForTile}
           format="currency"
-          subtitle={`${summary?.sales || 0} выкупов`}
+          subtitle={`${salesCountForTile} выкупов`}
           tooltip={[
             'Сумма продаж как в личном кабинете МП.',
             marketplace === 'all'

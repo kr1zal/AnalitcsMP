@@ -44,14 +44,23 @@ sshpass -p '@vnDBp5VCt2+' rsync -avz --delete -e "ssh -o StrictHostKeyChecking=n
 - Frontend: FeatureGate (blur+lock), SubscriptionCard, plan badge в header
 - Подробности: [memory/saas-phase3.md](memory/saas-phase3.md)
 
+### SaaS Phase 4: Sync Queue — DEPLOYED (09.02.2026)
+- DB-based queue (mp_sync_queue) + cron `/sync/process-queue` каждые 30 мин
+- Расписание: Business 06/12/18/00 MSK, Pro +1ч, Free 08:00/20:00
+- Ручной sync: Free:0, Pro:1/день, Business:2/день
+- Endpoint: POST /sync/manual, GET /sync/status, POST /admin/sync/{user_id}
+- SyncPage: статус-панель + кнопка "Обновить сейчас" + история
+- Подробности: [memory/saas-phase4.md](memory/saas-phase4.md)
+
 ### Активные задачи
-- [ ] Phase 4: Sync queue
+- Нет активных задач
 
 ### Известные баги
 - ~~Плашки "Пред.пер." не показывают данные~~ FIXED (commit 1aa095f)
 - ~~`secret_key = "change-me-in-production"` в config.py~~ FIXED (удалён, `extra="ignore"`)
 - ~~Нет concurrent sync protection на costs/stocks/ads endpoints~~ FIXED (sync guard + lock)
 - ~~Ozon SKU mapping частично hardcoded в sync_service.py~~ FIXED (dynamic from DB + migration 009)
+- ~~Прибыль показывает -10К из-за смешивания costs-tree и mp_sales~~ FIXED (пропорциональная коррекция закупки)
 
 ## Технический стек
 
@@ -84,14 +93,14 @@ cd backend && pip install playwright && playwright install chromium
 Analitics/
 ├── backend/                  # FastAPI + Supabase
 │   ├── app/
-│   │   ├── api/v1/           # Роуты: dashboard, products, sync, export, tokens, subscription
+│   │   ├── api/v1/           # Роуты: dashboard, products, sync, export, tokens, subscription, sync_queue, admin
 │   │   ├── services/         # WB/Ozon клиенты, sync_service
 │   │   ├── auth.py           # JWT middleware (JWKS)
 │   │   ├── crypto.py         # Fernet encrypt/decrypt (Phase 2)
 │   │   ├── plans.py          # Определения тарифов Free/Pro/Business (Phase 3)
 │   │   ├── subscription.py   # FastAPI Depends для подписок (Phase 3)
 │   │   └── config.py         # Settings
-│   └── migrations/           # SQL: 004-008 (user_id, RLS, RPC, user_tokens, subscriptions)
+│   └── migrations/           # SQL: 004-010 (user_id, RLS, RPC, user_tokens, subscriptions, sync_queue)
 ├── frontend/                 # React 19 + TS 5.9 + Vite 7 + Tailwind 3
 │   └── src/
 │       ├── components/       # Dashboard/, Shared/, Settings/
@@ -121,6 +130,7 @@ Analitics/
 | mp_sync_log | Логи синхронизации |
 | mp_user_tokens | Зашифрованные API-токены пользователей (Phase 2) |
 | mp_user_subscriptions | Подписки пользователей: plan, status, expires_at (Phase 3) |
+| mp_sync_queue | Очередь автосинхронизации: next_sync_at, priority, manual_syncs (Phase 4) |
 
 - **RLS:** Все таблицы, политики `auth.uid() = user_id`
 - **RPC:** 4 функции с `p_user_id` (get_dashboard_summary, get_costs_tree, get_costs_tree_combined, get_dashboard_summary_with_prev)
@@ -162,6 +172,8 @@ FRONTEND_URL                          # Для Playwright PDF (http://localhost:
 6. **Auth:** Hybrid — service_role_key на backend, RLS как safety net, JWT через JWKS.
 7. **Шифрование токенов:** Fernet на backend (НЕ pgcrypto/Vault).
 8. **Подписки:** планы в коде (plans.py), НЕ в БД. Lazy creation free плана.
+9. **Sync Queue:** DB-based queue + cron (НЕ APScheduler/Celery — 1 ядро VPS).
+10. **Прибыль:** пропорциональная коррекция закупки при использовании costs-tree (Ozon analytics ≠ finance API).
 
 ## Важные нюансы
 
@@ -175,9 +187,10 @@ FRONTEND_URL                          # Для Playwright PDF (http://localhost:
 - Маппинг: сначала по `barcode`, fallback по `nmId`
 - Подробности в [backend/README.md](backend/README.md)
 
-### Cron автосинхронизация
-- 07:00, 13:00 — sales+costs; каждые 6ч — stocks
-- Headers: X-Cron-Secret + X-Cron-User-Id
+### Cron автосинхронизация (Phase 4)
+- `*/30 * * * *` → POST /sync/process-queue (обрабатывает всех пользователей по очереди)
+- Headers: X-Cron-Secret (без X-Cron-User-Id — обрабатывает всех)
+- Приоритет: Business(0) → Pro(1) → Free(2)
 
 ### Формулы
 - **Процент возвратов:** `returns / (sales + returns) * 100%`
@@ -189,7 +202,7 @@ FRONTEND_URL                          # Для Playwright PDF (http://localhost:
 1. ~~Phase 1: Auth+RLS~~ — DEPLOYED (08.02.2026)
 2. ~~Phase 2: Onboarding~~ — DEPLOYED (09.02.2026)
 3. ~~Phase 3: Subscription tiers~~ — DEPLOYED (09.02.2026)
-4. Phase 4: Sync queue
+4. ~~Phase 4: Sync queue~~ — DEPLOYED (09.02.2026)
 
 ## Документация
 
@@ -200,4 +213,4 @@ FRONTEND_URL                          # Для Playwright PDF (http://localhost:
 | [CHANGELOG.md](CHANGELOG.md) | Полная история всех изменений |
 | [promt.md](promt.md) | Промпт для нового чата + чеклист деплоя |
 | [frontend/DESIGN_REFERENCE.md](frontend/DESIGN_REFERENCE.md) | Гайд по дизайну (цвета, шрифты, spacing) |
-| [memory/](memory/) | Session memory (saas-phase1.md, saas-phase2.md, saas-phase3.md) |
+| [memory/](memory/) | Session memory (saas-phase1.md, saas-phase2.md, saas-phase3.md, saas-phase4.md) |

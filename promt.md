@@ -19,7 +19,7 @@
 - Деплой завершён, сайт работает на https://analitics.bixirun.ru
 - SSL настроен (Let's Encrypt, автопродление)
 - DashboardPage работает, RPC оптимизация активна, mobile-first дизайн готов
-- ✅ Cron настроен с auth headers (07:00, 13:00 — sales+costs; каждые 6ч — stocks)
+- ✅ Cron: process-queue каждые 30 мин (заменил 5 отдельных cron jobs)
 - ✅ UnitEconomicsPage, Excel/PDF экспорт, мобильное меню — всё готово
 - ✅ **SaaS Фаза 1: Auth + RLS — DEPLOYED (08.02.2026)**
   - Supabase Auth, JWT middleware (JWKS), RLS, user_id во всех таблицах
@@ -39,6 +39,13 @@
   - Удалён secret_key, добавлен extra="ignore" в Settings
   - Dynamic barcodes/ozon_sku_map из БД (миграция 009: ozon_sku column)
   - Concurrent sync protection (running-lock + cooldown) на sales/stocks/costs/ads
+- ✅ **SaaS Фаза 4: Sync Queue — DEPLOYED (09.02.2026)**
+  - DB-based queue (mp_sync_queue) + cron process-queue каждые 30 мин
+  - Расписание по тарифам: Business каждые 6ч с 06:00, Pro +1ч, Free 2x/день
+  - Ручной sync: Free:0, Pro:1/день, Business:2/день
+  - POST /admin/sync/{user_id} для техподдержки
+  - SyncPage: статус-панель + "Обновить сейчас" + история
+- ✅ **Bugfix:** Прибыль -10К (пропорц. коррекция закупки costs-tree vs mp_sales)
 
 **ГЛАВНАЯ ЗАДАЧА — SaaS-трансформация:**
 
@@ -50,10 +57,12 @@
   ├── ✅ Backend: plans.py, subscription.py, feature gates
   └── ✅ Frontend: FeatureGate, SubscriptionCard, plan badge
 
-Фаза 4: Масштабирование
-  ├── Очередь sync (Pro → Basic → Free)
-  ├── Категории из WB/Ozon API
-  └── Rate limiting
+Фаза 4: Sync Queue ✅ DEPLOYED (09.02.2026)
+  ├── ✅ DB-based queue (mp_sync_queue) + cron каждые 30 мин
+  ├── ✅ Расписание: Business 06/12/18/00, Pro +1ч, Free 08:00/20:00
+  ├── ✅ Ручной sync с лимитом: Free:0, Pro:1/день, Business:2/день
+  ├── ✅ Admin force sync: POST /admin/sync/{user_id}
+  └── ✅ SyncPage: статус-панель + кнопка "Обновить"
 ```
 
 **Фичи ПОСЛЕ SaaS (не раньше):**
@@ -153,7 +162,7 @@ systemctl restart analytics-api
 ---
 
 ## Текущие задачи:
-- 🔄 **SaaS Фаза 4: Sync queue** — приоритетная очередь по тарифам
+- ✅ **SaaS Фаза 4: Sync queue** — DEPLOYED (09.02.2026)
 - 🔄 Улучшить PDF экспорт (PrintPage.tsx) — см. раздел "Предложения по PDF"
 
 ---
@@ -235,12 +244,15 @@ Backend (основные):
 - `backend/app/api/v1/dashboard.py` — API endpoints (auth + user_id + RPC + feature gates)
 - `backend/app/api/v1/products.py` — продукты (auth + user_id)
 - `backend/app/api/v1/sync.py` — синхронизация (cron/jwt auth + user_id + marketplace restriction)
+- `backend/app/api/v1/sync_queue.py` — очередь sync: process-queue, manual, status (Phase 4)
+- `backend/app/api/v1/admin.py` — admin force sync (Phase 4)
 - `backend/app/api/v1/export.py` — PDF экспорт (auth + JWT pass-through + require_feature)
 - `backend/app/services/sync_service.py` — sync с user_id (~30 мест)
 - `backend/migrations/004_add_user_id.sql` — user_id + constraints
 - `backend/migrations/005_rls_policies.sql` — RLS на все mp_*
 - `backend/migrations/006_rpc_with_user_id.sql` — RPC с p_user_id
 - `backend/migrations/008_subscriptions.sql` — mp_user_subscriptions + RLS
+- `backend/migrations/010_sync_queue.sql` — mp_sync_queue + trigger column в mp_sync_log (Phase 4)
 
 ---
 
