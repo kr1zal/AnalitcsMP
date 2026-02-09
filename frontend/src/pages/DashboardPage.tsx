@@ -380,6 +380,8 @@ export const DashboardPage = () => {
       ? revenueForTile / summaryRevenue
       : 1;
 
+  const adjustedPurchase = purchaseCostsForTile * costsTreeRatio;
+
   const netProfitForTile = (() => {
     if (!summary) return 0;
 
@@ -390,7 +392,6 @@ export const DashboardPage = () => {
       return summary.net_profit;
     }
 
-    const adjustedPurchase = purchaseCostsForTile * costsTreeRatio;
     return payoutForTile - adjustedPurchase - ad;
   })();
 
@@ -441,9 +442,14 @@ export const DashboardPage = () => {
           format="currency"
           subtitle={`${salesCountForTile} выкупов`}
           tooltip={[
-            'Сумма продаж как в личном кабинете МП.',
+            'Данные из финансового отчёта МП (проведённые заказы).',
+            'Может отличаться от раздела «Аналитика» в ЛК —',
+            'там учтены все заказы, вкл. непроведённые.',
             marketplace === 'all'
               ? `OZON + WB = ${formatCurrency(getSalesTotalFromCostsTree(ozonCostsTreeData) ?? 0)} + ${formatCurrency(getSalesTotalFromCostsTree(wbCostsTreeData) ?? 0)}`
+              : undefined,
+            costsTreeRatio < 1
+              ? `Проведено ${(costsTreeRatio * 100).toFixed(0)}% от всех заказов`
               : undefined,
             ozonCostsTreeData?.warnings?.length ? `⚠ ${ozonCostsTreeData.warnings[0]}` : '',
           ]
@@ -460,11 +466,18 @@ export const DashboardPage = () => {
           tooltip={
             summary
               ? [
-                  `Прибыль (оценка)`,
-                  `= К перечислению − Закупка − Реклама`,
-                  `= ${payoutForTile === null ? '—' : formatCurrency(payoutForTile)} − ${formatCurrency(purchaseCostsForTile)} − ${formatCurrency(summary.ad_cost ?? 0)}`,
+                  `Прибыль = Выплата − Закупка − Реклама`,
+                  `= ${payoutForTile === null ? '—' : formatCurrency(payoutForTile)} − ${formatCurrency(adjustedPurchase)} − ${formatCurrency(summary.ad_cost ?? 0)}`,
                   `= ${formatCurrency(netProfitForTile)}`,
-                ].join('\n')
+                  ``,
+                  `По финансовому отчёту МП (проведённые).`,
+                  costsTreeRatio < 1
+                    ? `Закупка пропорциональна проведённым (${(costsTreeRatio * 100).toFixed(0)}% заказов).`
+                    : undefined,
+                  costsTreeRatio < 1
+                    ? `Непроведённые заказы появятся после обработки МП (7-14 дн).`
+                    : undefined,
+                ].filter(Boolean).join('\n')
               : undefined
           }
           tooltipAlign="right"
