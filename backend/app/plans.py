@@ -23,6 +23,7 @@ PLANS = {
             "ads_page": False,
             "pdf_export": False,
             "period_comparison": False,
+            "order_monitor": False,
             "api_access": False,
         },
     },
@@ -44,12 +45,14 @@ PLANS = {
             "ads_page": True,
             "pdf_export": True,
             "period_comparison": True,
+            "order_monitor": False,  # deferred until Order Monitor is polished
             "api_access": False,
         },
     },
     "business": {
         "name": "Business",
         "price_rub": 2990,
+        "visible": False,  # hidden until Order Monitor is polished
         "max_sku": None,  # unlimited
         "marketplaces": ["wb", "ozon"],
         "auto_sync": True,
@@ -65,6 +68,7 @@ PLANS = {
             "ads_page": True,
             "pdf_export": True,
             "period_comparison": True,
+            "order_monitor": True,
             "api_access": True,
         },
     },

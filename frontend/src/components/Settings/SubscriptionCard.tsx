@@ -10,6 +10,7 @@ const FEATURE_LABELS: Record<keyof SubscriptionFeatures, string> = {
   ads_page: 'Реклама и ДРР',
   pdf_export: 'PDF экспорт',
   period_comparison: 'Сравнение периодов',
+  order_monitor: 'Монитор заказов',
   api_access: 'API доступ',
 };
 
@@ -169,8 +170,8 @@ export function SubscriptionCard() {
         <div className="bg-indigo-50 border border-indigo-200 rounded-lg p-3 text-center">
           <p className="text-sm text-indigo-800">
             Для смены тарифа напишите на{' '}
-            <a href="mailto:support@bixirun.ru" className="font-medium underline">
-              support@bixirun.ru
+            <a href="mailto:support@reviomp.ru" className="font-medium underline">
+              support@reviomp.ru
             </a>
           </p>
         </div>

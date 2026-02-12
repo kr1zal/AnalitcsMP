@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <!-- Hexagon background -->
+  <path d="M32 2 L58 17 L58 47 L32 62 L6 47 L6 17 Z" fill="#312e81" rx="3"/>
+  <!-- Bar chart bars (white) -->
+  <rect x="17" y="38" width="6" height="12" rx="1" fill="white"/>
+  <rect x="26" y="30" width="6" height="20" rx="1" fill="white"/>
+  <rect x="35" y="22" width="6" height="28" rx="1" fill="white"/>
+  <rect x="44" y="14" width="6" height="36" rx="1" fill="white"/>
+  <!-- Subtle bottom line -->
+  <line x1="15" y1="52" x2="52" y2="52" stroke="white" stroke-width="1.5" stroke-linecap="round" opacity="0.6"/>
+</svg>

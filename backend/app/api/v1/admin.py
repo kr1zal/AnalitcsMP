@@ -7,12 +7,11 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException
 
 from ...auth import CurrentUser, get_current_user
+from ...config import get_settings
 from .sync_queue import _is_sync_running, _run_full_sync
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
-
-ADMIN_USER_IDS = ["17e80396-86e1-4ec8-8cb2-f727462bf20c"]
 
 
 @router.post("/admin/sync/{user_id}")
@@ -24,7 +23,8 @@ async def admin_force_sync(
     Admin-only: force sync for any user.
     Ignores cooldown and daily limits, respects running-lock.
     """
-    if current_user.id not in ADMIN_USER_IDS:
+    settings = get_settings()
+    if current_user.id not in settings.admin_user_ids:
         raise HTTPException(status_code=403, detail="Admin access required")
 
     # Respect running lock

@@ -5,14 +5,21 @@
  */
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { Outlet, Link, useLocation } from 'react-router-dom';
-import { BarChart3, Package, TrendingUp, RefreshCw, ChevronLeft, LogOut, Settings } from 'lucide-react';
+import { BarChart3, ClipboardList, Package, TrendingUp, RefreshCw, ChevronLeft, LogOut, Settings } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { useIsMobile } from '../../hooks/useMediaQuery';
 import { useAuthStore } from '../../store/useAuthStore';
 import { useSubscription } from '../../hooks/useSubscription';
+import type { SubscriptionFeatures } from '../../types';
 
-const navigation = [
+const navigation: {
+  name: string;
+  href: string;
+  icon: typeof BarChart3;
+  feature?: keyof SubscriptionFeatures;
+}[] = [
   { name: 'Дашборд', href: '/', icon: BarChart3 },
+  { name: 'Заказы', href: '/orders', icon: ClipboardList, feature: 'order_monitor' },
   { name: 'Unit-экономика', href: '/unit-economics', icon: TrendingUp },
   { name: 'Реклама', href: '/ads', icon: Package },
   { name: 'Синхронизация', href: '/sync', icon: RefreshCw },
@@ -103,7 +110,9 @@ export const Layout = () => {
             </Link>
 
             <nav className="flex space-x-1 ml-8">
-                {navigation.map((item) => {
+                {navigation
+                  .filter((item) => !item.feature || subscription?.features?.[item.feature])
+                  .map((item) => {
                   const isActive = location.pathname === item.href;
                   const Icon = item.icon;
                   return (
@@ -224,7 +233,9 @@ export const Layout = () => {
               {/* Компактная навигация */}
               <nav className="flex-1 overflow-y-auto px-2 py-2">
                 <ul className="space-y-0.5">
-                  {navigation.map((item) => {
+                  {navigation
+                    .filter((item) => !item.feature || subscription?.features?.[item.feature])
+                    .map((item) => {
                     const isActive = location.pathname === item.href;
                     const Icon = item.icon;
                     return (

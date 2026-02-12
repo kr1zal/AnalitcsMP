@@ -1779,6 +1779,423 @@ class SyncService:
             self._log_sync("ozon", "ads", "error", 0, error_msg, started_at)
             return {"status": "error", "message": error_msg}
 
+    # ==================== СИНХРОНИЗАЦИЯ ЗАКАЗОВ (Phase 2 Order Monitor) ====================
+
+    async def sync_orders_wb(self, date_from: datetime, date_to: datetime = None) -> dict:
+        """
+        Синхронизация позаказных данных WB.
+        3-шаговое обогащение через srid:
+        1. get_orders() → базовые данные (srid, barcode, price, region, warehouse)
+        2. get_sales() → статусы (saleID: S=sold, R=returned, forPay)
+        3. get_report_detail() → финансы (commission, logistics, storage, payout)
+        """
+        import asyncio
+        started_at = datetime.now()
+        date_to = date_to or datetime.now()
+        records_count = 0
+
+        try:
+            products_map = self._get_products_map()
+
+            # Шаг 1: Получаем заказы (srid → базовые данные)
+            orders_data = await self.wb_client.get_orders(date_from, flag=0)
+            if orders_data is None:
+                orders_data = []
+
+            # Индексируем заказы по srid
+            orders_by_srid: dict[str, dict] = {}
+            for order in orders_data:
+                srid = order.get("srid")
+                if not srid:
+                    continue
+                barcode = str(order.get("barcode", "")) or ""
+                nm_id = order.get("nmId")
+
+                # Мэппинг barcode → product_id
+                product_id = None
+                if barcode and barcode in products_map:
+                    product_id = products_map[barcode]["id"]
+                elif nm_id:
+                    for bc, p in products_map.items():
+                        if p.get("wb_nm_id") == nm_id:
+                            product_id = p["id"]
+                            barcode = bc
+                            break
+
+                orders_by_srid[srid] = {
+                    "marketplace": "wb",
+                    "order_id": srid,
+                    "product_id": product_id,
+                    "barcode": barcode,
+                    "order_date": order.get("date") or order.get("createdAt") or started_at.isoformat(),
+                    "last_change_date": order.get("lastChangeDate"),
+                    "status": "cancelled" if order.get("isCancel") else "ordered",
+                    "price": float(order.get("totalPrice", 0) or 0),
+                    "region": order.get("regionName"),
+                    "warehouse": order.get("warehouseName"),
+                    "settled": False,
+                }
+
+            await asyncio.sleep(1)  # Rate limit между вызовами WB API
+
+            # Шаг 2: Обогащаем статусами из sales (S=sold, R=returned)
+            sales_data = await self.wb_client.get_sales(date_from, flag=0)
+            if sales_data is None:
+                sales_data = []
+
+            for sale in sales_data:
+                srid = sale.get("srid")
+                if not srid:
+                    continue
+
+                sale_id = sale.get("saleID", "")
+                for_pay = float(sale.get("forPay", 0) or 0)
+
+                if srid in orders_by_srid:
+                    if sale_id.startswith("S"):
+                        orders_by_srid[srid]["status"] = "sold"
+                    elif sale_id.startswith("R"):
+                        orders_by_srid[srid]["status"] = "returned"
+                    orders_by_srid[srid]["sale_amount"] = for_pay
+                    orders_by_srid[srid]["wb_sale_id"] = sale_id
+                    if sale.get("lastChangeDate"):
+                        orders_by_srid[srid]["last_change_date"] = sale["lastChangeDate"]
+                    # priceWithDisc — цена после скидки СПП (реальная цена продажи)
+                    price_with_disc = float(sale.get("priceWithDisc", 0) or 0)
+                    if price_with_disc:
+                        orders_by_srid[srid]["sale_price"] = price_with_disc
+                    # Подтянуть каталожную цену из sales если в orders была 0
+                    if price_with_disc and not orders_by_srid[srid].get("price"):
+                        orders_by_srid[srid]["price"] = price_with_disc
+                else:
+                    # Продажа без парного заказа (заказ старше 90 дней) — создаём запись
+                    barcode = str(sale.get("barcode", "")) or ""
+                    nm_id = sale.get("nmId")
+                    product_id = None
+                    if barcode and barcode in products_map:
+                        product_id = products_map[barcode]["id"]
+                    elif nm_id:
+                        for bc, p in products_map.items():
+                            if p.get("wb_nm_id") == nm_id:
+                                product_id = p["id"]
+                                barcode = bc
+                                break
+
+                    status = "sold" if sale_id.startswith("S") else "returned" if sale_id.startswith("R") else "ordered"
+                    price_with_disc = float(sale.get("priceWithDisc", 0) or 0)
+                    orders_by_srid[srid] = {
+                        "marketplace": "wb",
+                        "order_id": srid,
+                        "product_id": product_id,
+                        "barcode": barcode,
+                        "order_date": sale.get("date") or started_at.isoformat(),
+                        "last_change_date": sale.get("lastChangeDate"),
+                        "status": status,
+                        "price": price_with_disc,
+                        "sale_price": price_with_disc,
+                        "sale_amount": for_pay,
+                        "wb_sale_id": sale_id,
+                        "region": sale.get("regionName"),
+                        "warehouse": sale.get("warehouseName"),
+                        "settled": False,
+                    }
+
+            await asyncio.sleep(1)  # Rate limit
+
+            # Шаг 3: Обогащаем финансами из reportDetail
+            # ВАЖНО: reportDetail возвращает НЕСКОЛЬКО строк на один srid
+            # (продажа, логистика, хранение и т.д.) — нужно НАКОПИТЬ значения
+            report = await self.wb_client.get_report_detail(date_from, date_to)
+            if report is None:
+                report = []
+
+            for row in report:
+                srid = row.get("srid")
+                if not srid:
+                    continue
+
+                commission = abs(float(row.get("ppvz_vw", 0) or 0)) + abs(float(row.get("ppvz_vw_nds", 0) or 0))
+                logistics_cost = abs(float(row.get("delivery_rub", 0) or 0))
+                storage = abs(float(row.get("storage_fee", 0) or 0))
+                other = abs(float(row.get("penalty", 0) or 0)) + abs(float(row.get("deduction", 0) or 0)) + abs(float(row.get("acceptance", 0) or 0))
+                payout_val = float(row.get("ppvz_for_pay", 0) or 0)
+                retail_price = float(row.get("retail_price", 0) or 0)
+                retail_price_withdisc = float(row.get("retail_price_withdisc_rub", 0) or 0)
+                rrd_id = row.get("rrd_id")
+
+                if srid in orders_by_srid:
+                    # Накапливаем финансовые данные (несколько строк на srid)
+                    orders_by_srid[srid]["commission"] = orders_by_srid[srid].get("commission", 0) + commission
+                    orders_by_srid[srid]["logistics"] = orders_by_srid[srid].get("logistics", 0) + logistics_cost
+                    orders_by_srid[srid]["storage_fee"] = orders_by_srid[srid].get("storage_fee", 0) + storage
+                    orders_by_srid[srid]["other_fees"] = orders_by_srid[srid].get("other_fees", 0) + other
+                    orders_by_srid[srid]["payout"] = (orders_by_srid[srid].get("payout") or 0) + payout_val
+                    orders_by_srid[srid]["wb_rrd_id"] = rrd_id
+                    orders_by_srid[srid]["settled"] = True
+                    # retail_price_withdisc_rub — реальная цена после СПП (не накапливаем, берём первое ненулевое)
+                    if retail_price_withdisc and not orders_by_srid[srid].get("sale_price"):
+                        orders_by_srid[srid]["sale_price"] = retail_price_withdisc
+                    # Каталожная цена (до СПП) — fallback
+                    if not orders_by_srid[srid].get("price") and retail_price:
+                        orders_by_srid[srid]["price"] = retail_price
+                else:
+                    # Финансовый отчёт без парного заказа/продажи — создаём запись
+                    nm_id = row.get("nm_id")
+                    barcode = ""
+                    product_id = None
+                    if nm_id:
+                        for bc, p in products_map.items():
+                            if p.get("wb_nm_id") == nm_id:
+                                product_id = p["id"]
+                                barcode = bc
+                                break
+
+                    doc_type = row.get("doc_type_name", "")
+                    status = "sold"
+                    if "Возврат" in doc_type:
+                        status = "returned"
+
+                    orders_by_srid[srid] = {
+                        "marketplace": "wb",
+                        "order_id": srid,
+                        "product_id": product_id,
+                        "barcode": barcode,
+                        "order_date": row.get("rr_dt") or started_at.isoformat(),
+                        "status": status,
+                        "price": retail_price,
+                        "sale_price": retail_price_withdisc if retail_price_withdisc else None,
+                        "commission": commission,
+                        "logistics": logistics_cost,
+                        "storage_fee": storage,
+                        "other_fees": other,
+                        "payout": payout_val,
+                        "wb_rrd_id": rrd_id,
+                        "settled": True,
+                    }
+
+            # Batch upsert в mp_orders
+            batch = []
+            for srid, order_data in orders_by_srid.items():
+                row = {
+                    "marketplace": order_data["marketplace"],
+                    "order_id": order_data["order_id"],
+                    "product_id": order_data.get("product_id"),
+                    "barcode": order_data.get("barcode"),
+                    "order_date": order_data["order_date"],
+                    "last_change_date": order_data.get("last_change_date"),
+                    "status": order_data["status"],
+                    "price": order_data.get("price", 0),
+                    "sale_price": order_data.get("sale_price"),
+                    "sale_amount": order_data.get("sale_amount"),
+                    "commission": order_data.get("commission", 0),
+                    "logistics": order_data.get("logistics", 0),
+                    "storage_fee": order_data.get("storage_fee", 0),
+                    "other_fees": order_data.get("other_fees", 0),
+                    "payout": order_data.get("payout"),
+                    "settled": order_data.get("settled", False),
+                    "wb_sale_id": order_data.get("wb_sale_id"),
+                    "wb_rrd_id": order_data.get("wb_rrd_id"),
+                    "region": order_data.get("region"),
+                    "warehouse": order_data.get("warehouse"),
+                    "updated_at": datetime.now().isoformat(),
+                }
+                if self.user_id:
+                    row["user_id"] = self.user_id
+                batch.append(row)
+
+            # Upsert пачками по 500
+            for i in range(0, len(batch), 500):
+                chunk = batch[i:i+500]
+                self.supabase.table("mp_orders").upsert(
+                    chunk, on_conflict="user_id,marketplace,order_id"
+                ).execute()
+                records_count += len(chunk)
+
+            self._log_sync("wb", "orders", "success", records_count, started_at=started_at)
+            return {"status": "success", "records": records_count}
+
+        except Exception as e:
+            error_msg = str(e)
+            logger.error(f"Ошибка синхронизации заказов WB: {error_msg}")
+            self._log_sync("wb", "orders", "error", 0, error_msg, started_at)
+            return {"status": "error", "message": error_msg}
+
+    async def sync_orders_ozon(self, date_from: datetime, date_to: datetime = None) -> dict:
+        """
+        Синхронизация позаказных данных Ozon.
+        Запрашивает FBS и FBO отправления с financial_data.
+        """
+        started_at = datetime.now()
+        date_to = date_to or datetime.now()
+        records_count = 0
+
+        try:
+            products_map = self._get_products_map()
+            ozon_sku_map = self.ozon_sku_map
+
+            all_postings = []
+
+            # FBS отправления
+            offset = 0
+            limit = 100
+            while True:
+                result = await self.ozon_client.get_posting_fbs_list(date_from, date_to, limit=limit, offset=offset)
+                postings = result.get("result", {}).get("postings", [])
+                if not postings:
+                    break
+                for p in postings:
+                    p["_fulfillment"] = "FBS"
+                all_postings.extend(postings)
+                if len(postings) < limit:
+                    break
+                offset += limit
+
+            # FBO отправления
+            offset = 0
+            while True:
+                result = await self.ozon_client.get_posting_fbo_list(date_from, date_to, limit=limit, offset=offset)
+                postings = result.get("result", [])
+                if not postings:
+                    break
+                for p in postings:
+                    p["_fulfillment"] = "FBO"
+                all_postings.extend(postings)
+                if len(postings) < limit:
+                    break
+                offset += limit
+
+            logger.info(f"Ozon orders: {len(all_postings)} postings (FBS+FBO)")
+
+            # Маппинг статусов Ozon → наши статусы
+            STATUS_MAP = {
+                "delivered": "sold",
+                "cancelled": "cancelled",
+                "awaiting_packaging": "ordered",
+                "awaiting_deliver": "ordered",
+                "delivering": "delivering",
+                "acceptance_in_progress": "ordered",
+                "awaiting_registration": "ordered",
+                "not_accepted": "cancelled",
+                "arbitration": "returned",
+                "client_arbitration": "returned",
+            }
+
+            batch = []
+            for posting in all_postings:
+                posting_number = posting.get("posting_number", "")
+                if not posting_number:
+                    continue
+
+                ozon_status = posting.get("status", "")
+                our_status = STATUS_MAP.get(ozon_status, "ordered")
+
+                analytics = posting.get("analytics_data") or {}
+                financial = posting.get("financial_data") or {}
+
+                products_list = posting.get("products") or []
+                in_process_at = posting.get("in_process_at") or posting.get("created_at") or started_at.isoformat()
+                shipment_date = posting.get("shipment_date")
+
+                for idx, product in enumerate(products_list):
+                    sku = str(product.get("sku", ""))
+                    offer_id = product.get("offer_id", "")
+                    quantity = product.get("quantity", 1)
+                    price_val = float(product.get("price", "0") or "0")
+
+                    # Определяем barcode и product_id
+                    barcode = offer_id  # offer_id в Ozon = barcode
+                    product_id = None
+                    if barcode and barcode in products_map:
+                        product_id = products_map[barcode]["id"]
+                    elif sku and sku in ozon_sku_map:
+                        barcode = ozon_sku_map[sku]
+                        if barcode in products_map:
+                            product_id = products_map[barcode]["id"]
+
+                    # order_id: для мульти-товарных — суффикс
+                    order_id = posting_number
+                    if len(products_list) > 1:
+                        order_id = f"{posting_number}_{sku}"
+
+                    # Финансовые данные — два формата:
+                    # FBO: financial_data.products[] (per-product commission/payout)
+                    # FBS: financial_data.commission_amount, financial_data.payout (top-level)
+                    commission_amount = 0.0
+                    logistics_cost = 0.0
+                    other_cost = 0.0
+                    payout_val = None
+
+                    fin_products = financial.get("products", [])
+                    if fin_products:
+                        # FBO формат: ищем финансы по product_id или по индексу
+                        product_sku_int = int(sku) if sku.isdigit() else 0
+                        fin_item = None
+                        for fp in fin_products:
+                            if fp.get("product_id") == product_sku_int:
+                                fin_item = fp
+                                break
+                        if not fin_item and idx < len(fin_products):
+                            fin_item = fin_products[idx]
+
+                        if fin_item:
+                            commission_amount = abs(float(fin_item.get("commission_amount", 0) or 0))
+                            payout_val = float(fin_item.get("payout", 0) or 0)
+                            # FBO price может быть точнее (с учётом скидок)
+                            fin_price = float(fin_item.get("price", 0) or 0)
+                            if fin_price and fin_price > 0:
+                                price_val = fin_price
+                    else:
+                        # FBS формат: top-level fields
+                        product_count = len(products_list)
+                        commission_amount = abs(float(financial.get("commission_amount", 0) or 0)) / product_count
+                        payout_val = float(financial.get("payout", 0) or 0) / product_count if financial.get("payout") else None
+
+                    settled = our_status == "sold" and payout_val is not None and payout_val > 0
+
+                    total_price = price_val * quantity
+                    row = {
+                        "marketplace": "ozon",
+                        "order_id": order_id,
+                        "product_id": product_id,
+                        "barcode": barcode,
+                        "order_date": in_process_at,
+                        "last_change_date": shipment_date,
+                        "status": our_status,
+                        "price": total_price,
+                        "sale_price": total_price,  # Ozon: цена = реальная цена (нет скрытой СПП)
+                        "sale_amount": payout_val,
+                        "commission": round(commission_amount, 2),
+                        "logistics": round(logistics_cost, 2),
+                        "storage_fee": 0,
+                        "other_fees": round(other_cost, 2),
+                        "payout": payout_val,
+                        "settled": settled,
+                        "ozon_posting_status": f"{posting.get('_fulfillment', 'FBO')}:{ozon_status}",
+                        "region": analytics.get("region"),
+                        "warehouse": analytics.get("warehouse_name"),
+                        "updated_at": datetime.now().isoformat(),
+                    }
+                    if self.user_id:
+                        row["user_id"] = self.user_id
+                    batch.append(row)
+
+            # Upsert пачками по 500
+            for i in range(0, len(batch), 500):
+                chunk = batch[i:i+500]
+                self.supabase.table("mp_orders").upsert(
+                    chunk, on_conflict="user_id,marketplace,order_id"
+                ).execute()
+                records_count += len(chunk)
+
+            self._log_sync("ozon", "orders", "success", records_count, started_at=started_at)
+            return {"status": "success", "records": records_count}
+
+        except Exception as e:
+            error_msg = str(e)
+            logger.error(f"Ошибка синхронизации заказов Ozon: {error_msg}")
+            self._log_sync("ozon", "orders", "error", 0, error_msg, started_at)
+            return {"status": "error", "message": error_msg}
+
     # ==================== ПОЛНАЯ СИНХРОНИЗАЦИЯ ====================
 
     async def sync_all(self, days_back: int = 30) -> dict:
@@ -1791,6 +2208,8 @@ class SyncService:
 
         results = {
             "products": await self.sync_products(),
+            "orders_wb": await self.sync_orders_wb(date_from, date_to),
+            "orders_ozon": await self.sync_orders_ozon(date_from, date_to),
             "sales_wb": await self.sync_sales_wb(date_from, date_to),
             "sales_ozon": await self.sync_sales_ozon(date_from, date_to),
             "stocks_wb": await self.sync_stocks_wb(),

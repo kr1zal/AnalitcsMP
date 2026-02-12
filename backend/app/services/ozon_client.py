@@ -269,6 +269,22 @@ class OzonClient:
         }
         return await self._request("POST", "/v3/posting/fbs/list", json=payload)
 
+    async def get_posting_fbo_list(self, date_from: datetime, date_to: datetime, limit: int = 100, offset: int = 0) -> dict:
+        """Получить список отправлений FBO (склад Ozon)"""
+        payload = {
+            "filter": {
+                "since": date_from.strftime("%Y-%m-%dT00:00:00.000Z"),
+                "to": date_to.strftime("%Y-%m-%dT23:59:59.999Z")
+            },
+            "limit": limit,
+            "offset": offset,
+            "with": {
+                "analytics_data": True,
+                "financial_data": True
+            }
+        }
+        return await self._request("POST", "/v2/posting/fbo/list", json=payload)
+
     # ==================== ФИНАНСЫ ====================
 
     async def get_finance_transaction_list(self, date_from: datetime, date_to: datetime, page: int = 1) -> dict:

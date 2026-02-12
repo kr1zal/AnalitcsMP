@@ -23,6 +23,10 @@ import type {
   TokensValidateResponse,
   UserSubscriptionResponse,
   PlansListResponse,
+  OrderFunnelResponse,
+  OrdersListResponse,
+  OrderDetailResponse,
+  OrdersFilters,
 } from '../types';
 
 // Создаём axios instance с базовыми настройками
@@ -226,6 +230,29 @@ export const dashboardApi = {
         include_ozon_truth: filters?.include_ozon_truth ?? true,
       },
     });
+    return data;
+  },
+};
+
+// ==================== МОНИТОР ЗАКАЗОВ ====================
+
+export const ordersApi = {
+  getFunnel: async (filters?: DashboardFilters): Promise<OrderFunnelResponse> => {
+    const { data } = await api.get<OrderFunnelResponse>('/dashboard/order-funnel', {
+      params: filters,
+    });
+    return data;
+  },
+
+  getList: async (filters?: OrdersFilters): Promise<OrdersListResponse> => {
+    const { data } = await api.get<OrdersListResponse>('/dashboard/orders', {
+      params: filters,
+    });
+    return data;
+  },
+
+  getDetail: async (orderId: string): Promise<OrderDetailResponse> => {
+    const { data } = await api.get<OrderDetailResponse>(`/dashboard/orders/${orderId}`);
     return data;
   },
 };

@@ -15,6 +15,7 @@ const MIN_PLAN_MAP: Partial<Record<keyof SubscriptionFeatures, string>> = {
   ads_page: 'Pro',
   pdf_export: 'Pro',
   period_comparison: 'Pro',
+  order_monitor: 'Business',
   api_access: 'Business',
 };
 

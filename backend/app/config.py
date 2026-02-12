@@ -1,4 +1,5 @@
 from pydantic_settings import BaseSettings
+from pydantic import Field
 from functools import lru_cache
 
 
@@ -35,6 +36,11 @@ class Settings(BaseSettings):
     # Локально: добавь FRONTEND_URL=http://localhost:5173 в .env
     # Production: дефолт https://analitics.bixirun.ru
     frontend_url: str = "https://analitics.bixirun.ru"
+
+    # Admin user IDs (UUID list)
+    admin_user_ids: list[str] = Field(
+        default_factory=lambda: ["17e80396-86e1-4ec8-8cb2-f727462bf20c"]
+    )
 
     class Config:
         env_file = "../.env"

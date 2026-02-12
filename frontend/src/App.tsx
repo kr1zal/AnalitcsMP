@@ -13,7 +13,10 @@ import { AdsPage } from './pages/AdsPage';
 import { PrintPage } from './pages/PrintPage';
 import { LoginPage } from './pages/LoginPage';
 import { SettingsPage } from './pages/SettingsPage';
+import { LandingPage } from './pages/LandingPage';
+import OrderMonitorPage from './pages/OrderMonitorPage';
 import { useAuth } from './hooks/useAuth';
+import { useAuthStore } from './store/useAuthStore';
 
 // Создаём QueryClient
 const queryClient = new QueryClient({
@@ -25,6 +28,32 @@ const queryClient = new QueryClient({
     },
   },
 });
+
+/**
+ * Root layout: landing for unauthenticated, protected app for authenticated.
+ * Child routes (Outlet) only render when authenticated (Layout has Outlet).
+ */
+function RootLayout() {
+  const { user, isLoading } = useAuthStore();
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600" />
+      </div>
+    );
+  }
+
+  if (!user) {
+    return <LandingPage />;
+  }
+
+  return (
+    <ProtectedRoute>
+      <Layout />
+    </ProtectedRoute>
+  );
+}
 
 function AppRoutes() {
   // Инициализируем auth listener
@@ -38,16 +67,10 @@ function AppRoutes() {
       {/* Print page — без Layout, авторизация через ?token= */}
       <Route path="/print" element={<PrintPage />} />
 
-      {/* Защищённые маршруты */}
-      <Route
-        path="/"
-        element={
-          <ProtectedRoute>
-            <Layout />
-          </ProtectedRoute>
-        }
-      >
+      {/* Root: Landing (unauth) / App (auth) */}
+      <Route path="/" element={<RootLayout />}>
         <Route index element={<DashboardPage />} />
+        <Route path="orders" element={<OrderMonitorPage />} />
         <Route path="unit-economics" element={<UnitEconomicsPage />} />
         <Route path="products" element={<Navigate to="/unit-economics" replace />} />
         <Route path="ads" element={<AdsPage />} />

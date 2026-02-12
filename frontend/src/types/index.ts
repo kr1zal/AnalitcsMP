@@ -7,7 +7,7 @@
 
 export type Marketplace = 'wb' | 'ozon' | 'all';
 export type SyncStatus = 'success' | 'error';
-export type SyncType = 'products' | 'sales' | 'stocks' | 'costs' | 'ads' | 'all';
+export type SyncType = 'products' | 'sales' | 'stocks' | 'costs' | 'ads' | 'orders' | 'all';
 
 // ==================== ПРОДУКТЫ ====================
 
@@ -302,6 +302,8 @@ export interface SyncAllResponse {
   error_count: number;
   details: {
     products?: SyncResultDetail;
+    orders_wb?: SyncResultDetail;
+    orders_ozon?: SyncResultDetail;
     sales_wb?: SyncResultDetail;
     sales_ozon?: SyncResultDetail;
     stocks_wb?: SyncResultDetail;
@@ -376,6 +378,7 @@ export interface SubscriptionFeatures {
   ads_page: boolean;
   pdf_export: boolean;
   period_comparison: boolean;
+  order_monitor: boolean;
   api_access: boolean;
 }
 
@@ -471,4 +474,117 @@ export interface AdPerformanceResponse {
     ozon: number;
   };
   campaigns: AdCost[];
+}
+
+// ==================== МОНИТОР ЗАКАЗОВ ====================
+
+export interface OrderFunnelSummary {
+  total_orders: number;
+  total_sales: number;
+  total_returns: number;
+  buyout_percent: number;
+  total_revenue: number;
+  unsettled_orders: number;
+  unsettled_amount: number;
+  avg_check: number;
+}
+
+export interface OrderFunnelDaily {
+  date: string;
+  orders: number;
+  sales: number;
+  returns: number;
+  buyout_percent: number;
+  revenue: number;
+}
+
+export interface OrderFunnelProduct {
+  product_id: string;
+  product_name: string;
+  barcode: string;
+  orders: number;
+  sales: number;
+  returns: number;
+  buyout_percent: number;
+  revenue: number;
+  avg_check: number;
+}
+
+export interface OrderFunnelResponse {
+  status: 'success';
+  period: { from: string; to: string };
+  marketplace: Marketplace;
+  summary: OrderFunnelSummary;
+  daily: OrderFunnelDaily[];
+  by_product: OrderFunnelProduct[];
+}
+
+// ==================== ПОЗАКАЗНЫЙ МОНИТОР (Phase 2) ====================
+
+export type OrderStatus = 'ordered' | 'sold' | 'returned' | 'cancelled' | 'delivering';
+
+export interface Order {
+  id: string;
+  marketplace: Marketplace;
+  order_id: string;
+  product_id: string | null;
+  product_name: string;
+  barcode: string;
+  order_date: string;
+  last_change_date: string | null;
+  status: OrderStatus;
+  price: number;
+  /** Реальная цена продажи после скидки СПП (WB: retail_price_withdisc_rub, Ozon: = price) */
+  sale_price: number | null;
+  sale_amount: number | null;
+  commission: number;
+  logistics: number;
+  storage_fee: number;
+  other_fees: number;
+  payout: number | null;
+  settled: boolean;
+  region: string | null;
+  warehouse: string | null;
+  wb_sale_id: string | null;
+  ozon_posting_status: string | null;
+}
+
+export interface OrdersListSummary {
+  total_orders: number;
+  total_sold: number;
+  total_returned: number;
+  total_settled: number;
+  total_unsettled: number;
+  total_payout: number;
+  total_revenue: number;
+  buyout_percent: number;
+}
+
+export interface OrdersListResponse {
+  status: 'success';
+  period: { from: string; to: string };
+  total_count: number;
+  page: number;
+  page_size: number;
+  total_pages: number;
+  orders: Order[];
+  summary: OrdersListSummary;
+}
+
+export interface OrderDetailResponse {
+  status: 'success';
+  order: Order & {
+    wb_rrd_id?: number | null;
+    raw_data?: Record<string, unknown> | null;
+  };
+}
+
+export interface OrdersFilters extends DashboardFilters {
+  status?: OrderStatus;
+  settled?: boolean;
+  search?: string;
+  page?: number;
+  page_size?: number;
+  sort_by?: string;
+  sort_dir?: 'asc' | 'desc';
 }

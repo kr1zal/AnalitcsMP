@@ -52,20 +52,57 @@ sshpass -p '@vnDBp5VCt2+' rsync -avz --delete -e "ssh -o StrictHostKeyChecking=n
 - SyncPage: статус-панель + кнопка "Обновить сейчас" + история
 - Подробности: [memory/saas-phase4.md](memory/saas-phase4.md)
 
+### Order Monitor v1 (Воронка) — READY (09.02.2026)
+- Агрегированная воронка заказов: Заказы → Выкупы → Возвраты (из mp_sales)
+- Pro/Business фича: feature gate `order_monitor` в plans.py
+- Индикатор непроведённых: сравнение mp_sales.revenue vs costs-tree settled
+- Backend: GET /dashboard/order-funnel (dashboard.py)
+
+### Order Monitor v2 (Позаказная детализация + SPP fix) — READY (10.02.2026)
+- Таблица mp_orders: одна строка = один заказ/отправление (migration 011)
+- WB sync: 3-step enrichment (get_orders → get_sales → get_report_detail), accumulate financial data
+- Ozon sync: FBS + FBO (get_posting_fbs_list + get_posting_fbo_list), per-product financials
+- Ozon posting_status format: "FBO:delivered", "FBS:cancelled"
+- **sale_price:** WB retail_price_withdisc_rub (после СПП), Ozon = price. Migration: ALTER TABLE + sale_price column
+- Backend: GET /dashboard/orders (пагинация+фильтры), GET /dashboard/orders/{id}
+- Frontend: позаказная таблица с реальной ценой, СПП%, прозрачная математика издержек
+- Frontend: мобильные карточки, пагинация 50/стр, фильтры по статусу/settled
+- Навигация: /orders, иконка ClipboardList (без изменений, используется route из v1)
+
+### Phase 5: Landing Page — IN PROGRESS (10-11.02.2026)
+- `frontend/src/pages/LandingPage.tsx` (~1386 lines, все секции в одном файле)
+- Route `/` для неавторизованных → Landing, авторизованные → `/app`
+- Зависимости: @fontsource/inter, swiper (карусель)
+- 13 секций: NavBar, Hero, DashboardCarousel, StatsBar, Problem, Features, DataFlow, HowItWorks, Security, Pricing, FAQ, FinalCTA, Footer
+- Stripe-style дизайн: gradient wave hero (CSS blur layers), section dividers, spotlight cards
+- DataFlowSection: анимированная hub-and-spoke SVG диаграмма
+- Animated counters, scroll-reveal, prefers-reduced-motion
+- CSS анимации в index.css: hero-wave-drift, scroll-reveal, spotlight, data-pulse
+- Подробности: [memory/phase5-release-plan.md](memory/phase5-release-plan.md) секция 1.4
+
+### Phase 5: YooKassa Payment — PENDING
+- Интеграция оплаты Pro подписки (990₽/мес)
+- Подробности: [memory/phase5-release-plan.md](memory/phase5-release-plan.md) секция 1.5
+
 ### Активные задачи
-- [ ] Позаказный монитор (Order Monitor) — Pro-фича
+- [x] Позаказный монитор v1 (воронка) — Pro-фича ✓
+- [x] Позаказный монитор v2 (детализация) — позаказные издержки ✓
+- [~] Landing Page — основной layout + анимации готовы, polish in progress
+- [ ] YooKassa Payment — ожидает
+- [ ] Hide Business tier, SEO index.html, admin ID→config — ожидает
 - [ ] Прибыль на карточках OZON/WB (MarketplaceBreakdown)
 - [ ] Возвраты + ДРР от заказов/выкупов
 - [ ] План продаж (ручной ввод)
 - [ ] Donut chart по категориям
 - [ ] Улучшить PDF экспорт (PrintPage.tsx)
 
-### Известные баги
+### Известные баги / ограничения
 - ~~Плашки "Пред.пер." не показывают данные~~ FIXED (commit 1aa095f)
 - ~~`secret_key = "change-me-in-production"` в config.py~~ FIXED (удалён, `extra="ignore"`)
 - ~~Нет concurrent sync protection на costs/stocks/ads endpoints~~ FIXED (sync guard + lock)
 - ~~Ozon SKU mapping частично hardcoded в sync_service.py~~ FIXED (dynamic from DB + migration 009)
 - ~~Прибыль показывает -10К из-за смешивания costs-tree и mp_sales~~ FIXED (пропорциональная коррекция закупки)
+- ~~WB mp_orders: price = retail_price (каталожная цена ДО скидки СПП)~~ FIXED — sale_price column added (retail_price_withdisc_rub)
 
 ## Технический стек
 
@@ -105,12 +142,12 @@ Analitics/
 │   │   ├── plans.py          # Определения тарифов Free/Pro/Business (Phase 3)
 │   │   ├── subscription.py   # FastAPI Depends для подписок (Phase 3)
 │   │   └── config.py         # Settings
-│   └── migrations/           # SQL: 004-010 (user_id, RLS, RPC, user_tokens, subscriptions, sync_queue)
+│   └── migrations/           # SQL: 004-011 (user_id, RLS, RPC, user_tokens, subscriptions, sync_queue, orders)
 ├── frontend/                 # React 19 + TS 5.9 + Vite 7 + Tailwind 3
 │   └── src/
 │       ├── components/       # Dashboard/, Shared/, Settings/
-│       ├── hooks/            # useDashboard, useAuth, useTokens, useSubscription, useExport...
-│       ├── pages/            # Dashboard, Login, Settings, UnitEconomics, Ads, Sync, Print
+│       ├── hooks/            # useDashboard, useAuth, useTokens, useSubscription, useExport, useOrders...
+│       ├── pages/            # Landing, Dashboard, Login, Settings, UnitEconomics, Ads, Sync, Print, OrderMonitor
 │       ├── services/api.ts   # Axios + auth interceptor + tokensApi + subscriptionApi
 │       └── store/            # useFiltersStore, useAuthStore (Zustand)
 ├── CLAUDE.md                 # ← Вы здесь (компактный обзор)
@@ -136,6 +173,7 @@ Analitics/
 | mp_user_tokens | Зашифрованные API-токены пользователей (Phase 2) |
 | mp_user_subscriptions | Подписки пользователей: plan, status, expires_at (Phase 3) |
 | mp_sync_queue | Очередь автосинхронизации: next_sync_at, priority, manual_syncs (Phase 4) |
+| mp_orders | Позаказная детализация: WB srid / Ozon posting_number, финансы, статус (Phase 2 Order Monitor) |
 
 - **RLS:** Все таблицы, политики `auth.uid() = user_id`
 - **RPC:** 4 функции с `p_user_id` (get_dashboard_summary, get_costs_tree, get_costs_tree_combined, get_dashboard_summary_with_prev)
@@ -179,6 +217,10 @@ FRONTEND_URL                          # Для Playwright PDF (http://localhost:
 8. **Подписки:** планы в коде (plans.py), НЕ в БД. Lazy creation free плана.
 9. **Sync Queue:** DB-based queue + cron (НЕ APScheduler/Celery — 1 ядро VPS).
 10. **Прибыль:** пропорциональная коррекция закупки при использовании costs-tree (Ozon analytics ≠ finance API).
+11. **Order Monitor v1:** данные из mp_sales (агрегаты), непроведённые из costs-tree RPC.
+12. **Order Monitor v2:** mp_orders таблица (позаказная). WB: srid ключ, 3-step enrichment (orders+sales+reportDetail), accumulate (НЕ overwrite) финансовых строк. Ozon: FBS+FBO, per-product financials из financial_data.products[].
+13. **WB SPP price:** sale_price = retail_price_withdisc_rub (реальная цена после СПП). price = retail_price (каталожная ДО скидки). Frontend показывает sale_price, каталожная зачёркнута.
+14. **Landing Hero:** CSS gradient wave с blur layers (НЕ SVG chart — пробовали, выглядит плохо). 3 слоя (violet, pink/orange, indigo) с drift-анимациями.
 
 ## Важные нюансы
 
@@ -216,8 +258,14 @@ FRONTEND_URL                          # Для Playwright PDF (http://localhost:
 3. ~~Phase 3: Subscription tiers~~ — DEPLOYED (09.02.2026)
 4. ~~Phase 4: Sync queue~~ — DEPLOYED (09.02.2026)
 
-### Фичи (следующие)
-5. Позаказный монитор (Order Monitor) — Pro-фича, отображение воронки заказов
+### Phase 5: Release (в процессе)
+5a. ~~Order Monitor v1 (воронка заказов)~~ — READY (09.02.2026)
+5b. ~~Order Monitor v2 (позаказная детализация + SPP fix)~~ — READY (10.02.2026)
+5c. Landing Page — IN PROGRESS (10-11.02.2026), core layout + animations done
+5d. YooKassa Payment — PENDING
+5e. Hide Business / SEO / Admin config — PENDING
+
+### Фичи (deferred)
 6. Прибыль на карточках OZON/WB
 7. Возвраты + ДРР от заказов/выкупов
 8. План продаж (ручной ввод)

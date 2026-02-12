@@ -13,12 +13,11 @@ from ...auth import CurrentUser, get_current_user
 from ...db.supabase import get_supabase_client
 from ...subscription import get_user_subscription, UserSubscription
 from ...plans import PLANS, get_plan, get_next_sync_utc
+from ...config import get_settings
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
-
-ADMIN_USER_IDS = ["17e80396-86e1-4ec8-8cb2-f727462bf20c"]
 
 
 @router.get("/subscription")
@@ -55,9 +54,12 @@ async def get_my_subscription(
 
 @router.get("/subscription/plans")
 async def list_plans():
-    """Return all available plans for comparison/upgrade UI."""
+    """Return available plans for comparison/upgrade UI.
+    Hidden plans (visible=False) are filtered out."""
     result = []
     for key, plan in PLANS.items():
+        if not plan.get("visible", True):
+            continue
         result.append({
             "id": key,
             "name": plan["name"],
@@ -83,7 +85,8 @@ async def change_user_plan(
     current_user: CurrentUser = Depends(get_current_user),
 ):
     """Admin-only: change a user's subscription plan."""
-    if current_user.id not in ADMIN_USER_IDS:
+    settings = get_settings()
+    if current_user.id not in settings.admin_user_ids:
         raise HTTPException(status_code=403, detail="Admin access required")
 
     if body.plan not in PLANS:

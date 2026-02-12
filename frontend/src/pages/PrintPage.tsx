@@ -964,7 +964,7 @@ function PageFooter({ page, total }: { page: number; total: number }) {
   return (
     <footer className="mt-8 pt-4 border-t border-gray-200 flex justify-between items-center text-sm text-gray-500">
       <span>Сгенерировано: {now}</span>
-      <span>analitics.bixirun.ru</span>
+      <span>reviomp.ru</span>
       <span>
         Страница {page} из {total}
       </span>

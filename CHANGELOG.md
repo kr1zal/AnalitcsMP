@@ -2,6 +2,108 @@
 
 > Полная история выполненных задач. Для текущего статуса см. [CLAUDE.md](CLAUDE.md).
 
+## 10.02.2026 — WB SPP Discount Fix: Реальная цена продажи
+
+**Исправление:** WB `retail_price` = каталожная цена ДО скидки СПП. Добавлено поле `sale_price` — реальная цена продажи после скидки.
+
+**SQL миграция:**
+- `ALTER TABLE mp_orders ADD COLUMN sale_price DECIMAL(12,2)` — применена в Supabase
+- Обновлён `backend/migrations/011_orders.sql` (sale_price между price и sale_amount)
+
+**Backend:**
+- `backend/app/services/sync_service.py`:
+  - sync_orders_wb(): читает `priceWithDisc` из Sales API + `retail_price_withdisc_rub` из reportDetail → сохраняет в sale_price
+  - sync_orders_ozon(): sale_price = price (Ozon показывает реальную цену, нет скрытой СПП)
+- `backend/app/api/v1/dashboard.py`:
+  - GET /dashboard/orders: возвращает sale_price, summary.total_revenue считается по sale_price (fallback на price)
+  - GET /dashboard/orders/{id}: возвращает sale_price
+
+**Frontend:**
+- `frontend/src/types/index.ts` — `sale_price: number | null` в Order interface
+- `frontend/src/pages/OrderMonitorPage.tsx` — полный редизайн:
+  - Показывает реальную цену (sale_price), каталожная зачёркнута
+  - SPP скидка в % (разница price vs sale_price)
+  - Прозрачная математика: sale_price - commission - logistics - storage - other = payout
+  - Панель деталей с progress bar издержек + верификация расхождений
+  - Колонки: Дата | Товар | МП | Статус | Продажа(+СПП%) | Комиссия | Логистика | Удержания | Выплата | Проведён
+
+## 09.02.2026 — Order Monitor v2: Позаказная детализация
+
+**Новая фича:** Позаказный трекинг каждого заказа/отправления из WB и Ozon с финансовой разбивкой.
+
+**SQL миграция:**
+- `backend/migrations/011_orders.sql` — таблица mp_orders (UUID PK, UNIQUE(user_id, marketplace, order_id), 6 индексов, 4 RLS-политики)
+- Поля: marketplace, order_id (WB: srid / Ozon: posting_number), status, price, commission, logistics, storage_fee, payout, settled, wb_sale_id, ozon_posting_status, region, warehouse, raw_data JSONB
+
+**Backend (изменённые файлы):**
+- `backend/app/services/sync_service.py` — sync_orders_wb() + sync_orders_ozon():
+  - WB: 3-step enrichment (get_orders → get_sales → get_report_detail) с накоплением финансов (accumulate, НЕ overwrite)
+  - Ozon: FBS + FBO (get_posting_fbs_list + get_posting_fbo_list), per-product financials из financial_data.products[]
+  - ozon_posting_status format: "FBO:delivered", "FBS:cancelled"
+  - Batch upsert в mp_orders (ON CONFLICT DO UPDATE)
+- `backend/app/services/ozon_client.py` — новый метод get_posting_fbo_list() для Ozon FBO
+- `backend/app/api/v1/dashboard.py`:
+  - GET /dashboard/orders — пагинированный список с фильтрами (date, marketplace, status, settled, search, sort)
+  - GET /dashboard/orders/{order_id} — детали одного заказа
+
+**Frontend (изменённые файлы):**
+- `frontend/src/pages/OrderMonitorPage.tsx` — полная переработка (~700 строк):
+  - 4 KPI карточки (Заказы, Выкупы, Возвраты, Ожидают проведения)
+  - Воронка (из mp_orders)
+  - Позаказная таблица: Дата | ID заказа | Товар | МП(+FBO/FBS) | Цена | Статус | Комиссия | Логистика | Выплата | Проведён
+  - Раскрывающаяся панель деталей с progress bar издержек
+  - StatusBadge: ordered(серый), sold(зелёный), returned(красный), cancelled(оранжевый), delivering(синий)
+  - MarketplaceBadge с FBO/FBS суб-бейджем для Ozon
+  - Мобильные карточки (OrderMobileCard)
+  - Пагинация 50/стр
+- `frontend/src/hooks/useOrders.ts` — +useOrdersList, +useOrderDetail
+- `frontend/src/types/index.ts` — +Order, +OrdersListResponse, +OrderDetailResponse, +OrdersFilters, +OrderStatus
+- `frontend/src/services/api.ts` — ordersApi.getList(), ordersApi.getDetail()
+- `frontend/src/App.tsx` — исправлен import (default вместо named)
+
+## 09.02.2026 — Order Monitor v1: Воронка заказов
+
+**Новая страница:** Агрегированная воронка заказов — Pro/Business фича. Страница `/orders`.
+
+**Backend (изменённые файлы):**
+- `backend/app/plans.py` — добавлена фича `order_monitor` (Free: false, Pro/Business: true)
+- `backend/app/api/v1/dashboard.py` — GET /dashboard/order-funnel (авторизация + feature gate)
+  - Агрегация mp_sales по дням и товарам (orders, sales, returns, buyout%, revenue)
+  - Расчёт непроведённых через сравнение mp_sales.revenue vs costs-tree settled_revenue
+  - Фильтры: date_from, date_to, marketplace
+
+**Frontend (новые файлы):**
+- `frontend/src/pages/OrderMonitorPage.tsx` — первая версия (~420 строк)
+- `frontend/src/hooks/useOrders.ts` — React Query hook useOrderFunnel
+
+**Frontend (изменённые файлы):**
+- `frontend/src/types/index.ts` — OrderFunnelSummary, OrderFunnelDaily, OrderFunnelProduct, OrderFunnelResponse
+- `frontend/src/services/api.ts` — ordersApi.getFunnel()
+- `frontend/src/components/Settings/SubscriptionCard.tsx` — label 'Монитор заказов'
+- `frontend/src/components/Shared/FeatureGate.tsx` — order_monitor: 'Pro'
+- `frontend/src/App.tsx` — route /orders → OrderMonitorPage
+- `frontend/src/components/Shared/Layout.tsx` — навигация "Заказы" (ClipboardList icon)
+
+## 09.02.2026 — Bugfix: Calculation Tooltips
+
+- Тултипы на плашках "Продажи" и "Прибыль" с формулами расчёта
+- Показываются только при costsTreeRatio < 1 (когда Ozon не провёл все заказы)
+- Commit: 3909890
+
+## 09.02.2026 — Bugfix: Proportional Profit Scaling
+
+- Ozon analytics API (mp_sales) vs finance API (costs-tree) рассогласование
+- Пропорциональная коррекция закупки: purchase × (costs_tree_revenue / mp_sales_revenue)
+- Commit: 4ce13c3
+
+## 09.02.2026 — SaaS Phase 4: Sync Queue
+
+- DB-based queue (mp_sync_queue) + cron `/sync/process-queue` каждые 30 мин
+- Расписание: Business 06/12/18/00 MSK, Pro +1ч, Free 08:00/20:00
+- Ручной sync: Free:0, Pro:1/день, Business:2/день
+- Migration 010: mp_sync_queue + mp_sync_log.trigger
+- Commit: a8cb2cd
+
 ## 09.02.2026 — Tech Debt Cleanup
 
 - Удалён `secret_key` из config.py (никогда не использовался)

@@ -10,6 +10,9 @@ export default {
         'wb-purple': '#8B3FFD',
         'ozon-blue': '#005BFF',
       },
+      fontFamily: {
+        sans: ['Inter', 'system-ui', '-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'Roboto', 'sans-serif'],
+      },
     },
   },
   plugins: [],

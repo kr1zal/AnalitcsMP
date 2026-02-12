@@ -465,3 +465,357 @@ async def get_stocks(
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/dashboard/order-funnel")
+async def get_order_funnel(
+    current_user: CurrentUser = Depends(get_current_user),
+    sub: UserSubscription = Depends(require_feature("order_monitor")),
+    date_from: Optional[str] = Query(None, description="Дата начала (YYYY-MM-DD)"),
+    date_to: Optional[str] = Query(None, description="Дата окончания (YYYY-MM-DD)"),
+    marketplace: Optional[str] = Query(None, description="Фильтр по МП: wb, ozon"),
+):
+    """
+    Воронка заказов: Заказы → Выкупы → Возвраты + непроведённые Ozon.
+    Pro+ фича.
+    """
+    supabase = get_supabase_client()
+
+    if not date_from:
+        date_from = (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d")
+    if not date_to:
+        date_to = datetime.now().strftime("%Y-%m-%d")
+
+    try:
+        # 1. Продукты пользователя
+        products_result = supabase.table("mp_products").select("*").eq("user_id", current_user.id).execute()
+        products = {p["id"]: p for p in products_result.data}
+
+        # 2. Продажи за период
+        sales_query = supabase.table("mp_sales").select("*").eq("user_id", current_user.id).gte("date", date_from).lte("date", date_to)
+        if marketplace and marketplace != "all":
+            sales_query = sales_query.eq("marketplace", marketplace)
+        sales_result = sales_query.execute()
+
+        # 3. Агрегация по дням и по товарам
+        daily_map: dict[str, dict] = {}
+        product_map: dict[str, dict] = {}
+        total_orders = 0
+        total_sales = 0
+        total_returns = 0
+        total_revenue = 0.0
+
+        for sale in sales_result.data:
+            date = sale["date"]
+            product_id = sale["product_id"]
+            orders = sale.get("orders_count", 0) or 0
+            sales = sale.get("sales_count", 0) or 0
+            returns = sale.get("returns_count", 0) or 0
+            revenue = float(sale.get("revenue", 0) or 0)
+
+            if date not in daily_map:
+                daily_map[date] = {"date": date, "orders": 0, "sales": 0, "returns": 0, "revenue": 0.0}
+            daily_map[date]["orders"] += orders
+            daily_map[date]["sales"] += sales
+            daily_map[date]["returns"] += returns
+            daily_map[date]["revenue"] += revenue
+
+            if product_id not in product_map:
+                product_map[product_id] = {"orders": 0, "sales": 0, "returns": 0, "revenue": 0.0}
+            product_map[product_id]["orders"] += orders
+            product_map[product_id]["sales"] += sales
+            product_map[product_id]["returns"] += returns
+            product_map[product_id]["revenue"] += revenue
+
+            total_orders += orders
+            total_sales += sales
+            total_returns += returns
+            total_revenue += revenue
+
+        # Расчёт buyout_percent для daily
+        daily_list = []
+        for d in sorted(daily_map.values(), key=lambda x: x["date"]):
+            d["buyout_percent"] = round(d["sales"] / d["orders"] * 100, 1) if d["orders"] > 0 else 0
+            d["revenue"] = round(d["revenue"], 2)
+            daily_list.append(d)
+
+        # 4. By product
+        by_product = []
+        for product_id, m in product_map.items():
+            if product_id not in products:
+                continue
+            p = products[product_id]
+            if p.get("name", "").startswith("WB_ACCOUNT"):
+                continue
+            by_product.append({
+                "product_id": product_id,
+                "product_name": p["name"],
+                "barcode": p.get("barcode", ""),
+                "orders": m["orders"],
+                "sales": m["sales"],
+                "returns": m["returns"],
+                "buyout_percent": round(m["sales"] / m["orders"] * 100, 1) if m["orders"] > 0 else 0,
+                "revenue": round(m["revenue"], 2),
+                "avg_check": round(m["revenue"] / m["sales"], 2) if m["sales"] > 0 else 0,
+            })
+        by_product.sort(key=lambda x: x["orders"], reverse=True)
+
+        # 5. Непроведённые (settled via costs-tree)
+        unsettled_orders = 0
+        unsettled_amount = 0.0
+        try:
+            mp_list = [marketplace] if marketplace and marketplace != "all" else ["ozon", "wb"]
+            settled_revenue = 0.0
+            for mp in mp_list:
+                ct_result = supabase.rpc(
+                    "get_costs_tree",
+                    {
+                        "p_date_from": date_from,
+                        "p_date_to": date_to,
+                        "p_marketplace": mp,
+                        "p_product_id": None,
+                        "p_include_children": False,
+                        "p_user_id": current_user.id,
+                    }
+                ).execute()
+                if ct_result.data:
+                    ct_data = ct_result.data
+                    if isinstance(ct_data, dict):
+                        settled_revenue += abs(float(ct_data.get("total_revenue", 0) or 0))
+                    elif isinstance(ct_data, list) and len(ct_data) > 0:
+                        settled_revenue += abs(float(ct_data[0].get("total_revenue", 0) or 0))
+
+            if total_revenue > 0 and settled_revenue < total_revenue:
+                unsettled_amount = round(total_revenue - settled_revenue, 2)
+                ratio = settled_revenue / total_revenue
+                unsettled_orders = max(0, total_orders - round(total_orders * ratio))
+        except Exception:
+            pass  # Если costs-tree недоступен, просто не показываем unsettled
+
+        # 6. Summary
+        buyout_percent = round(total_sales / total_orders * 100, 1) if total_orders > 0 else 0
+        avg_check = round(total_revenue / total_sales, 2) if total_sales > 0 else 0
+
+        return {
+            "status": "success",
+            "period": {"from": date_from, "to": date_to},
+            "marketplace": marketplace or "all",
+            "summary": {
+                "total_orders": total_orders,
+                "total_sales": total_sales,
+                "total_returns": total_returns,
+                "buyout_percent": buyout_percent,
+                "total_revenue": round(total_revenue, 2),
+                "unsettled_orders": unsettled_orders,
+                "unsettled_amount": unsettled_amount,
+                "avg_check": avg_check,
+            },
+            "daily": daily_list,
+            "by_product": by_product,
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/dashboard/orders")
+async def get_orders_list(
+    current_user: CurrentUser = Depends(get_current_user),
+    sub: UserSubscription = Depends(require_feature("order_monitor")),
+    date_from: Optional[str] = Query(None, description="Дата начала (YYYY-MM-DD)"),
+    date_to: Optional[str] = Query(None, description="Дата окончания (YYYY-MM-DD)"),
+    marketplace: Optional[str] = Query(None, description="Фильтр по МП: wb, ozon"),
+    status: Optional[str] = Query(None, description="Фильтр по статусу: ordered, sold, returned, cancelled, delivering"),
+    product_id: Optional[str] = Query(None, description="Фильтр по product_id"),
+    settled: Optional[bool] = Query(None, description="Фильтр по проведённости"),
+    search: Optional[str] = Query(None, description="Поиск по order_id, barcode"),
+    page: int = Query(1, ge=1, description="Номер страницы"),
+    page_size: int = Query(50, ge=10, le=200, description="Размер страницы"),
+    sort_by: str = Query("order_date", description="Поле сортировки"),
+    sort_dir: str = Query("desc", description="Направление: asc, desc"),
+):
+    """
+    Список заказов с пагинацией и фильтрами.
+    Pro+ фича.
+    """
+    supabase = get_supabase_client()
+
+    if not date_from:
+        date_from = (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d")
+    if not date_to:
+        date_to = datetime.now().strftime("%Y-%m-%d")
+
+    try:
+        # Базовый запрос с JOIN на mp_products
+        query = (
+            supabase.table("mp_orders")
+            .select("*, mp_products(name, barcode)", count="exact")
+            .eq("user_id", current_user.id)
+            .gte("order_date", f"{date_from}T00:00:00")
+            .lte("order_date", f"{date_to}T23:59:59")
+        )
+
+        if marketplace and marketplace != "all":
+            query = query.eq("marketplace", marketplace)
+        if status:
+            query = query.eq("status", status)
+        if product_id:
+            query = query.eq("product_id", product_id)
+        if settled is not None:
+            query = query.eq("settled", settled)
+        if search:
+            query = query.or_(f"order_id.ilike.%{search}%,barcode.ilike.%{search}%")
+
+        # Сортировка
+        allowed_sort = {"order_date", "price", "payout", "status", "commission", "logistics", "settled"}
+        sort_field = sort_by if sort_by in allowed_sort else "order_date"
+        query = query.order(sort_field, desc=(sort_dir == "desc"))
+
+        # Пагинация
+        offset = (page - 1) * page_size
+        query = query.range(offset, offset + page_size - 1)
+
+        result = query.execute()
+        total_count = result.count if result.count is not None else 0
+
+        # Форматируем ответ
+        orders = []
+        for row in result.data:
+            product_info = row.get("mp_products") or {}
+            orders.append({
+                "id": row["id"],
+                "marketplace": row["marketplace"],
+                "order_id": row["order_id"],
+                "product_id": row.get("product_id"),
+                "product_name": product_info.get("name", "—"),
+                "barcode": row.get("barcode", ""),
+                "order_date": row["order_date"],
+                "last_change_date": row.get("last_change_date"),
+                "status": row["status"],
+                "price": float(row.get("price", 0) or 0),
+                "sale_price": float(row["sale_price"]) if row.get("sale_price") is not None else None,
+                "sale_amount": float(row["sale_amount"]) if row.get("sale_amount") is not None else None,
+                "commission": float(row.get("commission", 0) or 0),
+                "logistics": float(row.get("logistics", 0) or 0),
+                "storage_fee": float(row.get("storage_fee", 0) or 0),
+                "other_fees": float(row.get("other_fees", 0) or 0),
+                "payout": float(row["payout"]) if row.get("payout") is not None else None,
+                "settled": row.get("settled", False),
+                "region": row.get("region"),
+                "warehouse": row.get("warehouse"),
+                "wb_sale_id": row.get("wb_sale_id"),
+                "ozon_posting_status": row.get("ozon_posting_status"),
+            })
+
+        # Summary: агрегация по всем записям (не только по текущей странице)
+        summary_query = (
+            supabase.table("mp_orders")
+            .select("status, settled, payout, price, sale_price")
+            .eq("user_id", current_user.id)
+            .gte("order_date", f"{date_from}T00:00:00")
+            .lte("order_date", f"{date_to}T23:59:59")
+        )
+        if marketplace and marketplace != "all":
+            summary_query = summary_query.eq("marketplace", marketplace)
+        summary_result = summary_query.execute()
+
+        total_orders = len(summary_result.data)
+        total_settled = sum(1 for r in summary_result.data if r.get("settled"))
+        total_unsettled = total_orders - total_settled
+        total_payout = sum(float(r.get("payout", 0) or 0) for r in summary_result.data if r.get("payout"))
+        total_sold = sum(1 for r in summary_result.data if r.get("status") == "sold")
+        total_returned = sum(1 for r in summary_result.data if r.get("status") == "returned")
+        # Используем sale_price (реальная цена) если есть, иначе price (каталожная)
+        total_revenue = sum(
+            float(r.get("sale_price") or r.get("price", 0) or 0)
+            for r in summary_result.data
+        )
+
+        total_pages = max(1, (total_count + page_size - 1) // page_size)
+
+        return {
+            "status": "success",
+            "period": {"from": date_from, "to": date_to},
+            "total_count": total_count,
+            "page": page,
+            "page_size": page_size,
+            "total_pages": total_pages,
+            "orders": orders,
+            "summary": {
+                "total_orders": total_orders,
+                "total_sold": total_sold,
+                "total_returned": total_returned,
+                "total_settled": total_settled,
+                "total_unsettled": total_unsettled,
+                "total_payout": round(total_payout, 2),
+                "total_revenue": round(total_revenue, 2),
+                "buyout_percent": round(total_sold / total_orders * 100, 1) if total_orders > 0 else 0,
+            },
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/dashboard/orders/{order_id}")
+async def get_order_detail(
+    order_id: str,
+    current_user: CurrentUser = Depends(get_current_user),
+    sub: UserSubscription = Depends(require_feature("order_monitor")),
+):
+    """
+    Детали одного заказа с cost breakdown.
+    Pro+ фича.
+    """
+    supabase = get_supabase_client()
+
+    try:
+        result = (
+            supabase.table("mp_orders")
+            .select("*, mp_products(name, barcode)")
+            .eq("user_id", current_user.id)
+            .eq("order_id", order_id)
+            .limit(1)
+            .execute()
+        )
+
+        if not result.data:
+            raise HTTPException(status_code=404, detail="Order not found")
+
+        row = result.data[0]
+        product_info = row.get("mp_products") or {}
+
+        return {
+            "status": "success",
+            "order": {
+                "id": row["id"],
+                "marketplace": row["marketplace"],
+                "order_id": row["order_id"],
+                "product_id": row.get("product_id"),
+                "product_name": product_info.get("name", "—"),
+                "barcode": row.get("barcode", ""),
+                "order_date": row["order_date"],
+                "last_change_date": row.get("last_change_date"),
+                "status": row["status"],
+                "price": float(row.get("price", 0) or 0),
+                "sale_price": float(row["sale_price"]) if row.get("sale_price") is not None else None,
+                "sale_amount": float(row["sale_amount"]) if row.get("sale_amount") is not None else None,
+                "commission": float(row.get("commission", 0) or 0),
+                "logistics": float(row.get("logistics", 0) or 0),
+                "storage_fee": float(row.get("storage_fee", 0) or 0),
+                "other_fees": float(row.get("other_fees", 0) or 0),
+                "payout": float(row["payout"]) if row.get("payout") is not None else None,
+                "settled": row.get("settled", False),
+                "region": row.get("region"),
+                "warehouse": row.get("warehouse"),
+                "wb_sale_id": row.get("wb_sale_id"),
+                "wb_rrd_id": row.get("wb_rrd_id"),
+                "ozon_posting_status": row.get("ozon_posting_status"),
+                "raw_data": row.get("raw_data"),
+            },
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
