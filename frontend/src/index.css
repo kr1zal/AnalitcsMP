@@ -183,6 +183,20 @@ html, body {
   animation: hub-pulse 3s ease-in-out infinite;
 }
 
+/* V2 pulsing hub — scale breathing effect */
+.flow-hub-pulse rect:first-child {
+  animation: hub-pulse 3s ease-in-out infinite;
+}
+.flow-hub-pulse {
+  transform-origin: center;
+  transform-box: fill-box;
+  animation: hub-scale-pulse 2s ease-in-out infinite;
+}
+@keyframes hub-scale-pulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.03); }
+}
+
 @keyframes label-fade {
   from { opacity: 0; }
   to { opacity: 1; }
@@ -644,5 +658,225 @@ html, body {
   .nav-tab-strip {
     animation: none;
     opacity: 1;
+  }
+}
+
+/* ========================================
+   DataFlow V3 — Stripe-inspired styles
+   ======================================== */
+
+/* Dot grid background (adapted from Stripe Rule 2) */
+.v3-dot-grid {
+  background-image: url("data:image/svg+xml;utf8,<svg width='10' height='10' xmlns='http://www.w3.org/2000/svg'><rect x='0' y='0' width='2' height='2' fill='%236366f1'/></svg>");
+  background-size: 10px 10px;
+  background-position: 0 0;
+  opacity: 0.08;
+  -webkit-mask-image: linear-gradient(180deg, hsla(0, 0%, 85%, 0), #737373 50%, hsla(0, 0%, 85%, 0));
+  mask-image: linear-gradient(180deg, hsla(0, 0%, 85%, 0), #737373 50%, hsla(0, 0%, 85%, 0));
+  pointer-events: none;
+}
+
+/* Animated gradient border for hub (adapted from Stripe Rules 10-13) */
+.v3-hub-border {
+  animation: v3-gradient-rotate 2s ease-out infinite;
+}
+
+@keyframes v3-gradient-rotate {
+  0% {
+    stroke-dashoffset: 0;
+  }
+  100% {
+    stroke-dashoffset: -40;
+  }
+}
+
+/* Green pulsing status dots on WB/Ozon (connected indicators) */
+.v3-status-pulse {
+  animation: v3-pulse 2s ease-in-out infinite;
+}
+
+@keyframes v3-pulse {
+  0%, 100% { opacity: 0.85; r: 3.5; }
+  50% { opacity: 1; r: 4.5; }
+}
+
+/* ── Line opacity pulses (3 variants = organic, never synchronized) ── */
+.v3-line-a { animation: v3-line-glow 3s ease-in-out infinite; }
+.v3-line-b { animation: v3-line-glow 4s ease-in-out 1s infinite; }
+.v3-line-c { animation: v3-line-glow 3.5s ease-in-out 0.5s infinite; }
+
+@keyframes v3-line-glow {
+  0%, 100% { stroke-opacity: 0.6; }
+  50% { stroke-opacity: 1; }
+}
+
+/* ── Output label-change animations (each output uses a DIFFERENT one) ── */
+
+/* Output 1: simple crossfade */
+.v3-fade-in {
+  animation: v3-anim-fade 0.6s ease both;
+}
+@keyframes v3-anim-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* Output 2: scale bounce (appears with overshoot) */
+.v3-scale-in {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: v3-anim-scale 0.5s cubic-bezier(.4,0,.2,1) both;
+}
+@keyframes v3-anim-scale {
+  0% { opacity: 0; transform: scale(0.7); }
+  60% { transform: scale(1.06); }
+  100% { opacity: 1; transform: scale(1); }
+}
+
+/* Output 3: slide up from below */
+.v3-slide-up {
+  animation: v3-anim-slide 0.5s ease both;
+}
+@keyframes v3-anim-slide {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* ── Badge micro-animations (every badge = unique behavior) ── */
+
+/* Telegram: gentle float (up-down 3px) */
+.v3-float {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: v3-anim-float 4s ease-in-out infinite;
+}
+@keyframes v3-anim-float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-3px); }
+}
+
+/* Webhook: periodic flash/blink (simulates trigger event) */
+.v3-blink {
+  animation: v3-anim-blink 6s ease infinite;
+}
+@keyframes v3-anim-blink {
+  0%, 82%, 100% { opacity: 0.85; }
+  87% { opacity: 1; filter: brightness(1.4); }
+  92% { opacity: 0.6; }
+  96% { opacity: 0.85; }
+}
+
+/* Excel: subtle tilt wobble (±1.5deg) */
+.v3-wobble {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: v3-anim-wobble 5s ease-in-out infinite;
+}
+@keyframes v3-anim-wobble {
+  0%, 100% { transform: rotate(0deg); }
+  25% { transform: rotate(1.5deg); }
+  75% { transform: rotate(-1.5deg); }
+}
+
+/* PDF: slow opacity breathe */
+.v3-breathe {
+  animation: v3-anim-breathe 3.5s ease-in-out infinite;
+}
+@keyframes v3-anim-breathe {
+  0%, 100% { opacity: 0.65; }
+  50% { opacity: 1; }
+}
+
+/* Output 3: card-flip entrance (Отчёт → Excel → Презентация) */
+.v3-flip {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: v3-anim-flip 0.6s cubic-bezier(.4,0,.2,1) both;
+}
+@keyframes v3-anim-flip {
+  0% { opacity: 0; transform: scaleX(0); }
+  60% { opacity: 0.8; transform: scaleX(1.06); }
+  100% { opacity: 1; transform: scaleX(1); }
+}
+
+/* Excel/PDF badges: continuous 3D card flip (Stripe-style) */
+.v3-flip-loop {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: v3-anim-flip-loop 5s ease-in-out infinite;
+}
+.v3-flip-delay {
+  animation-delay: 2.5s;
+}
+@keyframes v3-anim-flip-loop {
+  0%, 30%, 100% { transform: scaleX(1); }
+  36% { transform: scaleX(0); }
+  42% { transform: scaleX(1); }
+}
+
+/* WB source: intermittent purple glow pulse */
+.v3-wb-pulse {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: v3-anim-wb-pulse 4s ease-in-out infinite;
+}
+@keyframes v3-anim-wb-pulse {
+  0%, 65%, 100% { filter: drop-shadow(0 0 0 transparent); transform: scale(1); }
+  35% { filter: drop-shadow(0 0 8px rgba(139,92,246,0.35)); transform: scale(1.015); }
+}
+
+/* Ozon source: gentle tilt-rock */
+.v3-ozon-tilt {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: v3-anim-ozon-tilt 6s ease-in-out infinite;
+}
+@keyframes v3-anim-ozon-tilt {
+  0%, 100% { transform: rotate(0deg) scale(1); }
+  15% { transform: rotate(0.6deg) scale(1.01); }
+  50% { transform: rotate(0deg) scale(1); }
+  65% { transform: rotate(-0.6deg) scale(1.01); }
+}
+
+/* WB icon: spinning dashed ring (data scanning) */
+.v3-wb-ring {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: v3-anim-wb-ring 3s linear infinite;
+}
+@keyframes v3-anim-wb-ring {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* Ozon icon: expanding sonar pulse */
+.v3-ozon-ring {
+  animation: v3-anim-ozon-ring 2.5s ease-out infinite;
+}
+@keyframes v3-anim-ozon-ring {
+  0% { r: 14; stroke-opacity: 0.35; stroke-width: 1.5; }
+  100% { r: 24; stroke-opacity: 0; stroke-width: 0.5; }
+}
+
+/* Pro subscription: golden pulse glow */
+.v3-pro-glow {
+  animation: v3-anim-pro-glow 2s ease-in-out infinite;
+}
+@keyframes v3-anim-pro-glow {
+  0%, 100% { stroke-opacity: 0.15; }
+  50% { stroke-opacity: 0.45; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .v3-hub-border, .v3-status-pulse,
+  .v3-line-a, .v3-line-b, .v3-line-c,
+  .v3-fade-in, .v3-scale-in, .v3-slide-up, .v3-flip,
+  .v3-float, .v3-blink, .v3-wobble, .v3-breathe,
+  .v3-flip-loop, .v3-wb-pulse, .v3-ozon-tilt,
+  .v3-wb-ring, .v3-ozon-ring, .v3-pro-glow {
+    animation: none;
+  }
+  .v3-dot-grid {
+    opacity: 0.05;
   }
 }

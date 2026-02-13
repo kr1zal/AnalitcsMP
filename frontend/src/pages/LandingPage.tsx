@@ -867,28 +867,37 @@ function DataFlowSection() {
 
   const lines = [
     // WB → input labels
-    'M140,153 C190,153 190,78 225,78',
-    'M140,153 C190,153 190,210 225,210',
+    'M140,153 C190,153 190,78 225,78',       // 0: WB → top
+    'M140,153 C190,153 190,210 225,210',      // 1: WB → mid
     // Ozon → input labels
-    'M140,267 C190,267 190,210 225,210',
-    'M140,267 C190,267 190,342 225,342',
+    'M140,267 C190,267 190,210 225,210',      // 2: Ozon → mid
+    'M140,267 C190,267 190,342 225,342',      // 3: Ozon → bottom
     // Input labels → hub
-    'M345,78 C395,78 395,210 420,210',
-    'M345,210 L420,210',
-    'M345,342 C395,342 395,210 420,210',
+    'M345,78 C395,78 395,210 420,210',        // 4: top → hub
+    'M345,210 L420,210',                       // 5: mid → hub
+    'M345,342 C395,342 395,210 420,210',      // 6: bottom → hub
     // Hub → output labels
-    'M580,210 C630,210 630,78 655,78',
-    'M580,210 L655,210',
-    'M580,210 C630,210 630,342 655,342',
+    'M580,210 C630,210 630,78 655,78',        // 7: hub → top out
+    'M580,210 L655,210',                       // 8: hub → mid out
+    'M580,210 C630,210 630,342 655,342',      // 9: hub → bottom out
+    // Export branches (Экспорт → Excel / PDF)
+    'M775,332 C800,332 810,310 830,310',      // 10: → Excel
+    'M775,352 C800,352 810,374 830,374',      // 11: → PDF
   ];
 
   const packets = [
-    { path: lines[0], dur: '2.5s', begin: '0s' },
-    { path: lines[3], dur: '3s', begin: '0.5s' },
-    { path: lines[4], dur: '2s', begin: '0.8s' },
-    { path: lines[6], dur: '2.5s', begin: '1.5s' },
-    { path: lines[7], dur: '2s', begin: '0.3s' },
-    { path: lines[9], dur: '2.5s', begin: '1s' },
+    { path: lines[0], dur: '2.5s', begin: '0s' },     // WB → top
+    { path: lines[1], dur: '2.8s', begin: '0.4s' },   // WB → mid
+    { path: lines[2], dur: '2.8s', begin: '0.6s' },   // Ozon → mid
+    { path: lines[3], dur: '3s', begin: '0.5s' },     // Ozon → bottom
+    { path: lines[4], dur: '2s', begin: '0.8s' },     // top → hub
+    { path: lines[5], dur: '1.8s', begin: '1s' },     // mid → hub
+    { path: lines[6], dur: '2.5s', begin: '1.5s' },   // bottom → hub
+    { path: lines[7], dur: '2s', begin: '0.3s' },     // hub → top out
+    { path: lines[8], dur: '1.8s', begin: '0.7s' },   // hub → mid out
+    { path: lines[9], dur: '2.5s', begin: '1s' },     // hub → bottom out
+    { path: lines[10], dur: '1.5s', begin: '0.2s' },  // → Excel
+    { path: lines[11], dur: '1.5s', begin: '0.9s' },  // → PDF
   ];
 
   return (
@@ -992,6 +1001,26 @@ function DataFlowSection() {
                   </g>
                 );
               })}
+
+              {/* Export format badges — alternating pulse */}
+              <g>
+                <animate attributeName="opacity" values="1;1;0;0" keyTimes="0;0.45;0.5;1" dur="2s" repeatCount="indefinite" />
+                <rect x="830" y="296" width="80" height="28" rx="6"
+                  fill="rgba(34,197,94,0.15)" stroke="rgba(34,197,94,0.4)" strokeWidth="1" />
+                <text x="870" y="314" textAnchor="middle"
+                  fill="#4ade80" fontSize="11" fontWeight="600" fontFamily="Inter,sans-serif">
+                  Excel
+                </text>
+              </g>
+              <g>
+                <animate attributeName="opacity" values="0;0;1;1" keyTimes="0;0.45;0.5;1" dur="2s" repeatCount="indefinite" />
+                <rect x="830" y="360" width="80" height="28" rx="6"
+                  fill="rgba(239,68,68,0.15)" stroke="rgba(239,68,68,0.4)" strokeWidth="1" />
+                <text x="870" y="378" textAnchor="middle"
+                  fill="#f87171" fontSize="11" fontWeight="600" fontFamily="Inter,sans-serif">
+                  PDF
+                </text>
+              </g>
             </svg>
           </div>
 
@@ -1072,6 +1101,812 @@ function DataFlowSection() {
             </svg>
           </div>
         </RevealSection>
+      </div>
+    </section>
+  );
+}
+
+/* ──────────────────────────────────────────────
+   DATAFLOW V2 — COMPARISON PROTOTYPE (delete after review)
+   All proposed features:
+   1. Third source: "Рекламные API"
+   2. Telegram + API output badges
+   3. Pulsing hub + floating badges (AES-128, 30 мин)
+   4. Micro-metrics flying along paths (₽, +12%, 5 SKU)
+   5. Excel/PDF badges (same as V1)
+   ────────────────────────────────────────────── */
+
+function DataFlowSectionV2() {
+  const [cycle, setCycle] = useState(0);
+  useEffect(() => {
+    const timer = setInterval(() => setCycle((c) => (c + 1) % 3), 3000);
+    return () => clearInterval(timer);
+  }, []);
+
+  const inputLabels = [
+    ['Продажи', 'Заказы', 'Выкупы'],
+    ['Остатки', 'FBO', 'Склады'],
+    ['Реклама', 'Удержания', 'Комиссия'],
+  ];
+  const outputLabels = [
+    ['Дашборд', 'Графики', 'Дашборд'],
+    ['Прибыль', 'Маржа', 'ROI'],
+    ['Отчёт', 'PDF', 'Экспорт'],
+  ];
+
+  const rowY = [78, 210, 342];
+
+  const lines = [
+    // WB → все 3 входа
+    'M140,153 C190,153 190,78 225,78',       // 0: WB → Продажи
+    'M140,153 C190,153 190,210 225,210',      // 1: WB → Остатки
+    'M140,153 C190,153 190,342 225,342',      // 2: WB → Реклама
+    // Ozon → все 3 входа
+    'M140,267 C190,267 190,78 225,78',        // 3: Ozon → Продажи
+    'M140,267 C190,267 190,210 225,210',      // 4: Ozon → Остатки
+    'M140,267 C190,267 190,342 225,342',      // 5: Ozon → Реклама
+    // Входы → хаб
+    'M345,78 C395,78 395,210 420,210',        // 6: top → hub
+    'M345,210 L420,210',                       // 7: mid → hub
+    'M345,342 C395,342 395,210 420,210',      // 8: bottom → hub
+    // Хаб → выходы
+    'M580,210 C630,210 630,78 655,78',        // 9: hub → Дашборд
+    'M580,210 L655,210',                       // 10: hub → Прибыль
+    'M580,210 C630,210 630,342 655,342',      // 11: hub → Экспорт
+    // Ветки от Дашборд
+    'M775,68 C800,68 810,48 830,48',          // 12: → Telegram
+    'M775,88 C800,88 810,108 830,108',        // 13: → Webhook
+    // Ветка от Прибыль
+    'M775,210 L830,210',                       // 14: → ROI
+    // Ветки от Экспорт
+    'M775,330 C800,330 810,300 830,300',      // 15: → Excel
+    'M775,342 L830,342',                       // 16: → REST API
+    'M775,354 C800,354 810,384 830,384',      // 17: → PDF
+  ];
+
+  const packets = [
+    // WB → входы (фиолетовые)
+    { path: lines[0], dur: '2.5s', begin: '0s', fill: '#7c3aed' },
+    { path: lines[1], dur: '2.8s', begin: '0.7s', fill: '#7c3aed' },
+    { path: lines[2], dur: '3.2s', begin: '1.4s', fill: '#7c3aed' },
+    // Ozon → входы (синие)
+    { path: lines[3], dur: '3s', begin: '0.3s', fill: '#2563eb' },
+    { path: lines[4], dur: '2.6s', begin: '1s', fill: '#2563eb' },
+    { path: lines[5], dur: '3s', begin: '1.8s', fill: '#2563eb' },
+    // Входы → хаб (индиго)
+    { path: lines[6], dur: '2s', begin: '0.8s', fill: '#6366f1' },
+    { path: lines[7], dur: '1.8s', begin: '1.2s', fill: '#6366f1' },
+    { path: lines[8], dur: '2.5s', begin: '1.6s', fill: '#6366f1' },
+    // Хаб → выходы
+    { path: lines[9], dur: '2s', begin: '0.3s', fill: '#16a34a' },
+    { path: lines[10], dur: '1.8s', begin: '0.7s', fill: '#d97706' },
+    { path: lines[11], dur: '2.5s', begin: '1.1s', fill: '#6366f1' },
+    // Ветки
+    { path: lines[12], dur: '1.5s', begin: '0.5s', fill: '#16a34a' },
+    { path: lines[13], dur: '1.5s', begin: '0.8s', fill: '#16a34a' },
+    { path: lines[14], dur: '1.2s', begin: '0.3s', fill: '#d97706' },
+    { path: lines[15], dur: '1.5s', begin: '0.2s', fill: '#16a34a' },
+    { path: lines[16], dur: '1.2s', begin: '0.7s', fill: '#6366f1' },
+    { path: lines[17], dur: '1.5s', begin: '0.9s', fill: '#dc2626' },
+  ];
+
+  // Микро-метрики — какие данные летят по каждой цепочке
+  const metrics = [
+    // WB данные (фиолетовые)
+    { text: '5 SKU',  path: lines[0], dur: '4s', begin: '0s', fill: '#7c3aed' },
+    { text: 'FBO',    path: lines[1], dur: '4s', begin: '1.5s', fill: '#7c3aed' },
+    { text: 'CPM',    path: lines[2], dur: '4.5s', begin: '3s', fill: '#7c3aed' },
+    // Ozon данные (синие)
+    { text: '3 SKU',  path: lines[3], dur: '4s', begin: '0.8s', fill: '#2563eb' },
+    { text: 'FBO',    path: lines[4], dur: '4s', begin: '2.2s', fill: '#2563eb' },
+    { text: 'ДРР',    path: lines[5], dur: '4.5s', begin: '3.5s', fill: '#2563eb' },
+    // Выходные метрики
+    { text: '+12%',   path: lines[9], dur: '3.5s', begin: '1s', fill: '#16a34a' },
+    { text: '₽',      path: lines[10], dur: '3s', begin: '0.5s', fill: '#d97706' },
+    { text: '−3.2%',  path: lines[11], dur: '3.5s', begin: '2s', fill: '#dc2626' },
+  ];
+
+  return (
+    <section className="py-16 sm:py-24 bg-gray-50 overflow-hidden">
+      <div className="max-w-5xl mx-auto px-4 sm:px-6">
+        <RevealSection>
+          <div className="text-center mb-10 sm:mb-14">
+            <div className="inline-block px-3 py-1 rounded-full text-xs font-semibold text-amber-700 bg-amber-100 border border-amber-300 mb-4">
+              V2 — СРАВНЕНИЕ (удалить после ревью)
+            </div>
+            <h2 className="text-2xl sm:text-3xl font-bold text-gray-900">
+              Как работают ваши данные
+            </h2>
+            <p className="mt-3 text-sm sm:text-base text-gray-500 max-w-lg mx-auto">
+              Автоматический сбор, обработка и визуализация — в реальном времени
+            </p>
+          </div>
+        </RevealSection>
+
+        <RevealSection delay={200}>
+          <div className="hidden sm:block relative rounded-2xl border border-gray-200 bg-white shadow-sm p-6 sm:p-8">
+            {/* Light dot grid */}
+            <div className="absolute inset-0 rounded-2xl" style={{
+              backgroundImage: 'radial-gradient(circle, rgba(99,102,241,0.08) 1px, transparent 1px)',
+              backgroundSize: '20px 20px',
+            }} />
+            <svg
+              viewBox="0 0 960 420"
+              className="w-full h-auto relative"
+              fill="none"
+            >
+              {/* [A+G] Connection lines — animated dash + variable width */}
+              {lines.map((d, i) => {
+                const w = i <= 5 ? 1.2 : i <= 8 ? 1.8 : i <= 11 ? 2 : 1.2;
+                const alpha = i <= 5 ? 0.18 : i <= 8 ? 0.22 : i <= 11 ? 0.28 : 0.15;
+                return (
+                  <path key={`ln-${i}`} d={d} className="flow-line"
+                    stroke={`rgba(99,102,241,${alpha})`} strokeWidth={w} />
+                );
+              })}
+
+              {/* [B] Traveling data packets — color-coded by source */}
+              {packets.map((p, i) => (
+                <circle key={`pk-${i}`} r="3.5" fill={p.fill} opacity="0.7">
+                  <animateMotion dur={p.dur} begin={p.begin} repeatCount="indefinite" path={p.path} />
+                </circle>
+              ))}
+
+              {/* Micro-metrics flying along paths */}
+              {metrics.map((m, i) => (
+                <text key={`mt-${i}`} fontSize="9" fill={m.fill} fontWeight="700" fontFamily="Inter,sans-serif" opacity="0.85">
+                  {m.text}
+                  <animateMotion dur={m.dur} begin={m.begin} repeatCount="indefinite" path={m.path} />
+                </text>
+              ))}
+
+              {/* Source: Wildberries */}
+              <rect x="30" y="130" width="110" height="46" rx="10"
+                fill="rgba(139,63,253,0.08)" stroke="rgba(139,63,253,0.25)" strokeWidth="1" />
+              <text x="85" y="158" textAnchor="middle"
+                fill="#7c3aed" fontSize="13" fontWeight="600" fontFamily="Inter,sans-serif">
+                Wildberries
+              </text>
+              {/* [E] Status dot — connected */}
+              <circle cx="132" cy="138" r="3.5" fill="#22c55e">
+                <animate attributeName="r" values="3;4.5;3" dur="2s" repeatCount="indefinite" />
+                <animate attributeName="opacity" values="0.6;1;0.6" dur="2s" repeatCount="indefinite" />
+              </circle>
+
+              {/* Source: Ozon */}
+              <rect x="30" y="244" width="110" height="46" rx="10"
+                fill="rgba(37,99,235,0.08)" stroke="rgba(37,99,235,0.25)" strokeWidth="1" />
+              <text x="85" y="272" textAnchor="middle"
+                fill="#2563eb" fontSize="13" fontWeight="600" fontFamily="Inter,sans-serif">
+                Ozon
+              </text>
+              {/* [E] Status dot — connected */}
+              <circle cx="132" cy="252" r="3.5" fill="#22c55e">
+                <animate attributeName="r" values="3;4.5;3" dur="2s" begin="0.5s" repeatCount="indefinite" />
+                <animate attributeName="opacity" values="0.6;1;0.6" dur="2s" begin="0.5s" repeatCount="indefinite" />
+              </circle>
+
+              {/* Input labels (cycling) */}
+              {inputLabels.map((variants, idx) => {
+                const label = variants[(cycle + idx) % 3];
+                return (
+                  <g key={`in-${idx}`}>
+                    <rect x="225" y={rowY[idx] - 20} width="120" height="40" rx="8"
+                      fill="white" stroke="#e5e7eb" strokeWidth="1" />
+                    <text
+                      key={label}
+                      x="285" y={rowY[idx] + 5} textAnchor="middle"
+                      fill="#1f2937" fontSize="12" fontWeight="500" fontFamily="Inter,sans-serif"
+                      className="flow-label-enter"
+                    >
+                      {label}
+                    </text>
+                  </g>
+                );
+              })}
+
+              {/* [F] Pulsing central hub with processing spinners */}
+              <g className="flow-hub-pulse">
+                <rect x="420" y="165" width="160" height="90" rx="16"
+                  fill="rgba(99,102,241,0.08)" stroke="rgba(99,102,241,0.3)" strokeWidth="1.5" />
+                {/* Glow ring */}
+                <rect x="414" y="159" width="172" height="102" rx="20"
+                  fill="none" stroke="rgba(99,102,241,0.1)" strokeWidth="3">
+                  <animate attributeName="opacity" values="0.2;0.6;0.2" dur="2s" repeatCount="indefinite" />
+                </rect>
+                {/* Dual counter-rotating processing arcs */}
+                <circle cx="500" cy="210" r="56" fill="none"
+                  stroke="rgba(99,102,241,0.15)" strokeWidth="1.5"
+                  strokeDasharray="25 327" strokeLinecap="round">
+                  <animateTransform attributeName="transform" type="rotate"
+                    values="0 500 210;360 500 210" dur="4s" repeatCount="indefinite" />
+                </circle>
+                <circle cx="500" cy="210" r="56" fill="none"
+                  stroke="rgba(99,102,241,0.1)" strokeWidth="1.5"
+                  strokeDasharray="15 337" strokeLinecap="round">
+                  <animateTransform attributeName="transform" type="rotate"
+                    values="360 500 210;0 500 210" dur="5s" repeatCount="indefinite" />
+                </circle>
+                <text x="500" y="205" textAnchor="middle"
+                  fill="#312e81" fontSize="15" fontWeight="700" fontFamily="Inter,sans-serif">
+                  RevioMP
+                </text>
+                <text x="500" y="225" textAnchor="middle"
+                  fill="#6366f1" fontSize="11" fontWeight="500" fontFamily="Inter,sans-serif">
+                  Analytics
+                </text>
+              </g>
+
+              {/* Floating badges around hub — faster pulse */}
+              <g>
+                <animate attributeName="opacity" values="0.5;1;0.5" dur="2s" repeatCount="indefinite" />
+                <rect x="395" y="138" width="62" height="20" rx="10"
+                  fill="rgba(22,163,74,0.08)" stroke="rgba(22,163,74,0.25)" strokeWidth="0.5" />
+                <text x="426" y="152" textAnchor="middle"
+                  fill="#16a34a" fontSize="8" fontWeight="600" fontFamily="Inter,sans-serif">
+                  AES-128
+                </text>
+              </g>
+              <g>
+                <animate attributeName="opacity" values="0.5;1;0.5" dur="2s" begin="0.7s" repeatCount="indefinite" />
+                <rect x="543" y="262" width="56" height="20" rx="10"
+                  fill="rgba(99,102,241,0.08)" stroke="rgba(99,102,241,0.2)" strokeWidth="0.5" />
+                <text x="571" y="276" textAnchor="middle"
+                  fill="#4f46e5" fontSize="8" fontWeight="600" fontFamily="Inter,sans-serif">
+                  30 мин
+                </text>
+              </g>
+              <g>
+                <animate attributeName="opacity" values="0.5;1;0.5" dur="2s" begin="1.3s" repeatCount="indefinite" />
+                <rect x="543" y="138" width="44" height="20" rx="10"
+                  fill="rgba(139,63,253,0.08)" stroke="rgba(139,63,253,0.2)" strokeWidth="0.5" />
+                <text x="565" y="152" textAnchor="middle"
+                  fill="#7c3aed" fontSize="9">
+                  🔒
+                </text>
+              </g>
+
+              {/* Output labels (cycling) */}
+              {outputLabels.map((variants, idx) => {
+                const label = variants[(cycle + idx) % 3];
+                return (
+                  <g key={`out-${idx}`}>
+                    <rect x="655" y={rowY[idx] - 20} width="120" height="40" rx="8"
+                      fill="white" stroke="#e5e7eb" strokeWidth="1" />
+                    <text
+                      key={label}
+                      x="715" y={rowY[idx] + 5} textAnchor="middle"
+                      fill="#1f2937" fontSize="12" fontWeight="500" fontFamily="Inter,sans-serif"
+                      className="flow-label-enter"
+                    >
+                      {label}
+                    </text>
+                  </g>
+                );
+              })}
+
+              {/* ─── Output badges ─── */}
+
+              {/* Telegram — от Дашборд */}
+              <g>
+                <animate attributeName="opacity" values="0.6;1;0.6" dur="1.5s" repeatCount="indefinite" />
+                <rect x="830" y="34" width="90" height="28" rx="6"
+                  fill="rgba(14,165,233,0.08)" stroke="rgba(14,165,233,0.3)" strokeWidth="1" />
+                <text x="875" y="52" textAnchor="middle"
+                  fill="#0284c7" fontSize="10" fontWeight="600" fontFamily="Inter,sans-serif">
+                  Telegram
+                </text>
+              </g>
+
+              {/* [H] Webhook — от Дашборд */}
+              <g>
+                <animate attributeName="opacity" values="0.6;1;0.6" dur="1.5s" begin="0.3s" repeatCount="indefinite" />
+                <rect x="830" y="94" width="90" height="28" rx="6"
+                  fill="rgba(16,185,129,0.08)" stroke="rgba(16,185,129,0.3)" strokeWidth="1" />
+                <text x="875" y="112" textAnchor="middle"
+                  fill="#059669" fontSize="10" fontWeight="600" fontFamily="Inter,sans-serif">
+                  Webhook
+                </text>
+              </g>
+
+              {/* [C] ROI badge — от Прибыль */}
+              <g>
+                <animate attributeName="opacity" values="0.6;1;0.6" dur="1.5s" begin="0.4s" repeatCount="indefinite" />
+                <rect x="830" y="196" width="80" height="28" rx="6"
+                  fill="rgba(217,119,6,0.08)" stroke="rgba(217,119,6,0.3)" strokeWidth="1" />
+                <text x="870" y="214" textAnchor="middle"
+                  fill="#d97706" fontSize="10" fontWeight="600" fontFamily="Inter,sans-serif">
+                  +42% ROI
+                </text>
+              </g>
+
+              {/* Excel — от Экспорт */}
+              <g>
+                <animate attributeName="opacity" values="0.6;1;0.6" dur="1.5s" begin="0.1s" repeatCount="indefinite" />
+                <rect x="830" y="286" width="80" height="28" rx="6"
+                  fill="rgba(22,163,74,0.08)" stroke="rgba(22,163,74,0.3)" strokeWidth="1" />
+                <text x="870" y="304" textAnchor="middle"
+                  fill="#16a34a" fontSize="11" fontWeight="600" fontFamily="Inter,sans-serif">
+                  Excel
+                </text>
+              </g>
+
+              {/* REST API — от Экспорт */}
+              <g>
+                <animate attributeName="opacity" values="0.6;1;0.6" dur="1.5s" begin="0.5s" repeatCount="indefinite" />
+                <rect x="830" y="328" width="80" height="28" rx="6"
+                  fill="rgba(124,58,237,0.08)" stroke="rgba(124,58,237,0.3)" strokeWidth="1" />
+                <text x="870" y="346" textAnchor="middle"
+                  fill="#7c3aed" fontSize="10" fontWeight="600" fontFamily="Inter,sans-serif">
+                  REST API
+                </text>
+              </g>
+
+              {/* PDF — от Экспорт */}
+              <g>
+                <animate attributeName="opacity" values="0.6;1;0.6" dur="1.5s" begin="0.75s" repeatCount="indefinite" />
+                <rect x="830" y="370" width="80" height="28" rx="6"
+                  fill="rgba(220,38,38,0.08)" stroke="rgba(220,38,38,0.3)" strokeWidth="1" />
+                <text x="870" y="388" textAnchor="middle"
+                  fill="#dc2626" fontSize="11" fontWeight="600" fontFamily="Inter,sans-serif">
+                  PDF
+                </text>
+              </g>
+            </svg>
+          </div>
+
+          {/* Mobile: skip for comparison */}
+          <div className="sm:hidden text-center text-gray-400 text-sm py-8">
+            V2 comparison — desktop only
+          </div>
+        </RevealSection>
+      </div>
+    </section>
+  );
+}
+
+/* ──────────────────────────────────────────────
+   DATAFLOW V3 — LIVING ECOSYSTEM
+   Every element has its own rhythm and animation type.
+   No synchronized breathing — organic, independent motion.
+   Traveling dots on lines, varied label transitions,
+   unique micro-animations per badge.
+   ────────────────────────────────────────────── */
+
+function DataFlowSectionV3() {
+  const [triggered, setTriggered] = useState(false);
+  const [alive, setAlive] = useState(false);
+  const [proActive, setProActive] = useState(false);
+  const [tick, setTick] = useState(-1);
+  const sectionRef = useRef<HTMLDivElement>(null);
+
+  /* ── Scroll trigger ── */
+  useEffect(() => {
+    const el = sectionRef.current;
+    if (!el) return;
+    const obs = new IntersectionObserver(
+      ([e]) => { if (e.isIntersecting) { setTriggered(true); obs.unobserve(el); } },
+      { threshold: 0.15 },
+    );
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, []);
+
+  /* ── Alive flag: micro-animations start after entrance completes ── */
+  useEffect(() => {
+    if (!triggered) return;
+    const t = setTimeout(() => setAlive(true), 3200);
+    return () => clearTimeout(t);
+  }, [triggered]);
+
+  /* ── Master tick (1s interval, drives all label cycling) ── */
+  useEffect(() => {
+    if (!alive) return;
+    setTick(0);
+    const t = setInterval(() => setTick(c => c + 1), 1000);
+    return () => clearInterval(t);
+  }, [alive]);
+
+  /* ── Content derivation (each output cycles at its own rate + offset) ── */
+  const o1Labels = ['Дашборд', 'Графики', 'Аналитика'];
+  const o2Labels = ['Прибыль', 'Маржа', 'ROI'];
+  const o3Labels = ['Отчёт', 'Презентация'];
+  const roiValues = ['+42%', '+38%', '+55%', '+47%'];
+
+  const o1 = tick >= 0 ? o1Labels[Math.floor(tick / 4) % 3] : o1Labels[0];
+  const o2 = tick >= 0 ? o2Labels[Math.floor((tick + 2) / 3) % 3] : o2Labels[0];
+  const o3Cycle = tick >= 0 ? Math.floor((tick + 1) / 5) : -1;
+  const o3 = tick >= 0 ? o3Labels[o3Cycle % 2] : o3Labels[0];
+  const roi = tick >= 0 ? roiValues[Math.floor((tick + 3) / 4) % 4] : roiValues[0];
+
+  /* ── Entrance helper (one-shot, staggered) ── */
+  const show = (delay: number): React.CSSProperties => ({
+    opacity: triggered ? 1 : 0,
+    transform: triggered ? 'scale(1)' : 'scale(0.8)',
+    transition: triggered
+      ? `opacity 0.5s cubic-bezier(.4,0,.2,1) ${delay}s, transform 0.5s cubic-bezier(.4,0,.2,1) ${delay}s`
+      : 'none',
+  });
+
+  /* ── Line draw-on helper (draws once, stays with varied dash pattern) ── */
+  const draw = (delay: number, len: number, dashPat = '2 4') => ({
+    strokeDasharray: triggered ? dashPat : `${len}`,
+    strokeDashoffset: triggered ? 0 : len,
+    style: {
+      transition: triggered
+        ? `stroke-dashoffset 1.2s cubic-bezier(.66,0,.34,1) ${delay}s, stroke-dasharray 0.01s linear ${delay + 1.2}s`
+        : 'none',
+    } as React.CSSProperties,
+  });
+
+  /* ── Pro-tree entrance/exit helpers ── */
+  const proShow = (d: number): React.CSSProperties => ({
+    opacity: proActive ? 1 : 0,
+    transform: proActive ? 'scale(1)' : 'scale(0.5)',
+    transition: `opacity 0.35s cubic-bezier(.4,0,.2,1) ${proActive ? d : 0}s, transform 0.35s cubic-bezier(.4,0,.2,1) ${proActive ? d : 0}s`,
+    transformBox: 'fill-box' as any,
+    transformOrigin: 'center',
+  });
+
+  const proDraw = (d: number, len: number) => ({
+    strokeDasharray: proActive ? '3 4' : `${len}`,
+    strokeDashoffset: proActive ? 0 : len,
+    style: {
+      transition: proActive
+        ? `stroke-dashoffset 0.5s ease ${d}s, stroke-dasharray 0.01s linear ${d + 0.5}s`
+        : `stroke-dashoffset 0.3s ease 0s, stroke-dasharray 0.01s linear 0s`,
+    } as React.CSSProperties,
+  });
+
+  /* ── Path definitions ── */
+  const P = {
+    wbToHub:   'M178,173 L298,173 L298,238 L416,238',
+    ozonToHub: 'M178,348 L298,348 L298,288 L416,288',
+    ymToHub:   'M168,465 L258,465 L258,308 L416,308',
+    hubToD:    'M594,238 L648,238 L648,120 L700,120',
+    hubToP:    'M594,263 L700,263',
+    hubToE:    'M594,288 L648,288 L648,410 L700,410',
+    dToB1:     'M830,108 L858,108 L858,84  L882,84',
+    dToB2:     'M830,132 L858,132 L858,150 L882,150',
+    pToB3:     'M830,263 L882,263',
+    eToB4:     'M830,400 L858,400 L858,390 L882,390',
+    eToB5:     'M830,420 L858,420 L858,436 L882,436',
+    hubToAPI:  'M505,312 L505,465',
+  };
+
+  /* ── Pro-tree paths ── */
+  const proP = {
+    trunk:  'M765,500 L765,520',
+    left:   'M765,520 L665,548',
+    center: 'M765,520 L765,548',
+    right:  'M765,520 L865,548',
+  };
+
+  /* ── Traveling data packet configs ── */
+  const packets = [
+    { path: P.wbToHub,   c: '#8b5cf6', r: 2.5, op: 0.7,  dur: '2.5s', begin: '0s' },
+    { path: P.wbToHub,   c: '#8b5cf6', r: 1.5, op: 0.35, dur: '2.5s', begin: '1.2s' },
+    { path: P.ozonToHub, c: '#3b82f6', r: 2.5, op: 0.65, dur: '3s',   begin: '0.5s' },
+    { path: P.ozonToHub, c: '#3b82f6', r: 1.5, op: 0.3,  dur: '3s',   begin: '2s' },
+    { path: P.hubToD,    c: '#6366f1', r: 2,   op: 0.5,  dur: '2s',   begin: '0.3s' },
+    { path: P.hubToP,    c: '#6366f1', r: 2,   op: 0.5,  dur: '1.2s', begin: '0.8s' },
+    { path: P.hubToE,    c: '#6366f1', r: 2,   op: 0.5,  dur: '2s',   begin: '1.3s' },
+    { path: P.dToB1,     c: '#0ea5e9', r: 1.5, op: 0.4,  dur: '1.5s', begin: '0.2s' },
+    { path: P.dToB2,     c: '#10b981', r: 1.5, op: 0.4,  dur: '1.5s', begin: '0.7s' },
+    { path: P.pToB3,     c: '#d97706', r: 1.5, op: 0.4,  dur: '1s',   begin: '0.6s' },
+    { path: P.hubToAPI,  c: '#10b981', r: 2,   op: 0.5,  dur: '2.2s', begin: '0.4s' },
+  ];
+
+  const outY = [120, 263, 410];
+  const outTexts = [o1, o2, o3];
+  /* Each output: DIFFERENT CSS enter animation (fade / scale-bounce / slide-up) */
+  const outAnim = ['v3-fade-in', 'v3-scale-in', 'v3-flip'];
+  const outDelay = [1.5, 1.7, 1.9];
+
+  const badgeData = [
+    { x: 882, y: 70, w: 85, h: 26, fill: 'rgba(14,165,233,0.06)', stroke: 'rgba(14,165,233,0.22)', color: '#0284c7', text: 'Telegram', anim: 'v3-float' },
+    { x: 882, y: 137, w: 85, h: 26, fill: 'rgba(16,185,129,0.06)', stroke: 'rgba(16,185,129,0.22)', color: '#059669', text: 'Webhook', anim: 'v3-blink' },
+    { x: 882, y: 250, w: 78, h: 26, fill: 'rgba(217,119,6,0.06)', stroke: 'rgba(217,119,6,0.22)', color: '#d97706', text: roi, anim: 'v3-scale-in', dynamic: true },
+    { x: 882, y: 377, w: 78, h: 26, fill: 'rgba(22,163,74,0.06)', stroke: 'rgba(22,163,74,0.22)', color: '#16a34a', text: 'Excel', anim: 'v3-flip-loop' },
+    { x: 882, y: 423, w: 78, h: 26, fill: 'rgba(220,38,38,0.06)', stroke: 'rgba(220,38,38,0.22)', color: '#dc2626', text: 'PDF', anim: 'v3-flip-loop v3-flip-delay' },
+  ];
+  const badgeDelay = [2.2, 2.3, 2.4, 2.5, 2.6];
+
+  return (
+    <section ref={sectionRef} className="py-16 sm:py-24 bg-white overflow-hidden">
+      <div className="max-w-5xl mx-auto px-4 sm:px-6">
+        <RevealSection>
+          <div className="text-center mb-10 sm:mb-14">
+            <div className="inline-block px-3 py-1 rounded-full text-xs font-semibold text-emerald-700 bg-emerald-100 border border-emerald-300 mb-4">
+              V3 — LIVING ECOSYSTEM
+            </div>
+            <h2 className="text-2xl sm:text-3xl font-bold text-gray-900">
+              Единая платформа аналитики
+            </h2>
+            <p className="mt-3 text-sm sm:text-base text-gray-500 max-w-lg mx-auto">
+              Подключите маркетплейсы — получите готовую аналитику за минуты
+            </p>
+          </div>
+        </RevealSection>
+
+        {/* ── Desktop diagram ── */}
+        <div className="hidden sm:block relative rounded-2xl border border-gray-100 bg-[#fafbfc] p-6 sm:p-10 overflow-hidden">
+          <div className="absolute inset-0 rounded-2xl v3-dot-grid" />
+
+          <svg viewBox="0 0 1000 590" className="w-full h-auto relative" fill="none">
+            <defs>
+              <filter id="v3-hub-shadow" x="-15%" y="-15%" width="130%" height="150%">
+                <feDropShadow dx="0" dy="6" stdDeviation="14" floodColor="rgba(99,102,241,0.10)" />
+              </filter>
+              <linearGradient id="v3-hub-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stopColor="#6366f1" />
+                <stop offset="50%" stopColor="#a855f7" />
+                <stop offset="100%" stopColor="#6366f1" />
+              </linearGradient>
+            </defs>
+
+            {/* ─── LINES — varied dash patterns + independent opacity pulses ─── */}
+            <path d={P.wbToHub} stroke="rgba(139,63,253,0.25)" strokeWidth={1} vectorEffect="non-scaling-stroke" fill="none" className={alive ? 'v3-line-a' : ''} {...draw(0.3, 350, '2 4')} />
+            <path d={P.ozonToHub} stroke="rgba(37,99,235,0.25)" strokeWidth={1} vectorEffect="non-scaling-stroke" fill="none" className={alive ? 'v3-line-b' : ''} {...draw(0.5, 350, '6 3')} />
+            <path d={P.ymToHub} stroke="rgba(156,163,175,0.12)" strokeWidth={1} vectorEffect="non-scaling-stroke" fill="none" className={alive ? 'v3-line-c' : ''} {...draw(0.8, 450, '4 4')} />
+
+            <path d={P.hubToD} stroke="rgba(99,102,241,0.45)" strokeWidth={1.2} vectorEffect="non-scaling-stroke" fill="none" className={alive ? 'v3-line-c' : ''} {...draw(1.0, 250, '1 3')} />
+            <path d={P.hubToP} stroke="rgba(99,102,241,0.45)" strokeWidth={1.2} vectorEffect="non-scaling-stroke" fill="none" className={alive ? 'v3-line-a' : ''} {...draw(1.2, 110, '1 3')} />
+            <path d={P.hubToE} stroke="rgba(99,102,241,0.45)" strokeWidth={1.2} vectorEffect="non-scaling-stroke" fill="none" className={alive ? 'v3-line-b' : ''} {...draw(1.4, 250, '1 3')} />
+
+            <path d={P.dToB1} stroke="rgba(14,165,233,0.15)" strokeWidth={0.75} vectorEffect="non-scaling-stroke" fill="none" className={alive ? 'v3-line-b' : ''} {...draw(1.8, 80, '2 3')} />
+            <path d={P.dToB2} stroke="rgba(16,185,129,0.15)" strokeWidth={0.75} vectorEffect="non-scaling-stroke" fill="none" className={alive ? 'v3-line-c' : ''} {...draw(1.9, 80, '2 3')} />
+            <path d={P.pToB3} stroke="rgba(217,119,6,0.15)" strokeWidth={0.75} vectorEffect="non-scaling-stroke" fill="none" className={alive ? 'v3-line-a' : ''} {...draw(2.0, 52, '2 3')} />
+            <path d={P.eToB4} stroke="rgba(22,163,74,0.15)" strokeWidth={0.75} vectorEffect="non-scaling-stroke" fill="none" className={alive ? 'v3-line-c' : ''} {...draw(2.1, 80, '2 3')} />
+            <path d={P.eToB5} stroke="rgba(220,38,38,0.15)" strokeWidth={0.75} vectorEffect="non-scaling-stroke" fill="none" className={alive ? 'v3-line-b' : ''} {...draw(2.2, 80, '2 3')} />
+            <path d={P.hubToAPI} stroke="rgba(16,185,129,0.40)" strokeWidth={1.2} vectorEffect="non-scaling-stroke" fill="none" className={alive ? 'v3-line-a' : ''} {...draw(1.6, 160, '3 5')} />
+
+            {/* ─── TRAVELING DATA PACKETS (continuous after alive) ─── */}
+            {alive && packets.map((p, i) => (
+              <circle key={`pkt-${i}`} r={p.r} fill={p.c} opacity={p.op}>
+                <animateMotion dur={p.dur} begin={p.begin} repeatCount="indefinite" path={p.path} />
+              </circle>
+            ))}
+
+            {/* ─── CONDITIONAL: Отчёт → green dot to Excel, Презентация → red dot to PDF ─── */}
+            {alive && o3 === 'Отчёт' && (
+              <circle r="1.5" fill="#16a34a" opacity="0.55">
+                <animateMotion dur="1.5s" begin="0s" repeatCount="indefinite" path={P.eToB4} />
+              </circle>
+            )}
+            {alive && o3 === 'Презентация' && (
+              <circle r="1.5" fill="#dc2626" opacity="0.55">
+                <animateMotion dur="1.5s" begin="0s" repeatCount="indefinite" path={P.eToB5} />
+              </circle>
+            )}
+
+            {/* ═══ SOURCES (permanent) ═══ */}
+            <g style={show(0)}>
+              <g className={alive ? 'v3-wb-pulse' : ''}>
+                <rect x="48" y="148" width="130" height="50" rx="12" fill="white" stroke="rgba(139,63,253,0.25)" strokeWidth="1" />
+                <circle cx="76" cy="173" r="13" fill="rgba(139,63,253,0.08)" stroke="rgba(139,63,253,0.2)" strokeWidth="0.75" />
+                <circle cx="76" cy="173" r="17" fill="none" stroke="rgba(139,63,253,0.15)" strokeWidth="1" strokeDasharray="4 6" className={alive ? 'v3-wb-ring' : ''} />
+                <text x="76" y="177" textAnchor="middle" fill="#7c3aed" fontSize="9" fontWeight="700" fontFamily="Inter,sans-serif">WB</text>
+                <text x="125" y="177" textAnchor="middle" fill="#374151" fontSize="11.5" fontWeight="600" fontFamily="Inter,sans-serif">Wildberries</text>
+                <circle cx="170" cy="155" r="3.5" fill="#22c55e" className="v3-status-pulse" />
+              </g>
+            </g>
+
+            <g style={show(0.15)}>
+              <g className={alive ? 'v3-ozon-tilt' : ''}>
+                <rect x="48" y="323" width="130" height="50" rx="12" fill="white" stroke="rgba(37,99,235,0.25)" strokeWidth="1" />
+                <circle cx="76" cy="348" r="13" fill="rgba(37,99,235,0.08)" stroke="rgba(37,99,235,0.2)" strokeWidth="0.75" />
+                {alive && <circle cx="76" cy="348" r="14" fill="none" stroke="rgba(37,99,235,0.2)" strokeWidth="1.5" className="v3-ozon-ring" />}
+                <text x="76" y="352" textAnchor="middle" fill="#2563eb" fontSize="9" fontWeight="700" fontFamily="Inter,sans-serif">Oz</text>
+                <text x="120" y="352" textAnchor="middle" fill="#374151" fontSize="11.5" fontWeight="600" fontFamily="Inter,sans-serif">Ozon</text>
+                <circle cx="170" cy="330" r="3.5" fill="#22c55e" className="v3-status-pulse" />
+              </g>
+            </g>
+
+            <g style={show(0.3)}>
+              <g opacity="0.35">
+                <rect x="55" y="447" width="113" height="36" rx="10" fill="none" stroke="rgba(156,163,175,0.5)" strokeWidth="1" strokeDasharray="4 4" />
+                <text x="111" y="470" textAnchor="middle" fill="#9ca3af" fontSize="10" fontWeight="500" fontFamily="Inter,sans-serif">Яндекс.Маркет</text>
+              </g>
+              <text x="111" y="498" textAnchor="middle" fill="#d1d5db" fontSize="8" fontStyle="italic" fontFamily="Inter,sans-serif" opacity="0.6">скоро</text>
+            </g>
+
+            {/* ═══ CENTRAL HUB (permanent, hub-border spins continuously) ═══ */}
+            <g style={show(0.7)}>
+              <g filter="url(#v3-hub-shadow)">
+                <rect x="420" y="218" width="170" height="90" rx="18" fill="white" stroke="rgba(99,102,241,0.18)" strokeWidth="1.5" />
+                <rect x="416" y="214" width="178" height="98" rx="22"
+                  fill="none" stroke="url(#v3-hub-grad)" strokeWidth="1.5"
+                  strokeDasharray="8 4" strokeOpacity="0.4" className="v3-hub-border" />
+                <text x="505" y="256" textAnchor="middle" fill="#1e1b4b" fontSize="16" fontWeight="700" fontFamily="Inter,sans-serif">RevioMP</text>
+                <text x="505" y="278" textAnchor="middle" fill="#6366f1" fontSize="11" fontWeight="500" fontFamily="Inter,sans-serif">Analytics Hub</text>
+              </g>
+            </g>
+
+
+            {/* ═══ OUTPUTS — each with a DIFFERENT label-change animation ═══ */}
+            {outTexts.map((text, i) => (
+              <g key={`out-${i}`} style={show(outDelay[i])}>
+                <rect x="700" y={outY[i] - 22} width="130" height="45" rx="10" fill="white" stroke="#e5e7eb" strokeWidth="1" />
+                <text key={text} x="765" y={outY[i] + 5} textAnchor="middle"
+                  fill="#1f2937" fontSize="12" fontWeight="500" fontFamily="Inter,sans-serif"
+                  className={tick >= 0 ? outAnim[i] : ''}>
+                  {text}
+                </text>
+              </g>
+            ))}
+
+            {/* ═══ BADGES — each with a UNIQUE micro-animation ═══ */}
+            {badgeData.map((b, i) => (
+              <g key={b.dynamic ? `bdg-${i}-${b.text}` : `bdg-${i}`} style={show(badgeDelay[i])} opacity="0.85">
+                <g className={alive ? b.anim : ''}>
+                  <rect x={b.x} y={b.y} width={b.w} height={b.h} rx="6" fill={b.fill} stroke={b.stroke} strokeWidth="0.75" />
+                  <text x={b.x + b.w / 2} y={b.y + b.h / 2 + 4} textAnchor="middle"
+                    fill={b.color} fontSize="9" fontWeight="600" fontFamily="Inter,sans-serif">
+                    {b.text}
+                  </text>
+                </g>
+              </g>
+            ))}
+
+            {/* ═══ API OUTPUT (bottom branch from hub) ═══ */}
+            <g style={show(2.0)}>
+              <g className={alive ? 'v3-float' : ''}>
+                <rect x="445" y="465" width="120" height="40" rx="10" fill="white" stroke="rgba(16,185,129,0.3)" strokeWidth="1.2" />
+                <text x="478" y="490" textAnchor="middle" fill="#059669" fontSize="11" fontWeight="700" fontFamily="monospace">{'</>'}</text>
+                <text x="528" y="490" textAnchor="middle" fill="#374151" fontSize="11" fontWeight="600" fontFamily="Inter,sans-serif">REST API</text>
+              </g>
+            </g>
+
+            {/* ═══ PRO SUBSCRIPTION TOGGLE ═══ */}
+            <g style={{ ...show(2.6), cursor: alive ? 'pointer' : 'default' }}
+               onClick={() => alive && setProActive(p => !p)}>
+              <rect x={700} y={462} width={130} height={36} rx={12}
+                fill={proActive ? 'rgba(245,158,11,0.06)' : 'white'}
+                stroke={proActive ? 'rgba(245,158,11,0.45)' : 'rgba(209,213,219,0.6)'}
+                strokeWidth={proActive ? 1.5 : 1} />
+              {proActive && <rect x={698} y={460} width={134} height={40} rx={14}
+                fill="none" stroke="rgba(245,158,11,0.2)" strokeWidth={2.5}
+                className="v3-pro-glow" />}
+              <text x={765} y={485} textAnchor="middle"
+                fill={proActive ? '#b45309' : '#9ca3af'} fontSize={11} fontWeight="700"
+                fontFamily="Inter,sans-serif">
+                {'\u26A1 PRO \u043F\u043E\u0434\u043F\u0438\u0441\u043A\u0430'}
+              </text>
+            </g>
+
+            {/* ═══ PRO GOLDEN HUB GLOW (when active) ═══ */}
+            {proActive && (
+              <rect x={414} y={212} width={182} height={102} rx={24}
+                fill="none" stroke="rgba(245,158,11,0.15)" strokeWidth={2}
+                className="v3-pro-glow" />
+            )}
+
+            {/* ═══ PRO TREE — trunk + branches ═══ */}
+            <path d={proP.trunk} stroke="rgba(245,158,11,0.4)" strokeWidth={1.5}
+              vectorEffect="non-scaling-stroke" fill="none" {...proDraw(0.05, 20)} />
+            <path d={proP.left} stroke="rgba(245,158,11,0.3)" strokeWidth={1}
+              vectorEffect="non-scaling-stroke" fill="none" {...proDraw(0.15, 120)} />
+            <path d={proP.center} stroke="rgba(245,158,11,0.3)" strokeWidth={1}
+              vectorEffect="non-scaling-stroke" fill="none" {...proDraw(0.15, 30)} />
+            <path d={proP.right} stroke="rgba(245,158,11,0.3)" strokeWidth={1}
+              vectorEffect="non-scaling-stroke" fill="none" {...proDraw(0.2, 120)} />
+
+            {/* ═══ PRO FEATURE NODES ═══ */}
+            <g style={proShow(0.25)}>
+              <rect x={615} y={544} width={100} height={30} rx={8}
+                fill="rgba(139,92,246,0.05)" stroke="rgba(139,92,246,0.22)" strokeWidth={0.75} />
+              <text x={665} y={563} textAnchor="middle"
+                fill="#7c3aed" fontSize={9.5} fontWeight="600" fontFamily="Inter,sans-serif">
+                Монитор заказов
+              </text>
+            </g>
+
+            <g style={proShow(0.35)}>
+              <rect x={715} y={544} width={100} height={30} rx={8}
+                fill="rgba(14,165,233,0.05)" stroke="rgba(14,165,233,0.22)" strokeWidth={0.75} />
+              <text x={765} y={563} textAnchor="middle"
+                fill="#0284c7" fontSize={9.5} fontWeight="600" fontFamily="Inter,sans-serif">
+                Уведомления
+              </text>
+            </g>
+
+            <g style={proShow(0.45)}>
+              <rect x={815} y={544} width={100} height={30} rx={8}
+                fill="rgba(16,185,129,0.05)" stroke="rgba(16,185,129,0.22)" strokeWidth={0.75} />
+              <text x={865} y={563} textAnchor="middle"
+                fill="#059669" fontSize={9.5} fontWeight="600" fontFamily="Inter,sans-serif">
+                Авто-отчёты
+              </text>
+            </g>
+
+            {/* Pro traveling dots */}
+            {proActive && alive && <>
+              <circle r={1.5} fill="#f59e0b" opacity={0.5}>
+                <animateMotion dur="1.2s" begin="0s" repeatCount="indefinite" path={proP.left} />
+              </circle>
+              <circle r={1.5} fill="#f59e0b" opacity={0.5}>
+                <animateMotion dur="0.8s" begin="0.3s" repeatCount="indefinite" path={proP.center} />
+              </circle>
+              <circle r={1.5} fill="#f59e0b" opacity={0.5}>
+                <animateMotion dur="1.2s" begin="0.6s" repeatCount="indefinite" path={proP.right} />
+              </circle>
+            </>}
+          </svg>
+        </div>
+
+        {/* ── Mobile: simplified with traveling dots + cycling labels ── */}
+        <div className="sm:hidden relative rounded-2xl border border-gray-100 bg-[#fafbfc] p-4 overflow-hidden">
+          <div className="absolute inset-0 rounded-2xl v3-dot-grid" />
+          <svg viewBox="0 0 300 400" className="w-full h-auto max-w-[320px] mx-auto relative" fill="none">
+            <defs>
+              <linearGradient id="v3-hub-grad-m" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stopColor="#6366f1" />
+                <stop offset="50%" stopColor="#a855f7" />
+                <stop offset="100%" stopColor="#6366f1" />
+              </linearGradient>
+            </defs>
+
+            {/* Lines */}
+            <path d="M90,66 L90,95 L150,120" stroke="rgba(139,63,253,0.2)" strokeWidth="1" strokeDasharray="2 4" vectorEffect="non-scaling-stroke" className={alive ? 'v3-line-a' : ''} />
+            <path d="M210,66 L210,95 L150,120" stroke="rgba(37,99,235,0.2)" strokeWidth="1" strokeDasharray="6 3" vectorEffect="non-scaling-stroke" className={alive ? 'v3-line-b' : ''} />
+            <path d="M150,195 L150,230" stroke="rgba(99,102,241,0.2)" strokeWidth="1" strokeDasharray="1 3" vectorEffect="non-scaling-stroke" className={alive ? 'v3-line-c' : ''} />
+
+            {/* Mobile traveling dots */}
+            {alive && <>
+              <circle r="2" fill="#8b5cf6" opacity="0.6">
+                <animateMotion dur="2s" begin="0s" repeatCount="indefinite" path="M90,66 L90,95 L150,120" />
+              </circle>
+              <circle r="2" fill="#3b82f6" opacity="0.6">
+                <animateMotion dur="2.5s" begin="0.5s" repeatCount="indefinite" path="M210,66 L210,95 L150,120" />
+              </circle>
+              <circle r="2" fill="#6366f1" opacity="0.5">
+                <animateMotion dur="1.5s" begin="0.3s" repeatCount="indefinite" path="M150,195 L150,230" />
+              </circle>
+            </>}
+
+            {/* Sources */}
+            <rect x="30" y="26" width="120" height="40" rx="10" fill="white" stroke="rgba(139,63,253,0.25)" strokeWidth="1" />
+            <text x="90" y="51" textAnchor="middle" fill="#374151" fontSize="12" fontWeight="600" fontFamily="Inter,sans-serif">Wildberries</text>
+            <circle cx="142" cy="33" r="3" fill="#22c55e" className="v3-status-pulse" />
+
+            <rect x="150" y="26" width="120" height="40" rx="10" fill="white" stroke="rgba(37,99,235,0.25)" strokeWidth="1" />
+            <text x="210" y="51" textAnchor="middle" fill="#374151" fontSize="12" fontWeight="600" fontFamily="Inter,sans-serif">Ozon</text>
+            <circle cx="262" cy="33" r="3" fill="#22c55e" className="v3-status-pulse" />
+
+            {/* Hub */}
+            <rect x="55" y="120" width="190" height="75" rx="16" fill="white" stroke="rgba(99,102,241,0.18)" strokeWidth="1.5" />
+            <rect x="51" y="116" width="198" height="83" rx="20"
+              fill="none" stroke="url(#v3-hub-grad-m)" strokeWidth="1.5"
+              strokeDasharray="8 4" strokeOpacity="0.4" className="v3-hub-border" />
+            <text x="150" y="155" textAnchor="middle" fill="#1e1b4b" fontSize="15" fontWeight="700" fontFamily="Inter,sans-serif">RevioMP</text>
+            <text x="150" y="175" textAnchor="middle" fill="#6366f1" fontSize="10" fontWeight="500" fontFamily="Inter,sans-serif">Analytics Hub</text>
+
+            {/* Output with cycling label */}
+            <rect x="55" y="230" width="190" height="55" rx="12" fill="white" stroke="#e5e7eb" strokeWidth="1" />
+            <text key={o1} x="150" y="256" textAnchor="middle" fill="#1f2937" fontSize="13" fontWeight="500" fontFamily="Inter,sans-serif"
+              className={tick >= 0 ? 'v3-fade-in' : ''}>
+              {o1}
+            </text>
+            <text key={`sub-${o2}-${o3}`} x="150" y="274" textAnchor="middle" fill="#9ca3af" fontSize="9" fontFamily="Inter,sans-serif"
+              className={tick >= 0 ? 'v3-slide-up' : ''}>
+              {o2} · {o3}
+            </text>
+
+            {/* Bottom badges */}
+            <rect x="15" y="310" width="130" height="30" rx="8" fill="white" stroke="rgba(22,163,74,0.2)" strokeWidth="1" />
+            <text x="80" y="330" textAnchor="middle" fill="#16a34a" fontSize="10" fontWeight="600" fontFamily="Inter,sans-serif">Excel · PDF</text>
+
+            <rect x="155" y="310" width="130" height="30" rx="8" fill="white" stroke="rgba(14,165,233,0.2)" strokeWidth="1" />
+            <g className={alive ? 'v3-float' : ''}>
+              <text x="220" y="330" textAnchor="middle" fill="#0284c7" fontSize="10" fontWeight="600" fontFamily="Inter,sans-serif">Telegram</text>
+            </g>
+
+            {/* YM placeholder */}
+            <rect x="85" y="355" width="130" height="22" rx="6" fill="none" stroke="rgba(156,163,175,0.25)" strokeWidth="0.75" strokeDasharray="3 3" />
+            <text x="150" y="370" textAnchor="middle" fill="#d1d5db" fontSize="8" fontFamily="Inter,sans-serif">Яндекс.Маркет · скоро</text>
+          </svg>
+        </div>
       </div>
     </section>
   );
@@ -1548,6 +2383,10 @@ export function LandingPage() {
       <FeaturesSection />
       {/* DataFlow has dark bg — no divider needed */}
       <DataFlowSection />
+      {/* V2 COMPARISON — delete after review */}
+      <DataFlowSectionV2 />
+      {/* V3 HUB-SPOKE — Stripe-inspired comparison */}
+      <DataFlowSectionV3 />
       <HowItWorksSection />
       <SectionDivider />
       <SecuritySection />

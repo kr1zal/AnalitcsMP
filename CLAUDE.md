@@ -69,15 +69,15 @@ sshpass -p '@vnDBp5VCt2+' rsync -avz --delete -e "ssh -o StrictHostKeyChecking=n
 - Frontend: мобильные карточки, пагинация 50/стр, фильтры по статусу/settled
 - Навигация: /orders, иконка ClipboardList (без изменений, используется route из v1)
 
-### Phase 5: Landing Page — IN PROGRESS (10-11.02.2026)
-- `frontend/src/pages/LandingPage.tsx` (~1386 lines, все секции в одном файле)
+### Phase 5: Landing Page — IN PROGRESS (10-13.02.2026)
+- `frontend/src/pages/LandingPage.tsx` (~1550 lines, все секции в одном файле)
 - Route `/` для неавторизованных → Landing, авторизованные → `/app`
 - Зависимости: @fontsource/inter, swiper (карусель)
-- 13 секций: NavBar, Hero, DashboardCarousel, StatsBar, Problem, Features, DataFlow, HowItWorks, Security, Pricing, FAQ, FinalCTA, Footer
-- Stripe-style дизайн: gradient wave hero (CSS blur layers), section dividers, spotlight cards
-- DataFlowSection: анимированная hub-and-spoke SVG диаграмма
-- Animated counters, scroll-reveal, prefers-reduced-motion
-- CSS анимации в index.css: hero-wave-drift, scroll-reveal, spotlight, data-pulse
+- 14+ секций: NavBar, Hero, TrustBar, DashboardCarousel, StatsBar, Problem, Features, DataFlow, **DataFlowV2**, HowItWorks, Security, Pricing, FAQ, FinalCTA, Footer
+- MatrixRain: canvas-based digital rain (hero), indigo/violet colors
+- DataFlowSection (V1): тёмная тема, 12 линий, CSS flow-dash, Excel/PDF бейджи
+- DataFlowSectionV2: светлая тема, 18 линий, 6 бейджей (Telegram, Webhook, ROI, Excel, REST API, PDF), цветные точки, спиннеры хаба, status dots на WB/Ozon. **Временный** — для сравнения с V1
+- CSS анимации: trust-scroll, scroll-reveal, spotlight, data-pulse, flow-dash, hub-scale-pulse
 - Подробности: [memory/phase5-release-plan.md](memory/phase5-release-plan.md) секция 1.4
 
 ### Phase 5: YooKassa Payment — PENDING
