@@ -1739,27 +1739,27 @@ function PricingSection() {
           </div>
         </RevealSection>
 
-        <div className="mt-12 grid grid-cols-1 sm:grid-cols-2 gap-6 max-w-2xl mx-auto">
+        <div className="mt-12 grid grid-cols-2 gap-3 sm:gap-6 max-w-2xl mx-auto">
           {/* Free */}
           <RevealSection>
-            <div onMouseMove={spotlightMove} className="spotlight-card bg-white rounded-2xl border border-gray-200 p-6 hover:shadow-lg transition-shadow h-full">
-              <h3 className="text-lg font-bold text-gray-900">Free</h3>
-              <p className="text-sm text-gray-500 mt-1">Для старта</p>
-              <div className="mt-5">
-                <span className="text-4xl font-extrabold text-gray-900">0 ₽</span>
-                <span className="text-sm text-gray-500 ml-1.5">навсегда</span>
+            <div onMouseMove={spotlightMove} className="spotlight-card bg-white rounded-2xl border border-gray-200 p-3 sm:p-6 hover:shadow-lg transition-shadow h-full">
+              <h3 className="text-base sm:text-lg font-bold text-gray-900">Free</h3>
+              <p className="text-xs sm:text-sm text-gray-500 mt-0.5 sm:mt-1">Для старта</p>
+              <div className="mt-3 sm:mt-5">
+                <span className="text-2xl sm:text-4xl font-extrabold text-gray-900">0 ₽</span>
+                <span className="text-xs sm:text-sm text-gray-500 ml-1">навсегда</span>
               </div>
               <Link
                 to="/login?signup=1"
-                className="mt-6 block text-center px-4 py-3 border border-gray-300 text-sm font-semibold text-gray-700 rounded-xl hover:bg-gray-50 hover:border-gray-400 transition-all"
+                className="mt-4 sm:mt-6 block text-center px-2 sm:px-4 py-2 sm:py-3 border border-gray-300 text-xs sm:text-sm font-semibold text-gray-700 rounded-xl hover:bg-gray-50 hover:border-gray-400 transition-all"
               >
                 Начать бесплатно
               </Link>
-              <ul className="mt-6 space-y-3">
+              <ul className="mt-4 sm:mt-6 space-y-2 sm:space-y-3">
                 {['Дашборд с ключевыми метриками', 'Wildberries', 'До 3 SKU', 'Синхронизация 2 раза/день'].map(
                   (f) => (
-                    <li key={f} className="flex items-start gap-2.5 text-sm text-gray-600">
-                      <CheckCircle className="w-4 h-4 text-emerald-500 mt-0.5 shrink-0" />
+                    <li key={f} className="flex items-start gap-1.5 sm:gap-2.5 text-xs sm:text-sm text-gray-600">
+                      <CheckCircle className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-emerald-500 mt-0.5 shrink-0" />
                       {f}
                     </li>
                   ),
@@ -1770,23 +1770,23 @@ function PricingSection() {
 
           {/* Pro */}
           <RevealSection delay={100}>
-            <div onMouseMove={spotlightMove} className="spotlight-card bg-white rounded-2xl border-2 border-indigo-600 p-6 relative hover:shadow-xl hover:shadow-indigo-100 transition-shadow h-full">
-              <div className="absolute -top-3.5 left-1/2 -translate-x-1/2 bg-gradient-to-r from-indigo-600 to-violet-600 text-white text-xs font-semibold px-4 py-1 rounded-full shadow-md">
+            <div onMouseMove={spotlightMove} className="spotlight-card bg-white rounded-2xl border-2 border-indigo-600 p-3 sm:p-6 relative hover:shadow-xl hover:shadow-indigo-100 transition-shadow h-full">
+              <div className="absolute -top-3 sm:-top-3.5 left-1/2 -translate-x-1/2 bg-gradient-to-r from-indigo-600 to-violet-600 text-white text-[10px] sm:text-xs font-semibold px-2.5 sm:px-4 py-0.5 sm:py-1 rounded-full shadow-md whitespace-nowrap">
                 Рекомендуем
               </div>
-              <h3 className="text-lg font-bold text-gray-900">Pro</h3>
-              <p className="text-sm text-gray-500 mt-1">Для растущего бизнеса</p>
-              <div className="mt-5">
-                <span className="text-4xl font-extrabold text-gray-900">990 ₽</span>
-                <span className="text-sm text-gray-500 ml-1.5">/мес</span>
+              <h3 className="text-base sm:text-lg font-bold text-gray-900">Pro</h3>
+              <p className="text-xs sm:text-sm text-gray-500 mt-0.5 sm:mt-1">Для растущего бизнеса</p>
+              <div className="mt-3 sm:mt-5">
+                <span className="text-2xl sm:text-4xl font-extrabold text-gray-900">990 ₽</span>
+                <span className="text-xs sm:text-sm text-gray-500 ml-1">/мес</span>
               </div>
               <Link
                 to="/login?signup=1&plan=pro"
-                className="mt-6 block text-center px-4 py-3 bg-gradient-to-r from-indigo-600 to-violet-600 text-sm font-semibold text-white rounded-xl hover:from-indigo-700 hover:to-violet-700 transition-all shadow-md shadow-indigo-200/50"
+                className="mt-4 sm:mt-6 block text-center px-2 sm:px-4 py-2 sm:py-3 bg-gradient-to-r from-indigo-600 to-violet-600 text-xs sm:text-sm font-semibold text-white rounded-xl hover:from-indigo-700 hover:to-violet-700 transition-all shadow-md shadow-indigo-200/50"
               >
                 Попробовать Pro
               </Link>
-              <ul className="mt-6 space-y-3">
+              <ul className="mt-4 sm:mt-6 space-y-2 sm:space-y-3">
                 {[
                   { text: 'Всё из Free, плюс:', highlight: true },
                   { text: 'WB + Ozon', highlight: false },
@@ -1800,9 +1800,9 @@ function PricingSection() {
                 ].map((f) => (
                   <li
                     key={f.text}
-                    className={`flex items-start gap-2.5 text-sm ${f.highlight ? 'text-indigo-600 font-semibold' : 'text-gray-600'}`}
+                    className={`flex items-start gap-1.5 sm:gap-2.5 text-xs sm:text-sm ${f.highlight ? 'text-indigo-600 font-semibold' : 'text-gray-600'}`}
                   >
-                    {!f.highlight && <CheckCircle className="w-4 h-4 text-emerald-500 mt-0.5 shrink-0" />}
+                    {!f.highlight && <CheckCircle className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-emerald-500 mt-0.5 shrink-0" />}
                     {f.text}
                   </li>
                 ))}
