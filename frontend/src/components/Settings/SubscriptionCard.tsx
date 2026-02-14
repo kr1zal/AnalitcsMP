@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { CheckCircle, XCircle, Loader2, CreditCard, XOctagon, CalendarOff, RefreshCw } from 'lucide-react';
+import { CheckCircle, XCircle, Loader2, CreditCard, XOctagon, CalendarOff, RefreshCw, ChevronDown } from 'lucide-react';
 import { toast } from 'sonner';
 import { useSubscription, usePlans, useUpgrade, useCancelSubscription, useEnableAutoRenew } from '../../hooks/useSubscription';
 import type { PlanDefinition, SubscriptionFeatures } from '../../types';
@@ -37,6 +37,7 @@ export function SubscriptionCard() {
   const cancelMut = useCancelSubscription();
   const enableMut = useEnableAutoRenew();
   const [upgrading, setUpgrading] = useState(false);
+  const [showPlans, setShowPlans] = useState(false);
 
   if (subLoading || plansLoading) {
     return (
@@ -123,85 +124,96 @@ export function SubscriptionCard() {
         </div>
       )}
 
-      {/* Plans comparison table */}
-      <div className="overflow-x-auto -mx-1">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-gray-200">
-              <th className="text-left py-2 px-2 font-medium text-gray-500 w-1/4"></th>
-              {plans.map((plan: PlanDefinition) => (
-                <th
-                  key={plan.id}
-                  className={`text-center py-2 px-2 font-medium ${
-                    plan.id === sub.plan ? 'text-indigo-700' : 'text-gray-700'
-                  }`}
-                >
-                  <div>{plan.name}</div>
-                  <div className="text-xs font-normal text-gray-400">
-                    {plan.price_rub === 0 ? 'Бесплатно' : `${plan.price_rub} ₽/мес`}
-                  </div>
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-100">
-            <tr>
-              <td className="py-1.5 px-2 text-gray-500">Макс. SKU</td>
-              {plans.map((plan: PlanDefinition) => (
-                <td key={plan.id} className="py-1.5 px-2 text-center">
-                  {plan.max_sku === null ? '∞' : plan.max_sku}
-                </td>
-              ))}
-            </tr>
-            <tr>
-              <td className="py-1.5 px-2 text-gray-500">Маркетплейсы</td>
-              {plans.map((plan: PlanDefinition) => (
-                <td key={plan.id} className="py-1.5 px-2 text-center text-xs">
-                  {plan.marketplaces.map((m) => m.toUpperCase()).join(' + ')}
-                </td>
-              ))}
-            </tr>
-            <tr>
-              <td className="py-1.5 px-2 text-gray-500">Авто-синхра</td>
-              {plans.map((plan: PlanDefinition) => (
-                <td key={plan.id} className="py-1.5 px-2 text-center">
-                  {plan.auto_sync ? (
-                    <span className="text-xs">каждые {plan.sync_interval_hours}ч</span>
-                  ) : (
-                    <span className="text-xs">2 раза/день</span>
-                  )}
-                </td>
-              ))}
-            </tr>
-            <tr>
-              <td className="py-1.5 px-2 text-gray-500">Ручные обновления</td>
-              {plans.map((plan: PlanDefinition) => (
-                <td key={plan.id} className="py-1.5 px-2 text-center text-xs">
-                  {plan.manual_sync_limit === 0 ? (
-                    <span className="text-gray-400">—</span>
-                  ) : (
-                    <span>{plan.manual_sync_limit}/день</span>
-                  )}
-                </td>
-              ))}
-            </tr>
-            {(Object.keys(FEATURE_LABELS) as (keyof SubscriptionFeatures)[])
-              .filter((f) => f !== 'dashboard' && f !== 'costs_tree_basic')
-              .map((feature) => (
-                <tr key={feature}>
-                  <td className="py-1.5 px-2 text-gray-500">{FEATURE_LABELS[feature]}</td>
-                  {plans.map((plan: PlanDefinition) => (
-                    <td key={plan.id} className="py-1.5 px-2">
-                      <div className="flex justify-center">
-                        <FeatureCheck enabled={plan.features[feature]} />
-                      </div>
-                    </td>
-                  ))}
-                </tr>
-              ))}
-          </tbody>
-        </table>
-      </div>
+      {/* Plans comparison — collapsible */}
+      <button
+        type="button"
+        onClick={() => setShowPlans(!showPlans)}
+        className="w-full flex items-center justify-between py-2 px-1 text-xs font-medium text-gray-500 hover:text-gray-700 transition-colors"
+      >
+        <span>Сравнить тарифы</span>
+        <ChevronDown className={`w-4 h-4 transition-transform duration-200 ${showPlans ? 'rotate-180' : ''}`} />
+      </button>
+
+      {showPlans && (
+        <div className="overflow-x-auto -mx-1 animate-in slide-in-from-top-2 duration-200">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-gray-200">
+                <th className="text-left py-2 px-2 font-medium text-gray-500 w-1/4"></th>
+                {plans.map((plan: PlanDefinition) => (
+                  <th
+                    key={plan.id}
+                    className={`text-center py-2 px-2 font-medium ${
+                      plan.id === sub.plan ? 'text-indigo-700' : 'text-gray-700'
+                    }`}
+                  >
+                    <div>{plan.name}</div>
+                    <div className="text-xs font-normal text-gray-400">
+                      {plan.price_rub === 0 ? 'Бесплатно' : `${plan.price_rub} ₽/мес`}
+                    </div>
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              <tr>
+                <td className="py-1.5 px-2 text-gray-500">Макс. SKU</td>
+                {plans.map((plan: PlanDefinition) => (
+                  <td key={plan.id} className="py-1.5 px-2 text-center">
+                    {plan.max_sku === null ? '∞' : plan.max_sku}
+                  </td>
+                ))}
+              </tr>
+              <tr>
+                <td className="py-1.5 px-2 text-gray-500">Маркетплейсы</td>
+                {plans.map((plan: PlanDefinition) => (
+                  <td key={plan.id} className="py-1.5 px-2 text-center text-xs">
+                    {plan.marketplaces.map((m) => m.toUpperCase()).join(' + ')}
+                  </td>
+                ))}
+              </tr>
+              <tr>
+                <td className="py-1.5 px-2 text-gray-500">Авто-синхра</td>
+                {plans.map((plan: PlanDefinition) => (
+                  <td key={plan.id} className="py-1.5 px-2 text-center">
+                    {plan.auto_sync ? (
+                      <span className="text-xs">каждые {plan.sync_interval_hours}ч</span>
+                    ) : (
+                      <span className="text-xs">2 раза/день</span>
+                    )}
+                  </td>
+                ))}
+              </tr>
+              <tr>
+                <td className="py-1.5 px-2 text-gray-500">Ручные обновления</td>
+                {plans.map((plan: PlanDefinition) => (
+                  <td key={plan.id} className="py-1.5 px-2 text-center text-xs">
+                    {plan.manual_sync_limit === 0 ? (
+                      <span className="text-gray-400">—</span>
+                    ) : (
+                      <span>{plan.manual_sync_limit}/день</span>
+                    )}
+                  </td>
+                ))}
+              </tr>
+              {(Object.keys(FEATURE_LABELS) as (keyof SubscriptionFeatures)[])
+                .filter((f) => f !== 'dashboard' && f !== 'costs_tree_basic')
+                .map((feature) => (
+                  <tr key={feature}>
+                    <td className="py-1.5 px-2 text-gray-500">{FEATURE_LABELS[feature]}</td>
+                    {plans.map((plan: PlanDefinition) => (
+                      <td key={plan.id} className="py-1.5 px-2">
+                        <div className="flex justify-center">
+                          <FeatureCheck enabled={plan.features[feature]} />
+                        </div>
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+            </tbody>
+          </table>
+        </div>
+      )}
 
       {/* CTA — Upgrade / Cancel */}
       {sub.plan === 'free' && (

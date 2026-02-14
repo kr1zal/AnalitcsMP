@@ -12,9 +12,10 @@
  * - При пресете (7d/30d/90d): 7 карточек (5 основных + Prior Period + YoY)
  * - При custom датах: 5 основных карточек (Заказы, Прибыль, ДРР, Продвижение, Op. Costs)
  */
-import { Suspense, lazy, useEffect, useMemo, useState } from 'react';
+import { Suspense, lazy, useCallback, useEffect, useMemo, useState } from 'react';
 import axios from 'axios';
-import { DollarSign, ShoppingCart, TrendingUp, Percent, Megaphone, BarChart3, Receipt } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { DollarSign, ShoppingCart, TrendingUp, Percent, Megaphone, BarChart3, Receipt, AlertTriangle, X } from 'lucide-react';
 import { useExport } from '../hooks/useExport';
 import { useSubscription } from '../hooks/useSubscription';
 import type { ExcelExportData } from '../lib/exportExcel';
@@ -195,6 +196,31 @@ export const DashboardPage = () => {
       !!selectedProduct && !!productsData?.products?.some((p) => p.id === selectedProduct && p.barcode === 'WB_ACCOUNT');
     if (isSelectedSystem) setSelectedProduct(undefined);
   }, [selectedProduct, productsData]);
+
+  // ── CC=0 notification ──
+  const navigate = useNavigate();
+  const [showCcModal, setShowCcModal] = useState(false);
+
+  const productsWithZeroCc = useMemo(
+    () => sidebarProducts.filter((p) => !p.purchase_price || p.purchase_price === 0),
+    [sidebarProducts],
+  );
+  const hasZeroCc = productsWithZeroCc.length > 0;
+
+  useEffect(() => {
+    if (hasZeroCc && localStorage.getItem('cc-reminder-dismissed') !== 'true') {
+      setShowCcModal(true);
+    }
+  }, [hasZeroCc]);
+
+  const dismissCcModal = useCallback(() => {
+    localStorage.setItem('cc-reminder-dismissed', 'true');
+    setShowCcModal(false);
+  }, []);
+
+  const ccWarning = hasZeroCc
+    ? `Без учёта себестоимости ${productsWithZeroCc.length} товаров. Заполните в настройках.`
+    : undefined;
 
   // IMPORTANT: hooks must run before any early returns.
   const salesChartSeries = useMemo(() => {
@@ -425,6 +451,44 @@ export const DashboardPage = () => {
 
   return (
     <div className="max-w-7xl mx-auto px-3 sm:px-4 lg:px-6 py-4 sm:py-6 lg:py-8">
+      {/* CC=0 reminder modal */}
+      {showCcModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={dismissCcModal}>
+          <div className="bg-white rounded-xl shadow-xl max-w-sm w-full mx-4 p-5" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <AlertTriangle className="w-5 h-5 text-amber-500" />
+                <h3 className="text-sm font-bold text-gray-900">Себестоимость не заполнена</h3>
+              </div>
+              <button onClick={dismissCcModal} className="text-gray-400 hover:text-gray-600">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <p className="text-sm text-gray-600 mb-2">
+              Для точного расчёта прибыли заполните себестоимость товаров.
+            </p>
+            <p className="text-xs text-gray-500 mb-4">
+              Товары без CC: {productsWithZeroCc.slice(0, 3).map((p) => p.name).join(', ')}
+              {productsWithZeroCc.length > 3 && ` и ещё ${productsWithZeroCc.length - 3}`}
+            </p>
+            <div className="flex gap-2">
+              <button
+                onClick={dismissCcModal}
+                className="flex-1 py-2 text-sm font-medium text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+              >
+                Позже
+              </button>
+              <button
+                onClick={() => { dismissCcModal(); navigate('/settings#products'); }}
+                className="flex-1 py-2 text-sm font-medium text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 transition-colors"
+              >
+                Перейти в настройки
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* 1. Фильтры */}
       <FilterPanel
         onExportExcel={handleExportExcel}
@@ -483,6 +547,7 @@ export const DashboardPage = () => {
           tooltipAlign="right"
           icon={DollarSign}
           loading={isSummaryLoading}
+          warning={ccWarning}
         />
         <SummaryCard
           title="ДРР"

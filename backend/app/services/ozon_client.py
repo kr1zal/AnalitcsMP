@@ -60,6 +60,18 @@ class OzonClient:
             payload["sku"] = skus
         return await self._request("POST", "/v3/product/info/list", json=payload)
 
+    async def get_product_prices(self, limit: int = 100, last_id: str = "", offer_ids: list[str] = None) -> dict:
+        """Получить цены товаров (v5). Ответ: {items: [{offer_id, price: {price, old_price, ...}, ...}]}"""
+        payload: dict[str, Any] = {
+            "filter": {},
+            "limit": limit,
+        }
+        if last_id:
+            payload["last_id"] = last_id
+        if offer_ids:
+            payload["filter"]["offer_id"] = offer_ids
+        return await self._request("POST", "/v5/product/info/prices", json=payload)
+
     async def get_products_by_barcode(self, barcodes: list[str]) -> dict:
         """Получить товары по штрихкодам"""
         # Сначала получаем все товары
@@ -80,7 +92,7 @@ class OzonClient:
         product_ids = [p["product_id"] for p in all_products]
         if product_ids:
             details = await self.get_product_info(product_ids=product_ids)
-            products_detail = details.get("result", {}).get("items", [])
+            products_detail = details.get("items") or details.get("result", {}).get("items", [])
 
             # Фильтруем по штрихкодам
             filtered = [

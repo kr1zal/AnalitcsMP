@@ -1,7 +1,11 @@
 """
 Роутер для работы с товарами
 """
+import uuid
+from datetime import datetime
+
 from fastapi import APIRouter, HTTPException, Depends
+from pydantic import BaseModel, Field
 from typing import Optional
 
 from ...db.supabase import get_supabase_client
@@ -10,18 +14,47 @@ from ...auth import CurrentUser, get_current_user
 router = APIRouter()
 
 
+# ==================== PYDANTIC MODELS ====================
+
+class UpdatePurchasePriceRequest(BaseModel):
+    purchase_price: float = Field(..., ge=0)
+
+
+class ReorderItem(BaseModel):
+    product_id: str
+    sort_order: int
+
+
+class ReorderRequest(BaseModel):
+    items: list[ReorderItem]
+
+
+class LinkProductsRequest(BaseModel):
+    wb_product_id: str
+    ozon_product_id: str
+    purchase_price: float = Field(..., ge=0)
+
+
+# ==================== GET ENDPOINTS ====================
+
 @router.get("/products")
 async def get_products(
     current_user: CurrentUser = Depends(get_current_user),
     marketplace: Optional[str] = None,
 ):
     """
-    Получить список всех товаров
+    Получить список всех товаров (исключая WB_ACCOUNT системный товар)
     """
     supabase = get_supabase_client()
 
     try:
-        query = supabase.table("mp_products").select("*").eq("user_id", current_user.id)
+        query = (
+            supabase.table("mp_products")
+            .select("*")
+            .eq("user_id", current_user.id)
+            .neq("barcode", "WB_ACCOUNT")
+            .order("sort_order")
+        )
 
         if marketplace == "wb":
             query = query.not_.is_("wb_nm_id", "null")
@@ -87,6 +120,211 @@ async def get_product_by_barcode(
             "status": "success",
             "product": result.data[0]
         }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ==================== MUTATION ENDPOINTS ====================
+
+@router.put("/products/{product_id}/purchase-price")
+async def update_purchase_price(
+    product_id: str,
+    body: UpdatePurchasePriceRequest,
+    current_user: CurrentUser = Depends(get_current_user),
+):
+    """
+    Обновить себестоимость товара.
+    Если товар в группе (product_group_id) — обновляет все связанные товары.
+    """
+    supabase = get_supabase_client()
+
+    try:
+        # Найти товар
+        result = (
+            supabase.table("mp_products")
+            .select("id, product_group_id")
+            .eq("id", product_id)
+            .eq("user_id", current_user.id)
+            .execute()
+        )
+        if not result.data:
+            raise HTTPException(status_code=404, detail="Product not found")
+
+        product = result.data[0]
+        now = datetime.now().isoformat()
+
+        # Обновить сам товар
+        supabase.table("mp_products").update({
+            "purchase_price": body.purchase_price,
+            "updated_at": now,
+        }).eq("id", product_id).eq("user_id", current_user.id).execute()
+
+        linked_updated = 0
+
+        # Если товар в группе — обновить остальных в группе
+        group_id = product.get("product_group_id")
+        if group_id:
+            linked_result = (
+                supabase.table("mp_products")
+                .update({"purchase_price": body.purchase_price, "updated_at": now})
+                .eq("product_group_id", group_id)
+                .eq("user_id", current_user.id)
+                .neq("id", product_id)
+                .execute()
+            )
+            linked_updated = len(linked_result.data) if linked_result.data else 0
+
+        return {
+            "status": "success",
+            "product_id": product_id,
+            "purchase_price": body.purchase_price,
+            "linked_updated": linked_updated,
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.put("/products/reorder")
+async def reorder_products(
+    body: ReorderRequest,
+    current_user: CurrentUser = Depends(get_current_user),
+):
+    """
+    Массовое обновление sort_order для товаров.
+    """
+    supabase = get_supabase_client()
+
+    try:
+        updated = 0
+        now = datetime.now().isoformat()
+
+        for item in body.items:
+            result = (
+                supabase.table("mp_products")
+                .update({"sort_order": item.sort_order, "updated_at": now})
+                .eq("id", item.product_id)
+                .eq("user_id", current_user.id)
+                .execute()
+            )
+            if result.data:
+                updated += 1
+
+        return {"status": "success", "updated": updated}
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/products/link")
+async def link_products(
+    body: LinkProductsRequest,
+    current_user: CurrentUser = Depends(get_current_user),
+):
+    """
+    Связать два товара с разных маркетплейсов.
+    Устанавливает одинаковый product_group_id и purchase_price на оба.
+    """
+    supabase = get_supabase_client()
+
+    try:
+        # Загрузить оба товара
+        wb_result = (
+            supabase.table("mp_products")
+            .select("id, wb_nm_id, ozon_product_id, product_group_id")
+            .eq("id", body.wb_product_id)
+            .eq("user_id", current_user.id)
+            .execute()
+        )
+        ozon_result = (
+            supabase.table("mp_products")
+            .select("id, wb_nm_id, ozon_product_id, product_group_id")
+            .eq("id", body.ozon_product_id)
+            .eq("user_id", current_user.id)
+            .execute()
+        )
+
+        if not wb_result.data:
+            raise HTTPException(status_code=404, detail="WB product not found")
+        if not ozon_result.data:
+            raise HTTPException(status_code=404, detail="Ozon product not found")
+
+        wb_product = wb_result.data[0]
+        ozon_product = ozon_result.data[0]
+
+        # Валидация: один должен быть WB, другой — Ozon
+        if not wb_product.get("wb_nm_id"):
+            raise HTTPException(status_code=400, detail="First product must be a WB product (wb_nm_id required)")
+        if not ozon_product.get("ozon_product_id"):
+            raise HTTPException(status_code=400, detail="Second product must be an Ozon product (ozon_product_id required)")
+
+        # Нельзя связать один и тот же товар
+        if wb_product["id"] == ozon_product["id"]:
+            raise HTTPException(status_code=400, detail="Cannot link a product with itself")
+
+        # Определить group_id: использовать существующий или новый
+        group_id = (
+            wb_product.get("product_group_id")
+            or ozon_product.get("product_group_id")
+            or str(uuid.uuid4())
+        )
+
+        now = datetime.now().isoformat()
+        update_data = {
+            "product_group_id": group_id,
+            "purchase_price": body.purchase_price,
+            "updated_at": now,
+        }
+
+        # Обновить оба товара
+        supabase.table("mp_products").update(update_data).eq("id", body.wb_product_id).eq("user_id", current_user.id).execute()
+        supabase.table("mp_products").update(update_data).eq("id", body.ozon_product_id).eq("user_id", current_user.id).execute()
+
+        return {
+            "status": "success",
+            "group_id": group_id,
+            "purchase_price": body.purchase_price,
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/products/unlink/{group_id}")
+async def unlink_products(
+    group_id: str,
+    current_user: CurrentUser = Depends(get_current_user),
+):
+    """
+    Разорвать связь между товарами в группе.
+    purchase_price остаётся как есть.
+    """
+    supabase = get_supabase_client()
+
+    try:
+        now = datetime.now().isoformat()
+
+        result = (
+            supabase.table("mp_products")
+            .update({"product_group_id": None, "updated_at": now})
+            .eq("product_group_id", group_id)
+            .eq("user_id", current_user.id)
+            .execute()
+        )
+
+        unlinked_count = len(result.data) if result.data else 0
+
+        if unlinked_count == 0:
+            raise HTTPException(status_code=404, detail="No products found with this group_id")
+
+        return {"status": "success", "unlinked_count": unlinked_count}
 
     except HTTPException:
         raise

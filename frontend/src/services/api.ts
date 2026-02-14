@@ -140,6 +140,44 @@ export const productsApi = {
     const { data } = await api.get(`/products/barcode/${barcode}`);
     return data;
   },
+
+  /**
+   * Обновить себестоимость (синхронизирует связанные товары)
+   */
+  updatePurchasePrice: async (productId: string, purchasePrice: number) => {
+    const { data } = await api.put(`/products/${productId}/purchase-price`, {
+      purchase_price: purchasePrice,
+    });
+    return data;
+  },
+
+  /**
+   * Массовое обновление sort_order
+   */
+  reorder: async (items: { product_id: string; sort_order: number }[]) => {
+    const { data } = await api.put('/products/reorder', { items });
+    return data;
+  },
+
+  /**
+   * Связать два товара (WB + Ozon)
+   */
+  link: async (wbProductId: string, ozonProductId: string, purchasePrice: number) => {
+    const { data } = await api.post('/products/link', {
+      wb_product_id: wbProductId,
+      ozon_product_id: ozonProductId,
+      purchase_price: purchasePrice,
+    });
+    return data;
+  },
+
+  /**
+   * Разорвать связь товаров
+   */
+  unlink: async (groupId: string) => {
+    const { data } = await api.post(`/products/unlink/${groupId}`);
+    return data;
+  },
 };
 
 // ==================== DASHBOARD ====================

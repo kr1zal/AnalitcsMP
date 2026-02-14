@@ -20,8 +20,47 @@ export interface Product {
   wb_vendor_code?: string | null;
   ozon_product_id?: number | null;
   ozon_offer_id?: string | null;
+  ozon_sku?: string | null;
+  sort_order: number;
+  product_group_id?: string | null;
   created_at: string;
   updated_at: string;
+}
+
+// ==================== PRODUCT MANAGEMENT ====================
+
+export interface UpdatePurchasePriceResponse {
+  status: 'success';
+  product_id: string;
+  purchase_price: number;
+  linked_updated: number;
+}
+
+export interface ReorderItem {
+  product_id: string;
+  sort_order: number;
+}
+
+export interface ReorderResponse {
+  status: 'success';
+  updated: number;
+}
+
+export interface LinkProductsRequest {
+  wb_product_id: string;
+  ozon_product_id: string;
+  purchase_price: number;
+}
+
+export interface LinkProductsResponse {
+  status: 'success';
+  group_id: string;
+  purchase_price: number;
+}
+
+export interface UnlinkProductsResponse {
+  status: 'success';
+  unlinked_count: number;
 }
 
 export interface ProductsResponse {

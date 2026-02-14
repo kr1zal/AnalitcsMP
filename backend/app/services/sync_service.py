@@ -11,6 +11,7 @@ from .wb_client import WildberriesClient
 from .ozon_client import OzonClient, OzonPerformanceClient
 from ..db.supabase import get_supabase_client
 from ..config import get_settings
+from ..plans import get_plan
 
 logger = logging.getLogger(__name__)
 
@@ -161,107 +162,400 @@ class SyncService:
             return existing.data[0]["id"]
         raise RuntimeError(f"Failed to create system product for barcode={barcode}")
 
+    # ==================== HELPERS: PLAN & PAGINATION ====================
+
+    def _get_user_plan(self) -> dict:
+        """Get user's subscription plan config."""
+        plan_name = "free"
+        if self.user_id:
+            try:
+                result = (
+                    self.supabase.table("mp_user_subscriptions")
+                    .select("plan")
+                    .eq("user_id", self.user_id)
+                    .limit(1)
+                    .execute()
+                )
+                if result.data:
+                    plan_name = result.data[0]["plan"]
+            except Exception as e:
+                logger.warning(f"Failed to load user plan, defaulting to free: {e}")
+        return get_plan(plan_name)
+
+    def _get_max_sku(self) -> int | None:
+        """Get max SKU count from user's plan (None = unlimited)."""
+        return self._get_user_plan().get("max_sku")
+
+    def _get_allowed_marketplaces(self) -> list[str]:
+        """Get allowed marketplaces from user's plan."""
+        return self._get_user_plan().get("marketplaces", ["wb"])
+
+    async def _fetch_all_wb_cards(self) -> list[dict]:
+        """Paginated fetch of ALL WB cards using cursor-based pagination."""
+        all_cards = []
+        cursor = {"limit": 100}
+
+        while True:
+            result = await self.wb_client.get_cards_list(cursor=cursor)
+            if not result:
+                break
+            cards = result.get("cards", [])
+            if not cards:
+                break
+            all_cards.extend(cards)
+
+            # Cursor for next page: {total, updatedAt, nmID}
+            next_cursor = result.get("cursor", {})
+            total = next_cursor.get("total", 0)
+            if len(all_cards) >= total or not next_cursor.get("nmID"):
+                break
+            cursor = {
+                "limit": 100,
+                "updatedAt": next_cursor.get("updatedAt"),
+                "nmID": next_cursor.get("nmID"),
+            }
+
+        logger.info(f"WB: fetched {len(all_cards)} cards total")
+        return all_cards
+
+    async def _fetch_all_ozon_products(self) -> list[dict]:
+        """Paginated fetch of ALL Ozon products using last_id pagination."""
+        all_products = []
+        last_id = ""
+
+        while True:
+            result = await self.ozon_client.get_product_list(limit=100, last_id=last_id)
+            items = result.get("result", {}).get("items", [])
+            if not items:
+                break
+            all_products.extend(items)
+            last_id = result.get("result", {}).get("last_id", "")
+            if not last_id:
+                break
+
+        logger.info(f"Ozon: fetched {len(all_products)} products total")
+        return all_products
+
     # ==================== СИНХРОНИЗАЦИЯ ТОВАРОВ ====================
 
     async def sync_products(self) -> dict:
         """
-        Синхронизация идентификаторов товаров с WB и Ozon
-        Обновляет wb_nm_id, wb_vendor_code, ozon_product_id, ozon_offer_id
+        Синхронизация товаров с WB и Ozon — автообнаружение.
+        Сканирует ВСЕ карточки/товары на маркетплейсах,
+        обновляет существующие и создаёт новые mp_products строки
+        (в рамках лимита SKU по тарифу).
         """
         started_at = datetime.now()
         updated_count = 0
+        created_count = 0
+        skipped_sku_limit = 0
         errors = []
 
         try:
-            # Получаем товары из WB
-            wb_result = await self.wb_client.get_cards_by_barcode(self.barcodes)
-            wb_cards = wb_result.get("cards", [])
+            # a) Загружаем текущие товары из БД
+            products_map = self._get_products_map()  # {barcode: {id, ...}}
 
-            for card in wb_cards:
-                nm_id = card.get("nmID")
-                vendor_code = card.get("vendorCode")
+            # b) Получаем план пользователя
+            plan = self._get_user_plan()
+            max_sku = plan.get("max_sku")  # None = unlimited
+            allowed_marketplaces = plan.get("marketplaces", ["wb"])
 
-                # Находим штрихкод в sizes -> skus
-                for size in card.get("sizes", []):
-                    for barcode in size.get("skus", []):
-                        if barcode in self.barcodes:
-                            # Обновляем в БД
+            # Текущее кол-во SKU (без WB_ACCOUNT)
+            current_sku_count = sum(
+                1 for bc in products_map.keys()
+                if bc and bc != "WB_ACCOUNT"
+            )
+
+            def _within_sku_limit() -> bool:
+                nonlocal current_sku_count
+                if max_sku is None:
+                    return True
+                return current_sku_count < max_sku
+
+            # c) WB: auto-discover all cards
+            if "wb" in allowed_marketplaces:
+                try:
+                    wb_cards = await self._fetch_all_wb_cards()
+
+                    for card in wb_cards:
+                        nm_id = card.get("nmID")
+                        vendor_code = card.get("vendorCode")
+                        card_name = card.get("title") or card.get("subjectName") or f"WB-{nm_id}"
+
+                        for size in card.get("sizes", []):
+                            for barcode in size.get("skus", []):
+                                if not barcode:
+                                    continue
+
+                                if barcode in products_map:
+                                    # UPDATE existing product
+                                    query = self.supabase.table("mp_products").update({
+                                        "wb_nm_id": nm_id,
+                                        "wb_vendor_code": vendor_code,
+                                        "updated_at": datetime.now().isoformat(),
+                                    }).eq("barcode", barcode)
+                                    if self.user_id:
+                                        query = query.eq("user_id", self.user_id)
+                                    query.execute()
+                                    updated_count += 1
+                                    logger.info(f"WB: updated product {barcode} -> nm_id={nm_id}")
+                                else:
+                                    # INSERT new product (if within SKU limit)
+                                    if not _within_sku_limit():
+                                        skipped_sku_limit += 1
+                                        logger.info(f"WB: skipped {barcode} — SKU limit reached ({max_sku})")
+                                        continue
+
+                                    row = {
+                                        "barcode": barcode,
+                                        "name": card_name,
+                                        "purchase_price": 0,
+                                        "wb_nm_id": nm_id,
+                                        "wb_vendor_code": vendor_code,
+                                        "updated_at": datetime.now().isoformat(),
+                                    }
+                                    if self.user_id:
+                                        row["user_id"] = self.user_id
+                                    self.supabase.table("mp_products").insert(row).execute()
+                                    # Add to products_map so we don't double-insert
+                                    products_map[barcode] = row
+                                    current_sku_count += 1
+                                    created_count += 1
+                                    logger.info(f"WB: created product {barcode} ({card_name}) nm_id={nm_id}")
+
+                except Exception as e:
+                    error_msg = f"WB cards sync error: {e}"
+                    logger.error(error_msg)
+                    errors.append(error_msg)
+
+            # d) Ozon: auto-discover all products
+            ozon_product_ids = []
+            if "ozon" in allowed_marketplaces:
+                try:
+                    ozon_products = await self._fetch_all_ozon_products()
+
+                    # Collect offer_ids for new products that need names
+                    new_ozon_offer_ids = []
+
+                    for product in ozon_products:
+                        product_id = product.get("product_id")
+                        offer_id = product.get("offer_id")
+                        if not offer_id:
+                            continue
+
+                        if offer_id in products_map:
+                            # UPDATE existing product
                             query = self.supabase.table("mp_products").update({
-                                "wb_nm_id": nm_id,
-                                "wb_vendor_code": vendor_code,
-                                "updated_at": datetime.now().isoformat()
-                            }).eq("barcode", barcode)
+                                "ozon_product_id": product_id,
+                                "ozon_offer_id": offer_id,
+                                "updated_at": datetime.now().isoformat(),
+                            }).eq("barcode", offer_id)
                             if self.user_id:
                                 query = query.eq("user_id", self.user_id)
                             query.execute()
                             updated_count += 1
-                            logger.info(f"WB: обновлен товар {barcode} -> nm_id={nm_id}")
+                            if product_id:
+                                ozon_product_ids.append(product_id)
+                            logger.info(f"Ozon: updated product {offer_id} -> product_id={product_id}")
+                        else:
+                            # INSERT new product (if within SKU limit)
+                            if not _within_sku_limit():
+                                skipped_sku_limit += 1
+                                logger.info(f"Ozon: skipped {offer_id} — SKU limit reached ({max_sku})")
+                                continue
 
-            # Получаем товары из Ozon (offer_id = штрихкод)
-            ozon_result = await self.ozon_client.get_product_list(limit=100)
-            ozon_products = ozon_result.get("result", {}).get("items", [])
+                            new_ozon_offer_ids.append(offer_id)
+                            row = {
+                                "barcode": offer_id,
+                                "name": f"Ozon-{offer_id}",  # placeholder, will update below
+                                "purchase_price": 0,
+                                "ozon_product_id": product_id,
+                                "ozon_offer_id": offer_id,
+                                "updated_at": datetime.now().isoformat(),
+                            }
+                            if self.user_id:
+                                row["user_id"] = self.user_id
+                            self.supabase.table("mp_products").insert(row).execute()
+                            products_map[offer_id] = row
+                            current_sku_count += 1
+                            created_count += 1
+                            if product_id:
+                                ozon_product_ids.append(product_id)
+                            logger.info(f"Ozon: created product {offer_id} product_id={product_id}")
 
-            ozon_product_ids = []
-            offer_id_to_product_id = {}
-            for product in ozon_products:
-                product_id = product.get("product_id")
-                offer_id = product.get("offer_id")  # offer_id = штрихкод в Ozon
+                    # Get proper names for newly created Ozon products
+                    if new_ozon_offer_ids:
+                        try:
+                            new_product_ids = [
+                                products_map[oid].get("ozon_product_id")
+                                for oid in new_ozon_offer_ids
+                                if products_map.get(oid, {}).get("ozon_product_id")
+                            ]
+                            if new_product_ids:
+                                info = await self.ozon_client.get_product_info(product_ids=new_product_ids)
+                                name_items = info.get("items") or info.get("result", {}).get("items", [])
+                                for item in name_items:
+                                    item_offer_id = item.get("offer_id", "")
+                                    item_name = item.get("name", "")
+                                    if item_name and item_offer_id in new_ozon_offer_ids:
+                                        query = self.supabase.table("mp_products").update({
+                                            "name": item_name,
+                                        }).eq("barcode", item_offer_id)
+                                        if self.user_id:
+                                            query = query.eq("user_id", self.user_id)
+                                        query.execute()
+                                        logger.info(f"Ozon: updated name for {item_offer_id} -> {item_name}")
+                        except Exception as e:
+                            logger.warning(f"Failed to fetch Ozon product names for new products: {e}")
 
-                if offer_id in self.barcodes:
-                    offer_id_to_product_id[offer_id] = product_id
-                    if product_id:
-                        ozon_product_ids.append(product_id)
-                    query = self.supabase.table("mp_products").update({
-                        "ozon_product_id": product_id,
-                        "ozon_offer_id": offer_id,
-                        "updated_at": datetime.now().isoformat()
-                    }).eq("barcode", offer_id)
-                    if self.user_id:
-                        query = query.eq("user_id", self.user_id)
-                    query.execute()
-                    updated_count += 1
-                    logger.info(f"Ozon: обновлен товар {offer_id} -> product_id={product_id}")
+                except Exception as e:
+                    error_msg = f"Ozon products sync error: {e}"
+                    logger.error(error_msg)
+                    errors.append(error_msg)
 
-            # Получаем FBO SKU из product info и сохраняем в ozon_sku
+            # e) Fetch FBO SKU for Ozon products and save to ozon_sku
+            sku_populated = set()  # offer_ids that got ozon_sku set
+
             if ozon_product_ids:
+                # Method 1: try get_product_info (v3)
                 try:
                     info = await self.ozon_client.get_product_info(product_ids=ozon_product_ids)
-                    for item in info.get("result", {}).get("items", []):
+                    # v3 returns {"items": [...]}, not {"result": {"items": [...]}}
+                    info_items = info.get("items") or info.get("result", {}).get("items", [])
+                    for item in info_items:
                         item_offer_id = item.get("offer_id", "")
-                        # SKU может быть на верхнем уровне или в sources[].sku
                         ozon_sku = None
-                        for src in item.get("sources", []):
-                            if src.get("source") == "fbo" and src.get("sku"):
-                                ozon_sku = str(src["sku"])
+                        # Try sources[].sku — prefer fbo, fallback to any source
+                        for preferred_source in ("fbo", None):
+                            for src in item.get("sources", []):
+                                src_type = src.get("source", "")
+                                if preferred_source and src_type != preferred_source:
+                                    continue
+                                if src.get("sku"):
+                                    ozon_sku = str(src["sku"])
+                                    break
+                            if ozon_sku:
                                 break
+                        # Fallback: fbo_sku field
                         if not ozon_sku:
-                            # Fallback: поле sku на верхнем уровне
-                            top_sku = item.get("sku")
-                            if top_sku:
-                                ozon_sku = str(top_sku)
-                        if not ozon_sku:
-                            # Fallback: fbo_sku field
                             fbo_sku = item.get("fbo_sku")
-                            if fbo_sku:
+                            if fbo_sku and int(fbo_sku) != 0:
                                 ozon_sku = str(fbo_sku)
+                        # Fallback: top-level sku
+                        if not ozon_sku:
+                            top_sku = item.get("sku")
+                            if top_sku and int(top_sku) != 0:
+                                ozon_sku = str(top_sku)
 
-                        if ozon_sku and item_offer_id in self.barcodes:
+                        if ozon_sku and item_offer_id in products_map:
                             query = self.supabase.table("mp_products").update({
                                 "ozon_sku": ozon_sku,
                             }).eq("barcode", item_offer_id)
                             if self.user_id:
                                 query = query.eq("user_id", self.user_id)
                             query.execute()
-                            logger.info(f"Ozon: обновлен SKU {item_offer_id} -> ozon_sku={ozon_sku}")
+                            sku_populated.add(item_offer_id)
+                            logger.info(f"Ozon: updated SKU via product_info {item_offer_id} -> ozon_sku={ozon_sku}")
+                        elif item_offer_id:
+                            logger.warning(f"Ozon: product_info returned no FBO SKU for {item_offer_id}")
                 except Exception as e:
                     logger.warning(f"Failed to fetch Ozon product info for SKU mapping: {e}")
 
-            # Invalidate caches after product sync
+                # Method 2: fallback via warehouse stocks for products that still need ozon_sku
+                offers_needing_sku = [
+                    oid for oid in products_map
+                    if oid != "WB_ACCOUNT"
+                    and products_map[oid].get("ozon_product_id")
+                    and oid not in sku_populated
+                ]
+                if offers_needing_sku:
+                    logger.info(f"Ozon: {len(offers_needing_sku)} products still need FBO SKU, trying warehouse stocks fallback")
+                    try:
+                        wh_data = await self.ozon_client.get_all_stocks_on_warehouses()
+                        rows = wh_data.get("result", {}).get("rows", [])
+                        for row in rows:
+                            item_code = row.get("item_code", "")
+                            sku = row.get("sku")
+                            if item_code and item_code in products_map and sku and item_code not in sku_populated:
+                                ozon_sku = str(sku)
+                                query = self.supabase.table("mp_products").update({
+                                    "ozon_sku": ozon_sku,
+                                }).eq("barcode", item_code)
+                                if self.user_id:
+                                    query = query.eq("user_id", self.user_id)
+                                query.execute()
+                                sku_populated.add(item_code)
+                                logger.info(f"Ozon: updated SKU via warehouse fallback {item_code} -> ozon_sku={ozon_sku}")
+                    except Exception as e:
+                        logger.warning(f"Failed to fetch Ozon warehouse stocks for SKU mapping: {e}")
+
+                if sku_populated:
+                    logger.info(f"Ozon: populated ozon_sku for {len(sku_populated)} products")
+                else:
+                    logger.warning(f"Ozon: could not populate ozon_sku for any product!")
+
+            # f) Try to fetch cost_price from Ozon API for products with purchase_price=0
+            if "ozon" in allowed_marketplaces:
+                zero_cc_offers = [
+                    oid for oid, p in products_map.items()
+                    if oid != "WB_ACCOUNT"
+                    and p.get("ozon_product_id")
+                    and (p.get("purchase_price") or 0) == 0
+                ]
+                if zero_cc_offers:
+                    try:
+                        prices_resp = await self.ozon_client.get_product_prices(
+                            offer_ids=zero_cc_offers, limit=100
+                        )
+                        cc_updated = 0
+                        for item in prices_resp.get("result", {}).get("items", []):
+                            offer_id = item.get("offer_id", "")
+                            # Check for cost_price in price object or top-level
+                            price_obj = item.get("price", {}) if isinstance(item.get("price"), dict) else {}
+                            cost_price = (
+                                item.get("cost_price")
+                                or item.get("purchase_price")
+                                or price_obj.get("cost_price")
+                                or price_obj.get("purchase_price")
+                            )
+                            if cost_price and offer_id in products_map:
+                                try:
+                                    cc_value = float(cost_price)
+                                    if cc_value > 0:
+                                        query = self.supabase.table("mp_products").update({
+                                            "purchase_price": cc_value,
+                                        }).eq("barcode", offer_id)
+                                        if self.user_id:
+                                            query = query.eq("user_id", self.user_id)
+                                        query.execute()
+                                        cc_updated += 1
+                                        logger.info(f"Ozon: set cost_price for {offer_id} -> {cc_value}")
+                                except (ValueError, TypeError):
+                                    pass
+                        if cc_updated:
+                            logger.info(f"Ozon: populated cost_price for {cc_updated} products from API")
+                        else:
+                            logger.info(f"Ozon: no cost_price found in prices API for {len(zero_cc_offers)} products")
+                    except Exception as e:
+                        logger.warning(f"Failed to fetch Ozon product prices for cost_price: {e}")
+
+            # g) Invalidate caches after product sync
             self._barcodes_cache = None
             self._ozon_sku_map_cache = None
 
-            self._log_sync("all", "products", "success", updated_count, started_at=started_at)
-            return {"status": "success", "updated": updated_count}
+            # h) Return result
+            total_processed = updated_count + created_count
+            status = "success" if not errors else "partial"
+            self._log_sync("all", "products", status, total_processed, started_at=started_at)
+            result = {
+                "status": status,
+                "updated": updated_count,
+                "created": created_count,
+                "skipped_sku_limit": skipped_sku_limit,
+            }
+            if errors:
+                result["errors"] = errors
+            return result
 
         except Exception as e:
             error_msg = str(e)
@@ -782,7 +1076,7 @@ class SyncService:
             if not stocks and offer_ids and not product_ids:
                 try:
                     info = await self.ozon_client.get_product_info(offer_ids=offer_ids)
-                    items = info.get("result", {}).get("items", []) if isinstance(info, dict) else []
+                    items = (info.get("items") or info.get("result", {}).get("items", [])) if isinstance(info, dict) else []
                     product_ids_fb = [it.get("product_id") for it in items if it.get("product_id")]
                     if product_ids_fb:
                         stocks = await _fetch_items({"visibility": "ALL", "product_id": product_ids_fb})
@@ -1386,6 +1680,10 @@ class SyncService:
         """Синхронизация удержаний с Ozon (mp_costs + mp_costs_details)"""
         started_at = datetime.now()
         date_to = date_to or datetime.now()
+        # Ozon finance API allows max 1 month period
+        max_period = timedelta(days=30)
+        if (date_to - date_from) > max_period:
+            date_from = date_to - max_period
         records_count = 0
         details_count = 0
 

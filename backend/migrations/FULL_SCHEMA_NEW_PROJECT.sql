@@ -30,6 +30,10 @@ CREATE TABLE IF NOT EXISTS mp_products (
     ozon_offer_id VARCHAR(50),
     ozon_sku TEXT,
 
+    -- Product management (migration 013)
+    sort_order INTEGER DEFAULT 0,
+    product_group_id UUID DEFAULT NULL,
+
     created_at TIMESTAMPTZ DEFAULT now(),
     updated_at TIMESTAMPTZ DEFAULT now(),
 
@@ -289,6 +293,8 @@ CREATE TABLE IF NOT EXISTS mp_payments (
 
 -- mp_products
 CREATE INDEX IF NOT EXISTS idx_mp_products_user ON mp_products(user_id);
+CREATE INDEX IF NOT EXISTS idx_mp_products_group ON mp_products(product_group_id) WHERE product_group_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_mp_products_sort ON mp_products(user_id, sort_order);
 
 -- mp_sales
 CREATE INDEX IF NOT EXISTS idx_mp_sales_date ON mp_sales(date);

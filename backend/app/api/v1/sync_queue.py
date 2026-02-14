@@ -159,7 +159,7 @@ async def _run_full_sync(user_id: str, trigger: str) -> dict:
     log_id = _create_log(user_id, "all", trigger)
     try:
         sync_service = SyncService(user_id=user_id)
-        result = await sync_service.sync_all(days_back=35)
+        result = await sync_service.sync_all(days_back=30)
         total_records = result.get("success_count", 0)
         _finish_log(log_id, "success", total_records)
         return {"status": "completed", "records": total_records}

@@ -2,7 +2,7 @@
  * Карточка сводной метрики
  */
 import type { LucideIcon } from 'lucide-react';
-import { TrendingUp, TrendingDown, HelpCircle } from 'lucide-react';
+import { TrendingUp, TrendingDown, HelpCircle, AlertTriangle } from 'lucide-react';
 import { cn, formatCurrency, formatNumber, formatPercent } from '../../lib/utils';
 
 interface SummaryCardProps {
@@ -16,6 +16,7 @@ interface SummaryCardProps {
   icon?: LucideIcon;
   format?: 'currency' | 'number' | 'percent';
   loading?: boolean;
+  warning?: string;
 }
 
 export const SummaryCard = ({
@@ -29,6 +30,7 @@ export const SummaryCard = ({
   icon: Icon,
   format = 'number',
   loading = false,
+  warning,
 }: SummaryCardProps) => {
   const formatValue = (val: number | string): string => {
     if (typeof val === 'string') return val;
@@ -173,6 +175,15 @@ export const SummaryCard = ({
         <p className="font-bold text-gray-900 tabular-nums leading-tight flex items-baseline whitespace-nowrap min-w-0">
           {format === 'currency' ? renderCurrencyValue(value) : (
             <span className="text-xl sm:text-2xl">{formatValue(value)}</span>
+          )}
+          {warning && (
+            <span className="group relative ml-1 flex-shrink-0">
+              <AlertTriangle className="w-3.5 h-3.5 text-amber-500 inline-block" />
+              <span className="invisible group-hover:visible absolute z-50 top-full right-0 mt-1 w-48 p-2 bg-gray-900 text-white text-[10px] rounded-lg shadow-lg whitespace-normal leading-relaxed">
+                {warning}
+                <span className="absolute -top-1 right-2 w-2 h-2 bg-gray-900 rotate-45" />
+              </span>
+            </span>
           )}
         </p>
         {subtitle && (

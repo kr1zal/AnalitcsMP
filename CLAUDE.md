@@ -1,6 +1,6 @@
 Never run "npm run dev"
 Use "npm run build" to check if code compiles or no. See results and fix code if it's needed
-
+Пиши ответы на Русском
 # Analytics Dashboard - Marketplace WB & Ozon
 
 Интерактивный дашборд для аналитики продаж на Wildberries и Ozon.
