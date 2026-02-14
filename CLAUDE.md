@@ -84,14 +84,15 @@ sshpass -p '@vnDBp5VCt2+' rsync -avz --delete -e "ssh -o StrictHostKeyChecking=n
 - Интеграция оплаты Pro подписки (990₽/мес)
 - Подробности: [memory/phase5-release-plan.md](memory/phase5-release-plan.md) секция 1.5
 
-### Auth Flow — IMPLEMENTED (14.02.2026)
+### Auth Flow — DEPLOYED (14.02.2026)
 - **LoginPage:** 3 режима (login, signup, forgot-password) + emailRedirectTo + экран «Проверьте почту»
 - **ResetPasswordPage:** новая страница, ввод нового пароля после перехода по ссылке из email
 - **Удаление аккаунта:** Danger Zone в SettingsPage → DELETE /api/v1/account → удаление всех данных + auth user
 - **Email-шаблоны:** брендированные (RevioMP, indigo-600), на русском языке → [docs/email-templates.md](docs/email-templates.md)
-- **Supabase Dashboard:** Site URL = `https://reviomp.ru`, Redirect URLs настроены
+- **Supabase Dashboard:** Site URL = `https://reviomp.ru`, Redirect URLs настроены, email templates вставлены
 - **CORS:** добавлен `https://reviomp.ru`
 - **Backend:** `account.py` — удаление из 13 таблиц + Supabase Admin API
+- **Bugfix:** `tokens.py` trigger "onboarding" → "manual" (CHECK constraint mp_sync_log_trigger_check)
 - **Полная CJM-документация:** [docs/auth-flow.md](docs/auth-flow.md)
 
 ### Активные задачи
@@ -99,7 +100,7 @@ sshpass -p '@vnDBp5VCt2+' rsync -avz --delete -e "ssh -o StrictHostKeyChecking=n
 - [x] Позаказный монитор v2 (детализация) — позаказные издержки ✓
 - [~] Landing Page — основной layout + анимации готовы, polish in progress
 - [x] YooKassa Payment — реализовано
-- [x] Auth Flow (регистрация, сброс пароля, удаление аккаунта) — реализовано
+- [x] Auth Flow (регистрация, сброс пароля, удаление аккаунта) — DEPLOYED ✓
 - [ ] Hide Business tier, SEO index.html, admin ID→config — ожидает
 - [ ] Прибыль на карточках OZON/WB (MarketplaceBreakdown)
 - [ ] Возвраты + ДРР от заказов/выкупов
@@ -114,6 +115,7 @@ sshpass -p '@vnDBp5VCt2+' rsync -avz --delete -e "ssh -o StrictHostKeyChecking=n
 - ~~Ozon SKU mapping частично hardcoded в sync_service.py~~ FIXED (dynamic from DB + migration 009)
 - ~~Прибыль показывает -10К из-за смешивания costs-tree и mp_sales~~ FIXED (пропорциональная коррекция закупки)
 - ~~WB mp_orders: price = retail_price (каталожная цена ДО скидки СПП)~~ FIXED — sale_price column added (retail_price_withdisc_rub)
+- ~~save-and-sync 500: trigger "onboarding" не в CHECK constraint~~ FIXED — заменён на "manual"
 
 ## Технический стек
 
@@ -273,8 +275,9 @@ FRONTEND_URL                          # Для Playwright PDF (http://localhost:
 5a. ~~Order Monitor v1 (воронка заказов)~~ — READY (09.02.2026)
 5b. ~~Order Monitor v2 (позаказная детализация + SPP fix)~~ — READY (10.02.2026)
 5c. Landing Page — IN PROGRESS (10-11.02.2026), core layout + animations done
-5d. YooKassa Payment — PENDING
-5e. Hide Business / SEO / Admin config — PENDING
+5d. ~~YooKassa Payment~~ — IMPLEMENTED (14.02.2026)
+5e. ~~Auth Flow (регистрация, сброс пароля, удаление аккаунта)~~ — DEPLOYED (14.02.2026)
+5f. Hide Business / SEO / Admin config — PENDING
 
 ### Фичи (deferred)
 6. Прибыль на карточках OZON/WB

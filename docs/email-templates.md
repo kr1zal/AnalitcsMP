@@ -142,7 +142,7 @@
                       <tr>
                         <td style="background-color: #EEF2FF; border-radius: 8px; padding: 12px 20px;">
                           <p style="margin: 0; font-family: Inter, system-ui, sans-serif; font-size: 13px; color: #4338CA; line-height: 1.5; font-weight: 500;">
-                            &#127873; После подтверждения вы получите бесплатный доступ к аналитике на 14 дней
+                            &#127873; После подтверждения вы сможете подключить маркетплейсы и начать отслеживать аналитику
                           </p>
                         </td>
                       </tr>
@@ -374,10 +374,10 @@
 
 ## Checklist
 
-- [ ] Site URL = `https://reviomp.ru` (Authentication -> URL Configuration)
-- [ ] Redirect URL: `https://reviomp.ru/**`
-- [ ] Redirect URL: `http://localhost:5173/**`
-- [ ] Confirm signup template: Subject + HTML вставлены
-- [ ] Reset password template: Subject + HTML вставлены
-- [ ] Протестировать регистрацию (получить письмо, нажать кнопку)
-- [ ] Протестировать сброс пароля (получить письмо, нажать кнопку)
+- [x] Site URL = `https://reviomp.ru` (Authentication -> URL Configuration)
+- [x] Redirect URL: `https://reviomp.ru/**`
+- [x] Redirect URL: `http://localhost:5173/**`
+- [x] Confirm signup template: Subject + HTML вставлены
+- [x] Reset password template: Subject + HTML вставлены
+- [x] Протестировать регистрацию (получить письмо, нажать кнопку)
+- [x] Протестировать сброс пароля (получить письмо, нажать кнопку)

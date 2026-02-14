@@ -157,7 +157,7 @@ async def save_tokens_and_sync(
         "started_at": now_iso,
         "finished_at": None,
         "user_id": current_user.id,
-        "trigger": "onboarding",
+        "trigger": "manual",
     }).execute()
     log_id = log_result.data[0]["id"] if log_result.data else None
 
