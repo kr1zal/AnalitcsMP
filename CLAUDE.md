@@ -14,7 +14,7 @@ Use "npm run build" to check if code compiles or no. See results and fix code if
 | SSH | `ssh root@83.222.16.15` / пароль: `@vnDBp5VCt2+` (с @ в начале!) |
 | Структура | `/var/www/analytics/` (backend + frontend + .env) |
 | Сервисы | systemd `analytics-api`, Nginx proxy, Let's Encrypt SSL |
-| Admin | exklante@gmail.com / UUID: 17e80396-86e1-4ec8-8cb2-f727462bf20c |
+| Admin | exklante@gmail.com / UUID: e2db2023-4ce3-4182-96d3-7a194657cb4a |
 
 ```bash
 # Логи / перезапуск
@@ -281,4 +281,5 @@ FRONTEND_URL                          # Для Playwright PDF (http://localhost:
 | [CHANGELOG.md](CHANGELOG.md) | Полная история всех изменений |
 | [promt.md](promt.md) | Промпт для нового чата + чеклист деплоя |
 | [frontend/DESIGN_REFERENCE.md](frontend/DESIGN_REFERENCE.md) | Гайд по дизайну (цвета, шрифты, spacing) |
+| [docs/yookassa-integration.md](docs/yookassa-integration.md) | Подключение ЮКассы — API, webhook, деплой |
 | [memory/](memory/) | Session memory (saas-phase1.md, saas-phase2.md, saas-phase3.md, saas-phase4.md) |

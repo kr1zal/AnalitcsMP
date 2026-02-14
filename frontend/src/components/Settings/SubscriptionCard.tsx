@@ -1,5 +1,7 @@
-import { CheckCircle, XCircle, Loader2 } from 'lucide-react';
-import { useSubscription, usePlans } from '../../hooks/useSubscription';
+import { useState } from 'react';
+import { CheckCircle, XCircle, Loader2, CreditCard, XOctagon } from 'lucide-react';
+import { toast } from 'sonner';
+import { useSubscription, usePlans, useUpgrade, useCancelSubscription } from '../../hooks/useSubscription';
 import type { PlanDefinition, SubscriptionFeatures } from '../../types';
 
 const FEATURE_LABELS: Record<keyof SubscriptionFeatures, string> = {
@@ -31,6 +33,9 @@ function FeatureCheck({ enabled }: { enabled: boolean }) {
 export function SubscriptionCard() {
   const { data: sub, isLoading: subLoading } = useSubscription();
   const { data: plansData, isLoading: plansLoading } = usePlans();
+  const upgradeMut = useUpgrade();
+  const cancelMut = useCancelSubscription();
+  const [upgrading, setUpgrading] = useState(false);
 
   if (subLoading || plansLoading) {
     return (
@@ -43,6 +48,29 @@ export function SubscriptionCard() {
   if (!sub || !plansData) return null;
 
   const plans = plansData.plans;
+
+  const handleUpgrade = async (plan: string) => {
+    setUpgrading(true);
+    try {
+      const result = await upgradeMut.mutateAsync(plan);
+      if (result.confirmation_url) {
+        window.location.href = result.confirmation_url;
+      }
+    } catch (err: any) {
+      const detail = err?.response?.data?.detail;
+      toast.error(typeof detail === 'string' ? detail : 'Ошибка создания платежа');
+      setUpgrading(false);
+    }
+  };
+
+  const handleCancel = async () => {
+    try {
+      await cancelMut.mutateAsync();
+      toast.success('Автопродление отключено');
+    } catch {
+      toast.error('Ошибка отмены автопродления');
+    }
+  };
 
   return (
     <div className="space-y-4">
@@ -165,15 +193,46 @@ export function SubscriptionCard() {
         </table>
       </div>
 
-      {/* CTA */}
+      {/* CTA — Upgrade / Cancel */}
       {sub.plan === 'free' && (
-        <div className="bg-indigo-50 border border-indigo-200 rounded-lg p-3 text-center">
-          <p className="text-sm text-indigo-800">
-            Для смены тарифа напишите на{' '}
-            <a href="mailto:support@reviomp.ru" className="font-medium underline">
-              support@reviomp.ru
-            </a>
-          </p>
+        <button
+          onClick={() => handleUpgrade('pro')}
+          disabled={upgrading}
+          className="w-full flex items-center justify-center gap-2 py-2.5 bg-gradient-to-r from-indigo-600 to-violet-600 text-white text-sm font-semibold rounded-xl hover:from-indigo-700 hover:to-violet-700 disabled:opacity-60 disabled:cursor-not-allowed transition-all shadow-md shadow-indigo-200/50"
+        >
+          {upgrading ? (
+            <>
+              <Loader2 className="w-4 h-4 animate-spin" />
+              Переход к оплате...
+            </>
+          ) : (
+            <>
+              <CreditCard className="w-4 h-4" />
+              Подключить Pro — 990 ₽/мес
+            </>
+          )}
+        </button>
+      )}
+
+      {sub.plan !== 'free' && (
+        <div className="space-y-2">
+          <div className="bg-green-50 border border-green-200 rounded-lg p-3 text-center">
+            <p className="text-sm text-green-800 font-medium">
+              Тариф {sub.plan_name} активен
+            </p>
+          </div>
+          <button
+            onClick={handleCancel}
+            disabled={cancelMut.isPending}
+            className="w-full flex items-center justify-center gap-2 py-2 text-xs text-gray-500 hover:text-red-600 transition-colors"
+          >
+            {cancelMut.isPending ? (
+              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+            ) : (
+              <XOctagon className="w-3.5 h-3.5" />
+            )}
+            Отменить автопродление
+          </button>
         </div>
       )}
     </div>

@@ -5,7 +5,7 @@ API-токены маркетплейсов: CRUD + валидация.
 import logging
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from pydantic import BaseModel
 
 from ...auth import CurrentUser, get_current_user
@@ -136,18 +136,54 @@ async def validate_tokens(
 @router.post("/tokens/save-and-sync")
 async def save_tokens_and_sync(
     body: TokensInput,
+    background_tasks: BackgroundTasks,
     current_user: CurrentUser = Depends(get_current_user),
 ):
-    """Сохранить токены и запустить полную синхронизацию."""
-    # 1. Сохраняем
+    """Сохранить токены и запустить синхронизацию в фоне."""
+    from datetime import datetime, timezone
+
+    # 1. Сохраняем токены
     await save_tokens(body, current_user)
 
-    # 2. Синхронизируем
-    from ...services.sync_service import SyncService
-    try:
-        sync_svc = SyncService(user_id=current_user.id)
-        result = await sync_svc.sync_all(days_back=30)
-        return {"status": "saved_and_synced", "sync_result": result}
-    except Exception as e:
-        logger.error(f"Sync after token save failed: {e}")
-        raise HTTPException(status_code=500, detail=f"Tokens saved, but sync failed: {str(e)[:200]}")
+    # 2. Создаём "running" запись ДО фоновой задачи — is_syncing сразу true
+    supabase = get_supabase_client()
+    now_iso = datetime.now(timezone.utc).isoformat()
+    log_result = supabase.table("mp_sync_log").insert({
+        "marketplace": "all",
+        "sync_type": "all",
+        "status": "running",
+        "records_count": 0,
+        "error_message": None,
+        "started_at": now_iso,
+        "finished_at": None,
+        "user_id": current_user.id,
+        "trigger": "onboarding",
+    }).execute()
+    log_id = log_result.data[0]["id"] if log_result.data else None
+
+    # 3. Синхронизацию запускаем в фоне — не блокируем ответ
+    async def _run_sync() -> None:
+        from ...services.sync_service import SyncService
+        try:
+            sync_svc = SyncService(user_id=current_user.id)
+            result = await sync_svc.sync_all(days_back=30)
+            success_count = result.get("success_count", 0)
+            # Закрываем master-лог
+            if log_id:
+                supabase.table("mp_sync_log").update({
+                    "status": "success",
+                    "records_count": success_count,
+                    "finished_at": datetime.now(timezone.utc).isoformat(),
+                }).eq("id", log_id).execute()
+            logger.info(f"Background sync completed for user {current_user.id}")
+        except Exception as e:
+            if log_id:
+                supabase.table("mp_sync_log").update({
+                    "status": "error",
+                    "error_message": str(e)[:500],
+                    "finished_at": datetime.now(timezone.utc).isoformat(),
+                }).eq("id", log_id).execute()
+            logger.error(f"Background sync failed for user {current_user.id}: {e}")
+
+    background_tasks.add_task(_run_sync)
+    return {"status": "sync_started"}

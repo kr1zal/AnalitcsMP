@@ -296,10 +296,8 @@ export const tokensApi = {
     return data;
   },
 
-  saveAndSync: async (tokens: TokensInput): Promise<{ status: string; sync_result?: unknown }> => {
-    const { data } = await api.post('/tokens/save-and-sync', tokens, {
-      timeout: 300000, // 5 мин — полная синхронизация долгая
-    });
+  saveAndSync: async (tokens: TokensInput): Promise<{ status: string }> => {
+    const { data } = await api.post('/tokens/save-and-sync', tokens);
     return data;
   },
 };
@@ -314,6 +312,19 @@ export const subscriptionApi = {
 
   getPlans: async (): Promise<PlansListResponse> => {
     const { data } = await api.get<PlansListResponse>('/subscription/plans');
+    return data;
+  },
+};
+
+// ==================== ОПЛАТА ====================
+
+export const paymentApi = {
+  upgrade: async (plan: string): Promise<{ confirmation_url: string }> => {
+    const { data } = await api.post<{ confirmation_url: string }>('/subscription/upgrade', { plan });
+    return data;
+  },
+  cancel: async (): Promise<{ status: string }> => {
+    const { data } = await api.post<{ status: string }>('/subscription/cancel');
     return data;
   },
 };

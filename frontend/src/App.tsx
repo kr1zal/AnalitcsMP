@@ -14,6 +14,7 @@ import { PrintPage } from './pages/PrintPage';
 import { LoginPage } from './pages/LoginPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { LandingPage } from './pages/LandingPage';
+import { LegalPage, PolicyPage, PrivacyPage } from './pages/LegalPages';
 import OrderMonitorPage from './pages/OrderMonitorPage';
 import { useAuth } from './hooks/useAuth';
 import { useAuthStore } from './store/useAuthStore';
@@ -66,6 +67,11 @@ function AppRoutes() {
 
       {/* Print page — без Layout, авторизация через ?token= */}
       <Route path="/print" element={<PrintPage />} />
+
+      {/* Legal pages — доступны всем */}
+      <Route path="/legal" element={<LegalPage />} />
+      <Route path="/policy" element={<PolicyPage />} />
+      <Route path="/privacy" element={<PrivacyPage />} />
 
       {/* Root: Landing (unauth) / App (auth) */}
       <Route path="/" element={<RootLayout />}>

@@ -1,9 +1,11 @@
-import { useState, useEffect } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
-import { Eye, EyeOff, CheckCircle, XCircle, AlertCircle, Loader2, Info } from 'lucide-react';
+import { useState, useEffect, useRef, useCallback } from 'react';
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
+import { Eye, EyeOff, CheckCircle, XCircle, AlertCircle, Loader2, Info, ArrowRight, Database } from 'lucide-react';
 import { toast } from 'sonner';
+import { useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '../store/useAuthStore';
 import { useTokensStatus, useValidateTokens, useSaveTokens, useSaveAndSync } from '../hooks/useTokens';
+import { syncApi } from '../services/api';
 import { SubscriptionCard } from '../components/Settings/SubscriptionCard';
 
 // ─── Подсказки где взять токены ───
@@ -119,12 +121,141 @@ function StatusBadge({ connected }: { connected: boolean }) {
   );
 }
 
+// ─── Анимированный прогресс-бар ───
+
+function SyncProgressBar({ startedAt }: { startedAt: number }) {
+  const [progress, setProgress] = useState(0);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const elapsed = (Date.now() - startedAt) / 1000;
+      // Логарифмическая кривая: быстро до ~60%, потом замедляется, макс 92%
+      const p = Math.min(92, 15 * Math.log(elapsed / 10 + 1) + elapsed * 0.15);
+      setProgress(Math.max(0, p));
+    }, 500);
+    return () => clearInterval(interval);
+  }, [startedAt]);
+
+  return (
+    <div className="w-full bg-gray-200 rounded-full h-2.5 overflow-hidden">
+      <div
+        className="h-full rounded-full bg-gradient-to-r from-indigo-500 via-indigo-600 to-violet-500 transition-all duration-500 ease-out"
+        style={{ width: `${progress}%` }}
+      />
+    </div>
+  );
+}
+
+// ─── Экран синхронизации ───
+
+function SyncingScreen({ startedAt }: { startedAt: number }) {
+  const [dots, setDots] = useState('');
+  const [, setTick] = useState(0);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setDots((d) => (d.length >= 3 ? '' : d + '.'));
+    }, 600);
+    return () => clearInterval(interval);
+  }, []);
+
+  // Пересчёт таймера каждую секунду
+  useEffect(() => {
+    const t = setInterval(() => setTick((v) => v + 1), 1000);
+    return () => clearInterval(t);
+  }, []);
+
+  const elapsed = Math.floor((Date.now() - startedAt) / 1000);
+  const minutes = Math.floor(elapsed / 60);
+  const seconds = elapsed % 60;
+
+  return (
+    <div className="max-w-lg mx-auto px-4 py-16 text-center">
+      <div className="mb-8">
+        <div className="w-16 h-16 mx-auto mb-6 bg-indigo-100 rounded-2xl flex items-center justify-center">
+          <Database className="w-8 h-8 text-indigo-600 animate-pulse" />
+        </div>
+        <h2 className="text-xl font-bold text-gray-900 mb-2">
+          Загружаем ваши данные{dots}
+        </h2>
+        <p className="text-sm text-gray-500 leading-relaxed">
+          Собираем продажи, заказы, издержки и рекламу<br />
+          с Wildberries и Ozon за последние 30 дней.
+        </p>
+      </div>
+
+      <div className="mb-4">
+        <SyncProgressBar startedAt={startedAt} />
+      </div>
+
+      <p className="text-xs text-gray-400">
+        Прошло: {minutes > 0 ? `${minutes} мин ` : ''}{String(seconds).padStart(2, '0')} сек
+      </p>
+
+      <p className="mt-8 text-xs text-gray-400">
+        Не закрывайте страницу — мы сообщим, когда всё будет готово
+      </p>
+    </div>
+  );
+}
+
+// ─── Экран "Готово" ───
+
+function SyncDoneScreen({ onNavigate }: { onNavigate: () => void }) {
+  return (
+    <div className="max-w-lg mx-auto px-4 py-16 text-center">
+      <div className="mb-8">
+        <div className="w-16 h-16 mx-auto mb-6 bg-green-100 rounded-2xl flex items-center justify-center">
+          <CheckCircle className="w-8 h-8 text-green-600" />
+        </div>
+        <h2 className="text-xl font-bold text-gray-900 mb-2">
+          Данные готовы!
+        </h2>
+        <p className="text-sm text-gray-500 leading-relaxed">
+          Мы загрузили ваши данные с маркетплейсов.<br />
+          Дашборд, юнит-экономика и отчёты уже доступны.
+        </p>
+      </div>
+
+      <button
+        onClick={onNavigate}
+        className="inline-flex items-center gap-2 px-6 py-3 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 transition-colors shadow-sm"
+      >
+        Перейти к отчётам
+        <ArrowRight className="w-4 h-4" />
+      </button>
+    </div>
+  );
+}
+
 // ─── Основная страница ───
+
+type SyncPhase = 'form' | 'syncing' | 'done';
 
 export function SettingsPage() {
   const navigate = useNavigate();
   const location = useLocation();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const queryClient = useQueryClient();
   const isOnboarding = (location.state as any)?.onboarding === true;
+
+  // Фаза: форма → синхронизация → готово
+  const [syncPhase, setSyncPhase] = useState<SyncPhase>('form');
+  const [syncStartedAt, setSyncStartedAt] = useState(0);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Обработка возврата из ЮКассы (?payment=success / ?payment=fail)
+  useEffect(() => {
+    const paymentStatus = searchParams.get('payment');
+    if (paymentStatus === 'success') {
+      toast.success('Оплата прошла! Тариф Pro активируется в течение минуты.');
+      queryClient.invalidateQueries({ queryKey: ['subscription'] });
+      setSearchParams({}, { replace: true });
+    } else if (paymentStatus === 'fail') {
+      toast.error('Оплата не прошла. Попробуйте ещё раз.');
+      setSearchParams({}, { replace: true });
+    }
+  }, [searchParams, setSearchParams, queryClient]);
 
   const user = useAuthStore((s) => s.user);
   const logout = useAuthStore((s) => s.logout);
@@ -148,6 +279,60 @@ export function SettingsPage() {
   useEffect(() => setValidation({}), [wbToken, ozonClientId, ozonApiKey, ozonPerfClientId, ozonPerfSecret]);
 
   const hasAnyInput = !!(wbToken || ozonClientId || ozonApiKey || ozonPerfClientId || ozonPerfSecret);
+
+  // ── Поллинг sync status ──
+  const checkSyncStatus = useCallback(async () => {
+    try {
+      const syncStatus = await syncApi.getStatus();
+      if (!syncStatus.is_syncing) {
+        setSyncPhase('done');
+        if (pollRef.current) {
+          clearInterval(pollRef.current);
+          pollRef.current = null;
+        }
+        queryClient.invalidateQueries({ queryKey: ['tokens'] });
+        queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+        queryClient.invalidateQueries({ queryKey: ['sync'] });
+      }
+    } catch {
+      // Ошибка поллинга — продолжаем пробовать
+    }
+  }, [queryClient]);
+
+  useEffect(() => {
+    if (syncPhase === 'syncing') {
+      // Первая проверка через 5 сек, потом каждые 5 сек
+      const timeout = setTimeout(() => {
+        checkSyncStatus();
+        pollRef.current = setInterval(checkSyncStatus, 5000);
+      }, 5000);
+      return () => {
+        clearTimeout(timeout);
+        if (pollRef.current) {
+          clearInterval(pollRef.current);
+          pollRef.current = null;
+        }
+      };
+    }
+  }, [syncPhase, checkSyncStatus]);
+
+  // ── Проверка при загрузке — если sync уже идёт (F5 во время синхронизации) ──
+  useEffect(() => {
+    let cancelled = false;
+    async function checkInitialSync() {
+      try {
+        const syncStatus = await syncApi.getStatus();
+        if (!cancelled && syncStatus.is_syncing) {
+          setSyncPhase('syncing');
+          setSyncStartedAt(Date.now());
+        }
+      } catch {
+        // ignore
+      }
+    }
+    checkInitialSync();
+    return () => { cancelled = true; };
+  }, []);
 
   // ── Валидация ──
   const handleValidate = async (section: 'wb' | 'ozon' | 'ozonPerf') => {
@@ -188,7 +373,7 @@ export function SettingsPage() {
 
   // ── Сохранить + Синхронизировать ──
   const handleSaveAndSync = async () => {
-    const tid = toast.loading('Сохраняю токены и синхронизирую данные...');
+    const tid = toast.loading('Сохраняю токены...');
     try {
       await saveAndSyncMut.mutateAsync({
         wb_api_token: wbToken || undefined,
@@ -197,10 +382,11 @@ export function SettingsPage() {
         ozon_perf_client_id: ozonPerfClientId || undefined,
         ozon_perf_secret: ozonPerfSecret || undefined,
       });
-      toast.success('Токены сохранены, данные синхронизированы!', { id: tid });
-      navigate('/', { replace: true });
+      toast.dismiss(tid);
+      setSyncStartedAt(Date.now());
+      setSyncPhase('syncing');
     } catch (err: any) {
-      toast.error(err?.response?.data?.detail || 'Ошибка синхронизации', { id: tid });
+      toast.error(err?.response?.data?.detail || 'Ошибка сохранения', { id: tid });
     }
   };
 
@@ -227,6 +413,17 @@ export function SettingsPage() {
     );
   };
 
+  // ── Фаза: Синхронизация ──
+  if (syncPhase === 'syncing') {
+    return <SyncingScreen startedAt={syncStartedAt} />;
+  }
+
+  // ── Фаза: Готово ──
+  if (syncPhase === 'done') {
+    return <SyncDoneScreen onNavigate={() => navigate('/', { replace: true })} />;
+  }
+
+  // ── Фаза: Форма ──
   if (statusLoading) {
     return (
       <div className="flex items-center justify-center py-20">
@@ -401,7 +598,7 @@ export function SettingsPage() {
         >
           {saveAndSyncMut.isPending ? (
             <>
-              <Loader2 className="w-4 h-4 animate-spin" /> Синхронизирую...
+              <Loader2 className="w-4 h-4 animate-spin" /> Сохраняю...
             </>
           ) : (
             'Сохранить и синхронизировать'

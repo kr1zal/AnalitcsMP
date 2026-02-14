@@ -1519,6 +1519,19 @@ function DataFlowSectionV3() {
   const o3 = tick >= 0 ? o3Labels[o3Cycle % 2] : o3Labels[0];
   const roi = tick >= 0 ? roiValues[Math.floor((tick + 3) / 4) % 4] : roiValues[0];
 
+  /* ── Shelf: cycling data categories from V2 (3 cards) ── */
+  const shelfLabels = [
+    ['Продажи', 'Заказы', 'Выкупы'],
+    ['Остатки', 'FBO', 'Склады'],
+    ['Реклама', 'Удержания', 'Комиссия'],
+  ];
+  const shelfCX = [380, 505, 630];          // card centers X
+  const shelfCycle = tick >= 0 ? Math.floor(tick / 3) : 0;
+  const shelf = shelfLabels.map((labels, i) =>
+    tick >= 0 ? labels[(shelfCycle + i) % 3] : labels[0]
+  );
+  const activeSlot = tick >= 0 ? shelfCycle % 3 : -1;
+
   /* ── Entrance helper (one-shot, staggered) ── */
   const show = (delay: number): React.CSSProperties => ({
     opacity: triggered ? 1 : 0,
@@ -1571,7 +1584,11 @@ function DataFlowSectionV3() {
     pToB3:     'M830,263 L882,263',
     eToB4:     'M830,400 L858,400 L858,390 L882,390',
     eToB5:     'M830,420 L858,420 L858,436 L882,436',
-    hubToAPI:  'M505,312 L505,465',
+    hubToAPI:    'M505,312 L505,465',
+    sppToHub:    'M320,358 L365,325 L416,298',  // СПП card → hub left
+    shelf1ToHub: 'M380,56 L380,135 L455,218',   // left card → hub
+    shelf2ToHub: 'M505,56 L505,218',             // center card → hub
+    shelf3ToHub: 'M630,56 L630,135 L555,218',   // right card → hub
   };
 
   /* ── Pro-tree paths ── */
@@ -1595,6 +1612,10 @@ function DataFlowSectionV3() {
     { path: P.dToB2,     c: '#10b981', r: 1.5, op: 0.4,  dur: '1.5s', begin: '0.7s' },
     { path: P.pToB3,     c: '#d97706', r: 1.5, op: 0.4,  dur: '1s',   begin: '0.6s' },
     { path: P.hubToAPI,  c: '#10b981', r: 2,   op: 0.5,  dur: '2.2s', begin: '0.4s' },
+    { path: P.sppToHub,    c: '#a78bfa', r: 2, op: 0.55, dur: '2s',   begin: '0.8s' },
+    { path: P.shelf1ToHub, c: '#818cf8', r: 2, op: 0.45, dur: '2.8s', begin: '0.5s' },
+    { path: P.shelf2ToHub, c: '#818cf8', r: 2, op: 0.45, dur: '2.2s', begin: '1s' },
+    { path: P.shelf3ToHub, c: '#818cf8', r: 2, op: 0.45, dur: '2.8s', begin: '1.5s' },
   ];
 
   const outY = [120, 263, 410];
@@ -1604,11 +1625,11 @@ function DataFlowSectionV3() {
   const outDelay = [1.5, 1.7, 1.9];
 
   const badgeData = [
-    { x: 882, y: 70, w: 85, h: 26, fill: 'rgba(14,165,233,0.06)', stroke: 'rgba(14,165,233,0.22)', color: '#0284c7', text: 'Telegram', anim: 'v3-float' },
-    { x: 882, y: 137, w: 85, h: 26, fill: 'rgba(16,185,129,0.06)', stroke: 'rgba(16,185,129,0.22)', color: '#059669', text: 'Webhook', anim: 'v3-blink' },
+    { x: 882, y: 70, w: 92, h: 28, fill: 'rgba(14,165,233,0.06)', stroke: 'rgba(14,165,233,0.22)', color: '#0284c7', text: 'Telegram', anim: 'v3-float' },
+    { x: 882, y: 137, w: 92, h: 28, fill: 'rgba(16,185,129,0.06)', stroke: 'rgba(16,185,129,0.22)', color: '#059669', text: 'Webhook', anim: 'v3-blink' },
     { x: 882, y: 250, w: 78, h: 26, fill: 'rgba(217,119,6,0.06)', stroke: 'rgba(217,119,6,0.22)', color: '#d97706', text: roi, anim: 'v3-scale-in', dynamic: true },
-    { x: 882, y: 377, w: 78, h: 26, fill: 'rgba(22,163,74,0.06)', stroke: 'rgba(22,163,74,0.22)', color: '#16a34a', text: 'Excel', anim: 'v3-flip-loop' },
-    { x: 882, y: 423, w: 78, h: 26, fill: 'rgba(220,38,38,0.06)', stroke: 'rgba(220,38,38,0.22)', color: '#dc2626', text: 'PDF', anim: 'v3-flip-loop v3-flip-delay' },
+    { x: 882, y: 377, w: 86, h: 28, fill: 'rgba(22,163,74,0.06)', stroke: 'rgba(22,163,74,0.22)', color: '#16a34a', text: 'Excel', anim: 'v3-flip-loop' },
+    { x: 882, y: 423, w: 80, h: 28, fill: 'rgba(220,38,38,0.06)', stroke: 'rgba(220,38,38,0.22)', color: '#dc2626', text: 'PDF', anim: 'v3-flip-loop v3-flip-delay' },
   ];
   const badgeDelay = [2.2, 2.3, 2.4, 2.5, 2.6];
 
@@ -1646,6 +1667,10 @@ function DataFlowSectionV3() {
             </defs>
 
             {/* ─── LINES — varied dash patterns + independent opacity pulses ─── */}
+            <path d={P.shelf1ToHub} stroke="rgba(99,102,241,0.28)" strokeWidth={1.1} vectorEffect="non-scaling-stroke" fill="none" className={alive ? 'v3-line-a' : ''} {...draw(0.4, 195, '3 5')} />
+            <path d={P.shelf2ToHub} stroke="rgba(99,102,241,0.30)" strokeWidth={1.2} vectorEffect="non-scaling-stroke" fill="none" className={alive ? 'v3-line-b' : ''} {...draw(0.5, 165, '3 5')} />
+            <path d={P.shelf3ToHub} stroke="rgba(99,102,241,0.28)" strokeWidth={1.1} vectorEffect="non-scaling-stroke" fill="none" className={alive ? 'v3-line-c' : ''} {...draw(0.6, 195, '3 5')} />
+
             <path d={P.wbToHub} stroke="rgba(139,63,253,0.25)" strokeWidth={1} vectorEffect="non-scaling-stroke" fill="none" className={alive ? 'v3-line-a' : ''} {...draw(0.3, 350, '2 4')} />
             <path d={P.ozonToHub} stroke="rgba(37,99,235,0.25)" strokeWidth={1} vectorEffect="non-scaling-stroke" fill="none" className={alive ? 'v3-line-b' : ''} {...draw(0.5, 350, '6 3')} />
             <path d={P.ymToHub} stroke="rgba(156,163,175,0.12)" strokeWidth={1} vectorEffect="non-scaling-stroke" fill="none" className={alive ? 'v3-line-c' : ''} {...draw(0.8, 450, '4 4')} />
@@ -1679,6 +1704,45 @@ function DataFlowSectionV3() {
                 <animateMotion dur="1.5s" begin="0s" repeatCount="indefinite" path={P.eToB5} />
               </circle>
             )}
+
+            {/* ═══ INTEGRATION SHELF — 3 separate animated cards (V2 labels) ═══ */}
+            {shelf.map((label, i) => {
+              const cx = shelfCX[i];
+              const isActive = activeSlot === i;
+              const cardW = 112;
+              const cardH = 44;
+              const rx = cx - cardW / 2;
+              const ry = 12;
+              return (
+                <g key={`shelf-${i}`} style={show(0.3 + i * 0.12)}>
+                  {/* active glow ring */}
+                  {isActive && alive && (
+                    <rect x={rx - 3} y={ry - 3} width={cardW + 6} height={cardH + 6} rx={16}
+                      fill="none" stroke="rgba(99,102,241,0.18)" strokeWidth={2}
+                      className="v3-status-pulse" />
+                  )}
+                  {/* card body */}
+                  <rect x={rx} y={ry} width={cardW} height={cardH} rx={13}
+                    fill={isActive ? 'rgba(99,102,241,0.04)' : 'white'}
+                    stroke={isActive ? 'rgba(99,102,241,0.35)' : 'rgba(99,102,241,0.15)'}
+                    strokeWidth={isActive ? 1.2 : 0.8} />
+                  {/* cycling label */}
+                  <text key={label} x={cx} y={ry + cardH / 2 + 4.5} textAnchor="middle"
+                    fill={isActive ? '#4338ca' : '#6366f1'}
+                    fontSize={12} fontWeight={isActive ? '700' : '600'}
+                    fontFamily="Inter,sans-serif"
+                    opacity={isActive ? 1 : 0.6}
+                    className={tick >= 0 ? 'v3-fade-in' : ''}>
+                    {label}
+                  </text>
+                  {/* processing dot */}
+                  {isActive && alive && (
+                    <circle cx={rx + cardW - 10} cy={ry + 10} r={2.5}
+                      fill="#6366f1" className="v3-status-pulse" />
+                  )}
+                </g>
+              );
+            })}
 
             {/* ═══ SOURCES (permanent) ═══ */}
             <g style={show(0)}>
@@ -1736,18 +1800,62 @@ function DataFlowSectionV3() {
               </g>
             ))}
 
-            {/* ═══ BADGES — each with a UNIQUE micro-animation ═══ */}
-            {badgeData.map((b, i) => (
-              <g key={b.dynamic ? `bdg-${i}-${b.text}` : `bdg-${i}`} style={show(badgeDelay[i])} opacity="0.85">
-                <g className={alive ? b.anim : ''}>
-                  <rect x={b.x} y={b.y} width={b.w} height={b.h} rx="6" fill={b.fill} stroke={b.stroke} strokeWidth="0.75" />
-                  <text x={b.x + b.w / 2} y={b.y + b.h / 2 + 4} textAnchor="middle"
-                    fill={b.color} fontSize="9" fontWeight="600" fontFamily="Inter,sans-serif">
-                    {b.text}
-                  </text>
+            {/* ═══ BADGES — with icons + unique micro-animations ═══ */}
+            {badgeData.map((b, i) => {
+              const hasIcon = i !== 2;
+              const cy = b.y + b.h / 2;
+              const textX = hasIcon ? b.x + b.w / 2 + 5 : b.x + b.w / 2;
+              return (
+                <g key={b.dynamic ? `bdg-${i}-${b.text}` : `bdg-${i}`} style={show(badgeDelay[i])} opacity="0.85">
+                  <g className={alive ? b.anim : ''}>
+                    <rect x={b.x} y={b.y} width={b.w} height={b.h} rx="7" fill={b.fill} stroke={b.stroke} strokeWidth="0.75" />
+                    {/* Telegram — paper plane */}
+                    {i === 0 && <g transform={`translate(${b.x + 10},${cy - 4})`} opacity="0.5"><path d="M0,5 L8,0 L6,8 L4,5.5 Z" fill={b.color} /></g>}
+                    {/* Webhook — lightning bolt */}
+                    {i === 1 && <g transform={`translate(${b.x + 10},${cy - 5})`} opacity="0.55"><path d="M5,0 L2,5 L5,5 L3,10" stroke={b.color} strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" fill="none" /></g>}
+                    {/* Excel — grid/table */}
+                    {i === 3 && <g transform={`translate(${b.x + 8},${cy - 5})`} opacity="0.45">
+                      <rect width="9" height="9" rx="1.5" stroke={b.color} strokeWidth="0.8" fill="none" />
+                      <line x1="4.5" y1="0" x2="4.5" y2="9" stroke={b.color} strokeWidth="0.5" />
+                      <line x1="0" y1="4.5" x2="9" y2="4.5" stroke={b.color} strokeWidth="0.5" />
+                    </g>}
+                    {/* PDF — document with corner fold */}
+                    {i === 4 && <g transform={`translate(${b.x + 8},${cy - 5})`} opacity="0.45">
+                      <path d="M0,0 L5,0 L8,3 L8,10 L0,10 Z" stroke={b.color} strokeWidth="0.8" fill="none" />
+                      <path d="M5,0 L5,3 L8,3" stroke={b.color} strokeWidth="0.6" fill="none" />
+                    </g>}
+                    <text x={textX} y={cy + 4} textAnchor="middle"
+                      fill={b.color} fontSize="9" fontWeight="600" fontFamily="Inter,sans-serif">
+                      {b.text}
+                    </text>
+                  </g>
                 </g>
+              );
+            })}
+
+            {/* ═══ СПП — marketplace discount/compensation block ═══ */}
+            <path d={P.sppToHub} stroke="rgba(139,92,246,0.30)" strokeWidth={1.1}
+              vectorEffect="non-scaling-stroke" fill="none"
+              className={alive ? 'v3-line-b' : ''} {...draw(1.1, 120, '4 4')} />
+            <g style={show(1.3)}>
+              <g className={alive ? 'v3-breathe' : ''}>
+                <rect x={275} y={358} width={90} height={55} rx={14}
+                  fill="rgba(139,92,246,0.04)" stroke="rgba(139,92,246,0.30)" strokeWidth={1.2} />
+                {alive && <rect x={273} y={356} width={94} height={59} rx={16}
+                  fill="none" stroke="rgba(139,92,246,0.12)" strokeWidth={2}
+                  className="v3-status-pulse" />}
+                <text x={320} y={384} textAnchor="middle"
+                  fill="#7c3aed" fontSize={20} fontWeight="800"
+                  fontFamily="Inter,sans-serif">
+                  СПП
+                </text>
+                <text x={320} y={402} textAnchor="middle"
+                  fill="#8b5cf6" fontSize={8} fontWeight="500"
+                  fontFamily="Inter,sans-serif" opacity={0.7}>
+                  Скидка маркетплейса
+                </text>
               </g>
-            ))}
+            </g>
 
             {/* ═══ API OUTPUT (bottom branch from hub) ═══ */}
             <g style={show(2.0)}>
@@ -2115,10 +2223,10 @@ function PricingSection() {
                 <span className="text-sm text-gray-500 ml-1.5">/мес</span>
               </div>
               <Link
-                to="/login?signup=1"
+                to="/login?signup=1&plan=pro"
                 className="mt-6 block text-center px-4 py-3 bg-gradient-to-r from-indigo-600 to-violet-600 text-sm font-semibold text-white rounded-xl hover:from-indigo-700 hover:to-violet-700 transition-all shadow-md shadow-indigo-200/50"
               >
-                Начать бесплатно
+                Попробовать Pro
               </Link>
               <ul className="mt-6 space-y-3">
                 {[
@@ -2318,43 +2426,18 @@ function FooterSection() {
             </a>
           </div>
         </div>
-        <div className="mt-6 pt-6 border-t border-gray-800 text-center text-xs text-gray-500">
-          &copy; {new Date().getFullYear()} RevioMP. Все права защищены.
+        <div className="mt-6 pt-6 border-t border-gray-800 flex flex-col sm:flex-row items-center justify-between gap-3">
+          <div className="flex flex-wrap items-center justify-center gap-4 text-xs text-gray-500">
+            <Link to="/legal" className="hover:text-gray-300 transition-colors">Пользовательское соглашение</Link>
+            <Link to="/policy" className="hover:text-gray-300 transition-colors">Оплата и возврат</Link>
+            <Link to="/privacy" className="hover:text-gray-300 transition-colors">Конфиденциальность</Link>
+          </div>
+          <div className="text-xs text-gray-500">
+            &copy; {new Date().getFullYear()} ИП Виноградов А.В. ИНН 575307312014
+          </div>
         </div>
       </div>
     </footer>
-  );
-}
-
-/* ──────────────────────────────────────────────
-   MOBILE STICKY CTA
-   ────────────────────────────────────────────── */
-
-function MobileStickyCta() {
-  const [visible, setVisible] = useState(false);
-
-  useEffect(() => {
-    const onScroll = () => setVisible(window.scrollY > 500);
-    window.addEventListener('scroll', onScroll, { passive: true });
-    return () => window.removeEventListener('scroll', onScroll);
-  }, []);
-
-  return (
-    <div
-      className={`fixed bottom-0 left-0 right-0 z-40 md:hidden transition-transform duration-300 ${
-        visible ? 'translate-y-0' : 'translate-y-full'
-      }`}
-    >
-      <div className="bg-white/95 backdrop-blur-md border-t border-gray-200 px-4 py-3 safe-area-bottom">
-        <Link
-          to="/login?signup=1"
-          className="flex items-center justify-center gap-2 w-full text-sm font-semibold text-white bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-700 hover:to-violet-700 py-3 rounded-xl shadow-lg shadow-indigo-200/50 transition-all"
-        >
-          Начать бесплатно
-          <ArrowRight className="w-4 h-4" />
-        </Link>
-      </div>
-    </div>
   );
 }
 
@@ -2397,7 +2480,6 @@ export function LandingPage() {
       {/* FinalCTA has gradient bg — no divider needed */}
       <FinalCTASection />
       <FooterSection />
-      <MobileStickyCta />
     </div>
   );
 }

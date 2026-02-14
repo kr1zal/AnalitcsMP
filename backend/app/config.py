@@ -29,17 +29,21 @@ class Settings(BaseSettings):
     # Fernet encryption key for user API tokens
     fernet_key: str = ""
 
+    # YooKassa payment
+    yookassa_shop_id: str = ""
+    yookassa_secret_key: str = ""
+
     # App
     debug: bool = True
 
     # Frontend URL for PDF export (Playwright opens this)
     # Локально: добавь FRONTEND_URL=http://localhost:5173 в .env
-    # Production: дефолт https://analitics.bixirun.ru
-    frontend_url: str = "https://analitics.bixirun.ru"
+    # Production: дефолт https://reviomp.ru
+    frontend_url: str = "https://reviomp.ru"
 
     # Admin user IDs (UUID list)
     admin_user_ids: list[str] = Field(
-        default_factory=lambda: ["17e80396-86e1-4ec8-8cb2-f727462bf20c"]
+        default_factory=lambda: ["e2db2023-4ce3-4182-96d3-7a194657cb4a"]
     )
 
     class Config:
