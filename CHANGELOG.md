@@ -2,6 +2,21 @@
 
 > Полная история выполненных задач. Для текущего статуса см. [CLAUDE.md](CLAUDE.md).
 
+## 14.02.2026 — Управление автопродлением подписки
+
+**Фича:** Toggle автопродления на странице настроек. После отмены автопродления показывается статус "Автопродление отключено — активен до ДД.ММ.ГГГГ" с кнопкой "Включить автопродление".
+
+**Backend:**
+- `backend/app/subscription.py` — `auto_renew` и `expires_at` в датакласс UserSubscription + SELECT
+- `backend/app/api/v1/subscription.py` — `auto_renew` и `expires_at` в ответе GET /subscription
+- `backend/app/api/v1/payment.py` — новый эндпоинт POST /subscription/enable-auto-renew
+
+**Frontend:**
+- `frontend/src/types/index.ts` — `auto_renew`, `expires_at` в UserSubscriptionResponse
+- `frontend/src/services/api.ts` — `paymentApi.enableAutoRenew()`
+- `frontend/src/hooks/useSubscription.ts` — `useEnableAutoRenew()` хук
+- `frontend/src/components/Settings/SubscriptionCard.tsx` — условная отрисовка: кнопка отмены / статус + кнопка включения
+
 ## 10.02.2026 — WB SPP Discount Fix: Реальная цена продажи
 
 **Исправление:** WB `retail_price` = каталожная цена ДО скидки СПП. Добавлено поле `sale_price` — реальная цена продажи после скидки.

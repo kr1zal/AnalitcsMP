@@ -32,3 +32,13 @@ export const useCancelSubscription = () => {
     },
   });
 };
+
+export const useEnableAutoRenew = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => paymentApi.enableAutoRenew(),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['subscription'] });
+    },
+  });
+};

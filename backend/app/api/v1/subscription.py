@@ -40,6 +40,8 @@ async def get_my_subscription(
         "plan": sub.plan,
         "status": sub.status,
         "plan_name": sub.plan_config["name"],
+        "auto_renew": sub.auto_renew,
+        "expires_at": sub.expires_at,
         "limits": {
             "max_sku": max_sku,
             "current_sku": sku_count,

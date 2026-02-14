@@ -17,6 +17,8 @@ class UserSubscription:
     plan: str         # 'free', 'pro', 'business'
     status: str       # 'active', 'cancelled', 'expired'
     plan_config: dict  # full plan definition from PLANS
+    auto_renew: bool = True
+    expires_at: str | None = None
 
 
 def _load_subscription(user_id: str) -> UserSubscription:
@@ -27,11 +29,14 @@ def _load_subscription(user_id: str) -> UserSubscription:
     supabase = get_supabase_client()
     result = (
         supabase.table("mp_user_subscriptions")
-        .select("plan, status")
+        .select("plan, status, auto_renew, expires_at")
         .eq("user_id", user_id)
         .limit(1)
         .execute()
     )
+
+    auto_renew = True
+    expires_at = None
 
     if not result.data:
         # Auto-create free subscription
@@ -46,6 +51,8 @@ def _load_subscription(user_id: str) -> UserSubscription:
         row = result.data[0]
         plan_name = row.get("plan", "free")
         status = row.get("status", "active")
+        auto_renew = row.get("auto_renew", True)
+        expires_at = row.get("expires_at")
 
     # Expired/cancelled -> treat as free
     if status != "active":
@@ -56,6 +63,8 @@ def _load_subscription(user_id: str) -> UserSubscription:
         plan=plan_name,
         status=status,
         plan_config=get_plan(plan_name),
+        auto_renew=auto_renew,
+        expires_at=expires_at,
     )
 
 

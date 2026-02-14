@@ -247,3 +247,32 @@ async def cancel_auto_renewal(
 
     logger.info(f"Auto-renewal disabled for user {current_user.id}")
     return {"status": "auto_renew_disabled"}
+
+
+# ─── POST /subscription/enable-auto-renew ───
+
+@router.post("/subscription/enable-auto-renew")
+async def enable_auto_renewal(
+    current_user: CurrentUser = Depends(get_current_user),
+):
+    """Включает автопродление подписки (auto_renew = true)."""
+    supabase = get_supabase_client()
+
+    result = (
+        supabase.table("mp_user_subscriptions")
+        .select("plan, status")
+        .eq("user_id", current_user.id)
+        .limit(1)
+        .execute()
+    )
+
+    if not result.data or result.data[0].get("plan") == "free":
+        raise HTTPException(status_code=400, detail="Нечего включать — вы на бесплатном тарифе")
+
+    supabase.table("mp_user_subscriptions").update({
+        "auto_renew": True,
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+    }).eq("user_id", current_user.id).execute()
+
+    logger.info(f"Auto-renewal enabled for user {current_user.id}")
+    return {"status": "auto_renew_enabled"}

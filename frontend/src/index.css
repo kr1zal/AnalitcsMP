@@ -710,6 +710,11 @@ html, body {
   50% { stroke-opacity: 1; }
 }
 
+/* ── V4 flow lines: animated dashes + opacity pulse (3 organic variants) ── */
+.v4-flow-a { animation: flow-dash 1s linear infinite, v3-line-glow 3s ease-in-out infinite; }
+.v4-flow-b { animation: flow-dash 1.3s linear infinite, v3-line-glow 4s ease-in-out 1s infinite; }
+.v4-flow-c { animation: flow-dash 1.1s linear infinite, v3-line-glow 3.5s ease-in-out 0.5s infinite; }
+
 /* ── Output label-change animations (each output uses a DIFFERENT one) ── */
 
 /* Output 1: simple crossfade */
@@ -870,6 +875,7 @@ html, body {
 @media (prefers-reduced-motion: reduce) {
   .v3-hub-border, .v3-status-pulse,
   .v3-line-a, .v3-line-b, .v3-line-c,
+  .v4-flow-a, .v4-flow-b, .v4-flow-c,
   .v3-fade-in, .v3-scale-in, .v3-slide-up, .v3-flip,
   .v3-float, .v3-blink, .v3-wobble, .v3-breathe,
   .v3-flip-loop, .v3-wb-pulse, .v3-ozon-tilt,

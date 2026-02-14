@@ -395,6 +395,8 @@ export interface UserSubscriptionResponse {
   plan: SubscriptionPlan;
   status: SubscriptionStatus;
   plan_name: string;
+  auto_renew: boolean;
+  expires_at: string | null;
   limits: SubscriptionLimits;
   features: SubscriptionFeatures;
 }

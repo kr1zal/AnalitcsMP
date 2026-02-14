@@ -1,7 +1,7 @@
 import { useState } from 'react';
-import { CheckCircle, XCircle, Loader2, CreditCard, XOctagon } from 'lucide-react';
+import { CheckCircle, XCircle, Loader2, CreditCard, XOctagon, CalendarOff, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
-import { useSubscription, usePlans, useUpgrade, useCancelSubscription } from '../../hooks/useSubscription';
+import { useSubscription, usePlans, useUpgrade, useCancelSubscription, useEnableAutoRenew } from '../../hooks/useSubscription';
 import type { PlanDefinition, SubscriptionFeatures } from '../../types';
 
 const FEATURE_LABELS: Record<keyof SubscriptionFeatures, string> = {
@@ -35,6 +35,7 @@ export function SubscriptionCard() {
   const { data: plansData, isLoading: plansLoading } = usePlans();
   const upgradeMut = useUpgrade();
   const cancelMut = useCancelSubscription();
+  const enableMut = useEnableAutoRenew();
   const [upgrading, setUpgrading] = useState(false);
 
   if (subLoading || plansLoading) {
@@ -69,6 +70,15 @@ export function SubscriptionCard() {
       toast.success('Автопродление отключено');
     } catch {
       toast.error('Ошибка отмены автопродления');
+    }
+  };
+
+  const handleEnableAutoRenew = async () => {
+    try {
+      await enableMut.mutateAsync();
+      toast.success('Автопродление включено');
+    } catch {
+      toast.error('Ошибка включения автопродления');
     }
   };
 
@@ -221,18 +231,44 @@ export function SubscriptionCard() {
               Тариф {sub.plan_name} активен
             </p>
           </div>
-          <button
-            onClick={handleCancel}
-            disabled={cancelMut.isPending}
-            className="w-full flex items-center justify-center gap-2 py-2 text-xs text-gray-500 hover:text-red-600 transition-colors"
-          >
-            {cancelMut.isPending ? (
-              <Loader2 className="w-3.5 h-3.5 animate-spin" />
-            ) : (
-              <XOctagon className="w-3.5 h-3.5" />
-            )}
-            Отменить автопродление
-          </button>
+          {sub.auto_renew ? (
+            <button
+              onClick={handleCancel}
+              disabled={cancelMut.isPending}
+              className="w-full flex items-center justify-center gap-2 py-2 text-xs text-gray-500 hover:text-red-600 transition-colors"
+            >
+              {cancelMut.isPending ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              ) : (
+                <XOctagon className="w-3.5 h-3.5" />
+              )}
+              Отменить автопродление
+            </button>
+          ) : (
+            <div className="flex flex-col items-center gap-1 py-2">
+              <div className="flex items-center gap-2 text-xs text-amber-600">
+                <CalendarOff className="w-3.5 h-3.5" />
+                <span>
+                  Автопродление отключено
+                  {sub.expires_at && (
+                    <> — активен до {new Date(sub.expires_at).toLocaleDateString('ru-RU')}</>
+                  )}
+                </span>
+              </div>
+              <button
+                onClick={handleEnableAutoRenew}
+                disabled={enableMut.isPending}
+                className="flex items-center gap-1.5 text-xs text-indigo-600 hover:text-indigo-800 transition-colors mt-1"
+              >
+                {enableMut.isPending ? (
+                  <Loader2 className="w-3 h-3 animate-spin" />
+                ) : (
+                  <RefreshCw className="w-3 h-3" />
+                )}
+                Включить автопродление
+              </button>
+            </div>
+          )}
         </div>
       )}
     </div>

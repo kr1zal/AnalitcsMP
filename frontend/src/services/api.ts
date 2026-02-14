@@ -327,6 +327,10 @@ export const paymentApi = {
     const { data } = await api.post<{ status: string }>('/subscription/cancel');
     return data;
   },
+  enableAutoRenew: async (): Promise<{ status: string }> => {
+    const { data } = await api.post<{ status: string }>('/subscription/enable-auto-renew');
+    return data;
+  },
 };
 
 // ==================== СИНХРОНИЗАЦИЯ ====================

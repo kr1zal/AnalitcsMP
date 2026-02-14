@@ -6,7 +6,7 @@ Use "npm run build" to check if code compiles or no. See results and fix code if
 Интерактивный дашборд для аналитики продаж на Wildberries и Ozon.
 5 SKU (витамины/БАДы), SaaS-архитектура с per-user auth и токенами.
 
-## Production: https://analitics.bixirun.ru
+## Production: https://reviomp.ru
 
 | Параметр | Значение |
 |----------|----------|
@@ -14,6 +14,7 @@ Use "npm run build" to check if code compiles or no. See results and fix code if
 | SSH | `ssh root@83.222.16.15` / пароль: `@vnDBp5VCt2+` (с @ в начале!) |
 | Структура | `/var/www/analytics/` (backend + frontend + .env) |
 | Сервисы | systemd `analytics-api`, Nginx proxy, Let's Encrypt SSL |
+| Supabase | Проект reviomp (xpushkwswfbkdkbmghux) |
 | Admin | exklante@gmail.com / UUID: e2db2023-4ce3-4182-96d3-7a194657cb4a |
 
 ```bash
@@ -80,9 +81,15 @@ sshpass -p '@vnDBp5VCt2+' rsync -avz --delete -e "ssh -o StrictHostKeyChecking=n
 - CSS анимации: trust-scroll, scroll-reveal, spotlight, data-pulse, flow-dash, hub-scale-pulse
 - Подробности: [memory/phase5-release-plan.md](memory/phase5-release-plan.md) секция 1.4
 
-### Phase 5: YooKassa Payment — IMPLEMENTED (14.02.2026)
-- Интеграция оплаты Pro подписки (990₽/мес)
-- Подробности: [memory/phase5-release-plan.md](memory/phase5-release-plan.md) секция 1.5
+### Phase 5: YooKassa Payment — TESTED & DEPLOYED (14.02.2026)
+- Интеграция оплаты Pro подписки (990₽/мес) через ЮКассу (httpx, без SDK)
+- ShopID: 1273909 (live), тестовый: 1276568
+- Эндпоинты: POST /subscription/upgrade, POST /subscription/webhook, POST /subscription/cancel, POST /subscription/enable-auto-renew
+- Webhook: IP whitelist + двойная верификация платежа
+- Frontend: кнопка "Подключить Pro" в SubscriptionCard, redirect на ЮКассу, ?payment=success обработка
+- Управление автопродлением: toggle отключения/включения, auto_renew + expires_at в ответе GET /subscription
+- **Протестировано:** оплата → webhook → подписка Pro → отмена автопродления — всё работает
+- Подробности: [docs/yookassa-integration.md](docs/yookassa-integration.md)
 
 ### Auth Flow — DEPLOYED (14.02.2026)
 - **LoginPage:** 3 режима (login, signup, forgot-password) + emailRedirectTo + экран «Проверьте почту»
@@ -99,7 +106,7 @@ sshpass -p '@vnDBp5VCt2+' rsync -avz --delete -e "ssh -o StrictHostKeyChecking=n
 - [x] Позаказный монитор v1 (воронка) — Pro-фича ✓
 - [x] Позаказный монитор v2 (детализация) — позаказные издержки ✓
 - [~] Landing Page — основной layout + анимации готовы, polish in progress
-- [x] YooKassa Payment — реализовано
+- [x] YooKassa Payment — TESTED & DEPLOYED ✓
 - [x] Auth Flow (регистрация, сброс пароля, удаление аккаунта) — DEPLOYED ✓
 - [ ] Hide Business tier, SEO index.html, admin ID→config — ожидает
 - [ ] Прибыль на карточках OZON/WB (MarketplaceBreakdown)
