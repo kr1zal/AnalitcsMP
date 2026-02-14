@@ -70,16 +70,17 @@ sshpass -p '@vnDBp5VCt2+' rsync -avz --delete -e "ssh -o StrictHostKeyChecking=n
 - Frontend: мобильные карточки, пагинация 50/стр, фильтры по статусу/settled
 - Навигация: /orders, иконка ClipboardList (без изменений, используется route из v1)
 
-### Phase 5: Landing Page — IN PROGRESS (10-13.02.2026)
-- `frontend/src/pages/LandingPage.tsx` (~1550 lines, все секции в одном файле)
+### Phase 5: Landing Page — DEPLOYED (10-14.02.2026)
+- `frontend/src/pages/LandingPage.tsx` (~2000 lines, все секции в одном файле)
 - Route `/` для неавторизованных → Landing, авторизованные → `/app`
 - Зависимости: @fontsource/inter, swiper (карусель)
-- 14+ секций: NavBar, Hero, TrustBar, DashboardCarousel, StatsBar, Problem, Features, DataFlow, **DataFlowV2**, HowItWorks, Security, Pricing, FAQ, FinalCTA, Footer
+- Секции: NavBar, Hero, TrustBar, DashboardCarousel, StatsBar, Problem, Features, **DataFlowV3**, HowItWorks, Security, Pricing, FAQ, FinalCTA, Footer
+- **DataFlowV3:** desktop SVG (1000×590) + mobile SVG (300×450), 7-tier вертикальный flow на мобиле
+- **PRO блок:** скрыт через `SHOW_PRO = false` (toggle, glow, дерево, ноды). Включить → `true`
+- **Pricing:** всегда 2 колонки (grid-cols-2), адаптивные размеры на мобиле
+- V1 и V2 DataFlow секции **УДАЛЕНЫ** (dead code cleanup, ~611 строк)
 - MatrixRain: canvas-based digital rain (hero), indigo/violet colors
-- DataFlowSection (V1): тёмная тема, 12 линий, CSS flow-dash, Excel/PDF бейджи
-- DataFlowSectionV2: светлая тема, 18 линий, 6 бейджей (Telegram, Webhook, ROI, Excel, REST API, PDF), цветные точки, спиннеры хаба, status dots на WB/Ozon. **Временный** — для сравнения с V1
-- CSS анимации: trust-scroll, scroll-reveal, spotlight, data-pulse, flow-dash, hub-scale-pulse
-- Подробности: [memory/phase5-release-plan.md](memory/phase5-release-plan.md) секция 1.4
+- CSS анимации: trust-scroll, scroll-reveal, spotlight, data-pulse, flow-dash, hub-scale-pulse, v3-*, v4-flow-*
 
 ### Phase 5: YooKassa Payment — TESTED & DEPLOYED (14.02.2026)
 - Интеграция оплаты Pro подписки (990₽/мес) через ЮКассу (httpx, без SDK)
@@ -105,7 +106,7 @@ sshpass -p '@vnDBp5VCt2+' rsync -avz --delete -e "ssh -o StrictHostKeyChecking=n
 ### Активные задачи
 - [x] Позаказный монитор v1 (воронка) — Pro-фича ✓
 - [x] Позаказный монитор v2 (детализация) — позаказные издержки ✓
-- [~] Landing Page — основной layout + анимации готовы, polish in progress
+- [x] Landing Page — DEPLOYED (V1/V2 удалены, мобильная DataFlowV3, pricing 2-col, PRO скрыт)
 - [x] YooKassa Payment — TESTED & DEPLOYED ✓
 - [x] Auth Flow (регистрация, сброс пароля, удаление аккаунта) — DEPLOYED ✓
 - [ ] Hide Business tier, SEO index.html, admin ID→config — ожидает
@@ -240,7 +241,9 @@ FRONTEND_URL                          # Для Playwright PDF (http://localhost:
 11. **Order Monitor v1:** данные из mp_sales (агрегаты), непроведённые из costs-tree RPC.
 12. **Order Monitor v2:** mp_orders таблица (позаказная). WB: srid ключ, 3-step enrichment (orders+sales+reportDetail), accumulate (НЕ overwrite) финансовых строк. Ozon: FBS+FBO, per-product financials из financial_data.products[].
 13. **WB SPP price:** sale_price = retail_price_withdisc_rub (реальная цена после СПП). price = retail_price (каталожная ДО скидки). Frontend показывает sale_price, каталожная зачёркнута.
-14. **Landing Hero:** CSS gradient wave с blur layers (НЕ SVG chart — пробовали, выглядит плохо). 3 слоя (violet, pink/orange, indigo) с drift-анимациями.
+14. **Landing Hero:** Canvas MatrixRain (НЕ CSS gradient waves, НЕ SVG chart).
+15. **DataFlow PRO блок:** скрыт через `SHOW_PRO = false` (НЕ удалён). Включить → `true` когда Order Monitor готов.
+16. **Pricing:** всегда `grid-cols-2` (НЕ `grid-cols-1` на мобиле).
 
 ## Важные нюансы
 
@@ -281,7 +284,7 @@ FRONTEND_URL                          # Для Playwright PDF (http://localhost:
 ### Phase 5: Release (в процессе)
 5a. ~~Order Monitor v1 (воронка заказов)~~ — READY (09.02.2026)
 5b. ~~Order Monitor v2 (позаказная детализация + SPP fix)~~ — READY (10.02.2026)
-5c. Landing Page — IN PROGRESS (10-11.02.2026), core layout + animations done
+5c. ~~Landing Page~~ — DEPLOYED (14.02.2026), V1/V2 cleanup + mobile DataFlow + pricing 2-col
 5d. ~~YooKassa Payment~~ — IMPLEMENTED (14.02.2026)
 5e. ~~Auth Flow (регистрация, сброс пароля, удаление аккаунта)~~ — DEPLOYED (14.02.2026)
 5f. Hide Business / SEO / Admin config — PENDING

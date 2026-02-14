@@ -2,6 +2,37 @@
 
 > Полная история выполненных задач. Для текущего статуса см. [CLAUDE.md](CLAUDE.md).
 
+## 14.02.2026 — Landing Page: cleanup + mobile DataFlow + pricing
+
+**Cleanup:**
+- Удалён мёртвый код: `_DataFlowSection` (V1, тёмная тема) и `_DataFlowSectionV2` (V2, светлая тема) — ~611 строк
+- Файл: `frontend/src/pages/LandingPage.tsx` (2483 → ~2000 строк)
+
+**Mobile DataFlowV3 — полная перезапись:**
+- Было: упрощённая 3-элементная версия (WB → Hub → Output)
+- Стало: полноценная 7-tier вертикальная диаграмма (300×450 SVG):
+  - Sources (WB + Ozon с аватарами, кольцами, status dots)
+  - 3 Shelf-карточки (cycling labels + active glow)
+  - Hub (spinning gradient border, drop shadow)
+  - 3 Output-карточки (разные анимации: fade, scale-bounce, flip)
+  - Badges Row 1 (Telegram, ROI, Webhook с SVG-иконками)
+  - Badges Row 2 (Excel, REST API, PDF с SVG-иконками)
+  - YM placeholder
+- 18 анимированных линий (draw-on + flow-dash), 10 traveling packets
+
+**PRO блок скрыт:**
+- Флаг `SHOW_PRO = false` в DataFlowSectionV3
+- Десктоп: toggle, golden glow, дерево, 3 feature-ноды, traveling dots — всё за флагом
+- Мобайл: golden glow + toggle — за флагом
+- Включить обратно: `SHOW_PRO = true`
+
+**Pricing — 2 колонки на мобиле:**
+- Grid: `grid-cols-2` всегда (было `grid-cols-1 sm:grid-cols-2`)
+- Адаптивные размеры: padding `p-3`/`sm:p-6`, шрифт `text-xs`/`sm:text-sm`, цена `text-2xl`/`sm:text-4xl`
+- Бейдж "Рекомендуем": `text-[10px]` + `whitespace-nowrap`
+
+**Коммиты:** 007fe8c, d33b2a2
+
 ## 14.02.2026 — Управление автопродлением подписки
 
 **Фича:** Toggle автопродления на странице настроек. После отмены автопродления показывается статус "Автопродление отключено — активен до ДД.ММ.ГГГГ" с кнопкой "Включить автопродление".
