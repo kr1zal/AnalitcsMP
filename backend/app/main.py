@@ -6,7 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 
 from .config import get_settings
-from .api.v1 import products, dashboard, sync, export, tokens, subscription, payment, sync_queue, admin
+from .api.v1 import products, dashboard, sync, export, tokens, subscription, payment, sync_queue, admin, account
 
 settings = get_settings()
 
@@ -33,6 +33,7 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
+        "https://reviomp.ru",
         "https://analitics.bixirun.ru",
         "http://localhost:5173",
         "http://localhost:4173",
@@ -52,6 +53,7 @@ app.include_router(subscription.router, prefix="/api/v1", tags=["Subscription"])
 app.include_router(payment.router, prefix="/api/v1", tags=["Payment"])
 app.include_router(sync_queue.router, prefix="/api/v1", tags=["Sync Queue"])
 app.include_router(admin.router, prefix="/api/v1", tags=["Admin"])
+app.include_router(account.router, prefix="/api/v1", tags=["Account"])
 
 
 @app.get("/")

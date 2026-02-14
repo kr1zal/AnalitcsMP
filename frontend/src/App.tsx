@@ -12,6 +12,7 @@ import { SyncPage } from './pages/SyncPage';
 import { AdsPage } from './pages/AdsPage';
 import { PrintPage } from './pages/PrintPage';
 import { LoginPage } from './pages/LoginPage';
+import { ResetPasswordPage } from './pages/ResetPasswordPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { LandingPage } from './pages/LandingPage';
 import { LegalPage, PolicyPage, PrivacyPage } from './pages/LegalPages';
@@ -62,8 +63,9 @@ function AppRoutes() {
 
   return (
     <Routes>
-      {/* Login — без защиты */}
+      {/* Login / Reset password — без защиты */}
       <Route path="/login" element={<LoginPage />} />
+      <Route path="/reset-password" element={<ResetPasswordPage />} />
 
       {/* Print page — без Layout, авторизация через ?token= */}
       <Route path="/print" element={<PrintPage />} />

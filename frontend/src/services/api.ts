@@ -419,4 +419,13 @@ export const syncApi = {
   },
 };
 
+// ==================== АККАУНТ ====================
+
+export const accountApi = {
+  deleteAccount: async (): Promise<{ status: string }> => {
+    const { data } = await api.delete<{ status: string }>('/account');
+    return data;
+  },
+};
+
 export default api;

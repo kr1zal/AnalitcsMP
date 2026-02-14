@@ -80,15 +80,26 @@ sshpass -p '@vnDBp5VCt2+' rsync -avz --delete -e "ssh -o StrictHostKeyChecking=n
 - CSS анимации: trust-scroll, scroll-reveal, spotlight, data-pulse, flow-dash, hub-scale-pulse
 - Подробности: [memory/phase5-release-plan.md](memory/phase5-release-plan.md) секция 1.4
 
-### Phase 5: YooKassa Payment — PENDING
+### Phase 5: YooKassa Payment — IMPLEMENTED (14.02.2026)
 - Интеграция оплаты Pro подписки (990₽/мес)
 - Подробности: [memory/phase5-release-plan.md](memory/phase5-release-plan.md) секция 1.5
+
+### Auth Flow — IMPLEMENTED (14.02.2026)
+- **LoginPage:** 3 режима (login, signup, forgot-password) + emailRedirectTo + экран «Проверьте почту»
+- **ResetPasswordPage:** новая страница, ввод нового пароля после перехода по ссылке из email
+- **Удаление аккаунта:** Danger Zone в SettingsPage → DELETE /api/v1/account → удаление всех данных + auth user
+- **Email-шаблоны:** брендированные (RevioMP, indigo-600), на русском языке → [docs/email-templates.md](docs/email-templates.md)
+- **Supabase Dashboard:** Site URL = `https://reviomp.ru`, Redirect URLs настроены
+- **CORS:** добавлен `https://reviomp.ru`
+- **Backend:** `account.py` — удаление из 13 таблиц + Supabase Admin API
+- **Полная CJM-документация:** [docs/auth-flow.md](docs/auth-flow.md)
 
 ### Активные задачи
 - [x] Позаказный монитор v1 (воронка) — Pro-фича ✓
 - [x] Позаказный монитор v2 (детализация) — позаказные издержки ✓
 - [~] Landing Page — основной layout + анимации готовы, polish in progress
-- [ ] YooKassa Payment — ожидает
+- [x] YooKassa Payment — реализовано
+- [x] Auth Flow (регистрация, сброс пароля, удаление аккаунта) — реализовано
 - [ ] Hide Business tier, SEO index.html, admin ID→config — ожидает
 - [ ] Прибыль на карточках OZON/WB (MarketplaceBreakdown)
 - [ ] Возвраты + ДРР от заказов/выкупов
@@ -282,4 +293,6 @@ FRONTEND_URL                          # Для Playwright PDF (http://localhost:
 | [promt.md](promt.md) | Промпт для нового чата + чеклист деплоя |
 | [frontend/DESIGN_REFERENCE.md](frontend/DESIGN_REFERENCE.md) | Гайд по дизайну (цвета, шрифты, spacing) |
 | [docs/yookassa-integration.md](docs/yookassa-integration.md) | Подключение ЮКассы — API, webhook, деплой |
+| [docs/auth-flow.md](docs/auth-flow.md) | CJM авторизации: регистрация, сброс пароля, удаление аккаунта |
+| [docs/email-templates.md](docs/email-templates.md) | HTML-шаблоны email для Supabase Dashboard |
 | [memory/](memory/) | Session memory (saas-phase1.md, saas-phase2.md, saas-phase3.md, saas-phase4.md) |

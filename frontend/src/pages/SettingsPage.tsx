@@ -1,11 +1,11 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
-import { Eye, EyeOff, CheckCircle, XCircle, AlertCircle, Loader2, Info, ArrowRight, Database } from 'lucide-react';
+import { Eye, EyeOff, CheckCircle, XCircle, AlertCircle, Loader2, Info, ArrowRight, Database, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '../store/useAuthStore';
 import { useTokensStatus, useValidateTokens, useSaveTokens, useSaveAndSync } from '../hooks/useTokens';
-import { syncApi } from '../services/api';
+import { syncApi, accountApi } from '../services/api';
 import { SubscriptionCard } from '../components/Settings/SubscriptionCard';
 
 // ─── Подсказки где взять токены ───
@@ -605,6 +605,105 @@ export function SettingsPage() {
           )}
         </button>
       </div>
+
+      {/* Danger Zone — удаление аккаунта */}
+      <DeleteAccountSection onDeleted={handleLogout} />
+    </div>
+  );
+}
+
+// ─── Секция удаления аккаунта ───
+
+function DeleteAccountSection({ onDeleted }: { onDeleted: () => void }) {
+  const [open, setOpen] = useState(false);
+  const [confirmText, setConfirmText] = useState('');
+  const [deleting, setDeleting] = useState(false);
+  const [error, setError] = useState('');
+
+  const canDelete = confirmText === 'УДАЛИТЬ';
+
+  const handleDelete = async () => {
+    if (!canDelete) return;
+    setDeleting(true);
+    setError('');
+    try {
+      await accountApi.deleteAccount();
+      toast.success('Аккаунт удалён. Все данные стёрты.');
+      onDeleted();
+    } catch (err: any) {
+      setError(err?.response?.data?.detail || 'Ошибка удаления аккаунта');
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  return (
+    <div className="mt-8 border border-red-200 rounded-xl p-5 bg-red-50/50">
+      <div className="flex items-center gap-2 mb-2">
+        <Trash2 className="w-4 h-4 text-red-600" />
+        <h2 className="text-sm font-semibold text-red-900">Удаление аккаунта</h2>
+      </div>
+      <p className="text-xs text-red-700 mb-3">
+        Все ваши данные, токены, подписка и история синхронизации будут удалены безвозвратно.
+      </p>
+
+      {!open ? (
+        <button
+          type="button"
+          onClick={() => setOpen(true)}
+          className="px-4 py-2 text-xs font-medium text-red-600 border border-red-300 rounded-lg hover:bg-red-100 transition-colors"
+        >
+          Удалить аккаунт
+        </button>
+      ) : (
+        <div className="space-y-3">
+          <div className="bg-white border border-red-200 rounded-lg p-3">
+            <p className="text-xs text-gray-700 mb-2">
+              Для подтверждения введите <span className="font-mono font-bold text-red-600">УДАЛИТЬ</span>
+            </p>
+            <input
+              type="text"
+              value={confirmText}
+              onChange={(e) => setConfirmText(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent"
+              placeholder="УДАЛИТЬ"
+              autoComplete="off"
+            />
+          </div>
+
+          {error && (
+            <div className="text-xs text-red-600 bg-red-50 rounded-lg px-3 py-2">
+              {error}
+            </div>
+          )}
+
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => { setOpen(false); setConfirmText(''); setError(''); }}
+              className="flex-1 py-2 text-xs font-medium text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-100 transition-colors"
+            >
+              Отмена
+            </button>
+            <button
+              type="button"
+              onClick={handleDelete}
+              disabled={!canDelete || deleting}
+              className="flex-1 py-2 text-xs font-medium text-white bg-red-600 rounded-lg hover:bg-red-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-1.5"
+            >
+              {deleting ? (
+                <>
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" /> Удаляю...
+                </>
+              ) : (
+                <>
+                  <Trash2 className="w-3.5 h-3.5" /> Удалить навсегда
+                </>
+              )}
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
