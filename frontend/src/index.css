@@ -676,9 +676,9 @@ html, body {
   pointer-events: none;
 }
 
-/* Animated gradient border for hub (adapted from Stripe Rules 10-13) */
+/* Animated gradient border for hub — smooth continuous spin */
 .v3-hub-border {
-  animation: v3-gradient-rotate 2s ease-out infinite;
+  animation: v3-gradient-rotate 2s linear infinite;
 }
 
 @keyframes v3-gradient-rotate {
@@ -686,7 +686,7 @@ html, body {
     stroke-dashoffset: 0;
   }
   100% {
-    stroke-dashoffset: -40;
+    stroke-dashoffset: -24;
   }
 }
 

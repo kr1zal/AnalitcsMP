@@ -1573,7 +1573,7 @@ function DataFlowSectionV3() {
     eToB4:     'M830,400 L858,400 L858,390 L882,390',
     eToB5:     'M830,420 L858,420 L858,436 L882,436',
     hubToAPI:    'M505,312 L505,465',
-    hubToSpp:    'M555,218 L555,165 L710,165 L710,56',  // hub → СПП (2 bends, L-shape)
+    hubToSpp:    'M594,218 L594,90 L710,90 L710,56',     // hub top-right → up → right (above card top y=98) → СПП
     shelf1ToHub: 'M310,56 L310,150 L445,150 L445,218', // left card → hub (2 bends)
     shelf2ToHub: 'M440,56 L440,130 L475,130 L475,218', // center card → hub (2 bends)
     shelf3ToHub: 'M570,56 L570,110 L520,110 L520,218', // right card → hub (2 bends)
@@ -1635,8 +1635,7 @@ function DataFlowSectionV3() {
         </RevealSection>
 
         {/* ── Desktop diagram ── */}
-        <div className="hidden sm:block relative rounded-2xl border border-white/5 bg-white/[0.02] p-6 sm:p-10 overflow-hidden">
-          <div className="absolute inset-0 rounded-2xl data-flow-grid" />
+        <div className="hidden sm:block relative p-6 sm:p-10 overflow-hidden">
 
           <svg viewBox="0 0 1000 590" className="w-full h-auto relative" fill="none">
             <defs>
@@ -1824,24 +1823,25 @@ function DataFlowSectionV3() {
                 <path d={P.hubToSpp}
                   stroke="rgba(139,92,246,0.35)" strokeWidth={1.2}
                   vectorEffect="non-scaling-stroke" fill="none"
-                  strokeDasharray="320" strokeDashoffset="320">
+                  strokeDasharray="280" strokeDashoffset="280">
                   <animate attributeName="stroke-dashoffset"
-                    values="320;0;0;320;320"
+                    values="280;0;0;280;280"
                     keyTimes="0;0.14;0.57;0.71;1"
                     dur="7s" repeatCount="indefinite" />
                   <animate attributeName="stroke-dasharray"
                     calcMode="discrete"
-                    values="320;6 10;320"
+                    values="280;6 10;280"
                     keyTimes="0;0.15;0.58"
                     dur="7s" repeatCount="indefinite" />
                 </path>
-                {/* Traveling packet on СПП line (only while line is drawn) */}
+                {/* Traveling packet on СПП line — data flows FROM СПП TO hub */}
                 <circle r={2} fill="#a78bfa" opacity="0">
                   <animate attributeName="opacity"
                     values="0;0;0.6;0.6;0;0"
                     keyTimes="0;0.14;0.19;0.52;0.57;1"
                     dur="7s" repeatCount="indefinite" />
-                  <animateMotion dur="2s" begin="0s" repeatCount="indefinite" path={P.hubToSpp} />
+                  <animateMotion dur="2s" begin="0s" repeatCount="indefinite"
+                    keyPoints="1;0" keyTimes="0;1" calcMode="linear" path={P.hubToSpp} />
                 </circle>
                 {/* СПП badge — fades in after line reaches, fades out before retract */}
                 <g opacity="0">
@@ -1947,8 +1947,7 @@ function DataFlowSectionV3() {
         </div>
 
         {/* ── Mobile: simplified dark theme with traveling dots + cycling labels ── */}
-        <div className="sm:hidden relative rounded-2xl border border-white/5 bg-white/[0.02] p-4 overflow-hidden">
-          <div className="absolute inset-0 rounded-2xl data-flow-grid" />
+        <div className="sm:hidden relative p-4 overflow-hidden">
           <svg viewBox="0 0 300 400" className="w-full h-auto max-w-[320px] mx-auto relative" fill="none">
             <defs>
               <linearGradient id="v3-hub-grad-m" x1="0%" y1="0%" x2="100%" y2="100%">
