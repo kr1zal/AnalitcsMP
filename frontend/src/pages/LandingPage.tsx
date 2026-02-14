@@ -841,617 +841,6 @@ function FeaturesSection() {
   );
 }
 
-// @ts-ignore TS6133
-function _DataFlowSection() {
-  const [cycle, setCycle] = useState(0);
-  useEffect(() => {
-    const timer = setInterval(() => setCycle((c) => (c + 1) % 3), 3000);
-    return () => clearInterval(timer);
-  }, []);
-
-  const inputLabels = [
-    ['Продажи', 'Заказы', 'Выкупы'],
-    ['Остатки', 'FBO', 'Склады'],
-    ['Реклама', 'Удержания', 'Комиссия'],
-  ];
-  const outputLabels = [
-    ['Дашборд', 'Графики', 'Тренды'],
-    ['Прибыль', 'Маржа', 'ROI'],
-    ['Отчёт', 'PDF', 'Экспорт'],
-  ];
-
-  const rowY = [78, 210, 342];
-
-  const lines = [
-    // WB → input labels
-    'M140,153 C190,153 190,78 225,78',       // 0: WB → top
-    'M140,153 C190,153 190,210 225,210',      // 1: WB → mid
-    // Ozon → input labels
-    'M140,267 C190,267 190,210 225,210',      // 2: Ozon → mid
-    'M140,267 C190,267 190,342 225,342',      // 3: Ozon → bottom
-    // Input labels → hub
-    'M345,78 C395,78 395,210 420,210',        // 4: top → hub
-    'M345,210 L420,210',                       // 5: mid → hub
-    'M345,342 C395,342 395,210 420,210',      // 6: bottom → hub
-    // Hub → output labels
-    'M580,210 C630,210 630,78 655,78',        // 7: hub → top out
-    'M580,210 L655,210',                       // 8: hub → mid out
-    'M580,210 C630,210 630,342 655,342',      // 9: hub → bottom out
-    // Export branches (Экспорт → Excel / PDF)
-    'M775,332 C800,332 810,310 830,310',      // 10: → Excel
-    'M775,352 C800,352 810,374 830,374',      // 11: → PDF
-  ];
-
-  const packets = [
-    { path: lines[0], dur: '2.5s', begin: '0s' },     // WB → top
-    { path: lines[1], dur: '2.8s', begin: '0.4s' },   // WB → mid
-    { path: lines[2], dur: '2.8s', begin: '0.6s' },   // Ozon → mid
-    { path: lines[3], dur: '3s', begin: '0.5s' },     // Ozon → bottom
-    { path: lines[4], dur: '2s', begin: '0.8s' },     // top → hub
-    { path: lines[5], dur: '1.8s', begin: '1s' },     // mid → hub
-    { path: lines[6], dur: '2.5s', begin: '1.5s' },   // bottom → hub
-    { path: lines[7], dur: '2s', begin: '0.3s' },     // hub → top out
-    { path: lines[8], dur: '1.8s', begin: '0.7s' },   // hub → mid out
-    { path: lines[9], dur: '2.5s', begin: '1s' },     // hub → bottom out
-    { path: lines[10], dur: '1.5s', begin: '0.2s' },  // → Excel
-    { path: lines[11], dur: '1.5s', begin: '0.9s' },  // → PDF
-  ];
-
-  return (
-    <section className="data-flow-section py-16 sm:py-24 overflow-hidden">
-      <div className="max-w-5xl mx-auto px-4 sm:px-6">
-        <RevealSection>
-          <div className="text-center mb-10 sm:mb-14">
-            <h2 className="text-2xl sm:text-3xl font-bold text-white">
-              Как работают ваши данные
-            </h2>
-            <p className="mt-3 text-sm sm:text-base text-gray-400 max-w-lg mx-auto">
-              Автоматический сбор, обработка и визуализация — в реальном времени
-            </p>
-          </div>
-        </RevealSection>
-
-        <RevealSection delay={200}>
-          {/* Desktop: full SVG diagram */}
-          <div className="hidden sm:block relative rounded-2xl border border-white/5 bg-white/[0.02] p-6 sm:p-8">
-            <div className="data-flow-grid absolute inset-0 rounded-2xl" />
-            <svg
-              viewBox="0 0 960 420"
-              className="w-full h-auto relative"
-              fill="none"
-            >
-              {/* Connection lines */}
-              {lines.map((d, i) => (
-                <path key={`ln-${i}`} d={d} className="flow-line" stroke="rgba(99,102,241,0.3)" strokeWidth="1.5" />
-              ))}
-
-              {/* Traveling data packets */}
-              {packets.map((p, i) => (
-                <circle key={`pk-${i}`} r="3" fill="#818cf8" opacity="0.8">
-                  <animateMotion dur={p.dur} begin={p.begin} repeatCount="indefinite" path={p.path} />
-                </circle>
-              ))}
-
-              {/* Source: Wildberries */}
-              <rect x="30" y="130" width="110" height="46" rx="10"
-                fill="rgba(139,63,253,0.12)" stroke="rgba(139,63,253,0.35)" strokeWidth="1" />
-              <text x="85" y="158" textAnchor="middle"
-                fill="#A78BFA" fontSize="13" fontWeight="600" fontFamily="Inter,sans-serif">
-                Wildberries
-              </text>
-
-              {/* Source: Ozon */}
-              <rect x="30" y="244" width="110" height="46" rx="10"
-                fill="rgba(0,91,255,0.12)" stroke="rgba(0,91,255,0.35)" strokeWidth="1" />
-              <text x="85" y="272" textAnchor="middle"
-                fill="#60A5FA" fontSize="13" fontWeight="600" fontFamily="Inter,sans-serif">
-                Ozon
-              </text>
-
-              {/* Input labels (cycling) */}
-              {inputLabels.map((variants, idx) => {
-                const label = variants[(cycle + idx) % 3];
-                return (
-                  <g key={`in-${idx}`}>
-                    <rect x="225" y={rowY[idx] - 20} width="120" height="40" rx="8"
-                      fill="rgba(255,255,255,0.04)" stroke="rgba(255,255,255,0.1)" strokeWidth="1" />
-                    <text
-                      key={label}
-                      x="285" y={rowY[idx] + 5} textAnchor="middle"
-                      fill="white" fontSize="12" fontWeight="500" fontFamily="Inter,sans-serif"
-                      className="flow-label-enter"
-                    >
-                      {label}
-                    </text>
-                  </g>
-                );
-              })}
-
-              {/* Central hub */}
-              <rect x="420" y="165" width="160" height="90" rx="16"
-                fill="rgba(99,102,241,0.15)" stroke="rgba(99,102,241,0.4)" strokeWidth="1.5"
-                className="flow-hub-rect" />
-              <text x="500" y="205" textAnchor="middle"
-                fill="white" fontSize="15" fontWeight="700" fontFamily="Inter,sans-serif">
-                RevioMP
-              </text>
-              <text x="500" y="225" textAnchor="middle"
-                fill="rgba(255,255,255,0.6)" fontSize="11" fontWeight="500" fontFamily="Inter,sans-serif">
-                Analytics
-              </text>
-
-              {/* Output labels (cycling) */}
-              {outputLabels.map((variants, idx) => {
-                const label = variants[(cycle + idx) % 3];
-                return (
-                  <g key={`out-${idx}`}>
-                    <rect x="655" y={rowY[idx] - 20} width="120" height="40" rx="8"
-                      fill="rgba(255,255,255,0.04)" stroke="rgba(255,255,255,0.1)" strokeWidth="1" />
-                    <text
-                      key={label}
-                      x="715" y={rowY[idx] + 5} textAnchor="middle"
-                      fill="white" fontSize="12" fontWeight="500" fontFamily="Inter,sans-serif"
-                      className="flow-label-enter"
-                    >
-                      {label}
-                    </text>
-                  </g>
-                );
-              })}
-
-              {/* Export format badges — alternating pulse */}
-              <g>
-                <animate attributeName="opacity" values="1;1;0;0" keyTimes="0;0.45;0.5;1" dur="2s" repeatCount="indefinite" />
-                <rect x="830" y="296" width="80" height="28" rx="6"
-                  fill="rgba(34,197,94,0.15)" stroke="rgba(34,197,94,0.4)" strokeWidth="1" />
-                <text x="870" y="314" textAnchor="middle"
-                  fill="#4ade80" fontSize="11" fontWeight="600" fontFamily="Inter,sans-serif">
-                  Excel
-                </text>
-              </g>
-              <g>
-                <animate attributeName="opacity" values="0;0;1;1" keyTimes="0;0.45;0.5;1" dur="2s" repeatCount="indefinite" />
-                <rect x="830" y="360" width="80" height="28" rx="6"
-                  fill="rgba(239,68,68,0.15)" stroke="rgba(239,68,68,0.4)" strokeWidth="1" />
-                <text x="870" y="378" textAnchor="middle"
-                  fill="#f87171" fontSize="11" fontWeight="600" fontFamily="Inter,sans-serif">
-                  PDF
-                </text>
-              </g>
-            </svg>
-          </div>
-
-          {/* Mobile: animated vertical SVG flow */}
-          <div className="sm:hidden relative rounded-2xl border border-white/5 bg-white/[0.02] p-4">
-            <div className="data-flow-grid absolute inset-0 rounded-2xl" />
-            <svg viewBox="0 0 280 440" className="w-full h-auto relative max-w-[320px] mx-auto" fill="none">
-              {/* Lines */}
-              {[
-                'M80,58 C80,85 140,85 140,112',
-                'M200,58 C200,85 140,85 140,112',
-                'M140,148 L140,195',
-                'M140,265 L140,302',
-                'M140,338 C140,370 75,370 75,394',
-                'M140,338 C140,370 205,370 205,394',
-              ].map((d, i) => (
-                <g key={`ml-${i}`}>
-                  <path d={d} className="flow-line" stroke="rgba(99,102,241,0.3)" strokeWidth="1.5" />
-                  <circle r="2.5" fill="#818cf8" opacity="0.8">
-                    <animateMotion dur={`${2 + i * 0.4}s`} begin={`${i * 0.3}s`} repeatCount="indefinite" path={d} />
-                  </circle>
-                </g>
-              ))}
-
-              {/* WB */}
-              <rect x="30" y="22" width="100" height="36" rx="8"
-                fill="rgba(139,63,253,0.12)" stroke="rgba(139,63,253,0.35)" strokeWidth="1" />
-              <text x="80" y="45" textAnchor="middle"
-                fill="#A78BFA" fontSize="12" fontWeight="600" fontFamily="Inter,sans-serif">WB</text>
-
-              {/* Ozon */}
-              <rect x="150" y="22" width="100" height="36" rx="8"
-                fill="rgba(0,91,255,0.12)" stroke="rgba(0,91,255,0.35)" strokeWidth="1" />
-              <text x="200" y="45" textAnchor="middle"
-                fill="#60A5FA" fontSize="12" fontWeight="600" fontFamily="Inter,sans-serif">Ozon</text>
-
-              {/* Input cycling label */}
-              <rect x="85" y="112" width="110" height="36" rx="8"
-                fill="rgba(255,255,255,0.04)" stroke="rgba(255,255,255,0.1)" strokeWidth="1" />
-              <text key={inputLabels[0][cycle % 3]} x="140" y="135" textAnchor="middle"
-                fill="white" fontSize="11" fontWeight="500" fontFamily="Inter,sans-serif"
-                className="flow-label-enter">
-                {inputLabels[0][cycle % 3]}
-              </text>
-
-              {/* Hub */}
-              <rect x="60" y="195" width="160" height="70" rx="14"
-                fill="rgba(99,102,241,0.15)" stroke="rgba(99,102,241,0.4)" strokeWidth="1.5"
-                className="flow-hub-rect" />
-              <text x="140" y="226" textAnchor="middle"
-                fill="white" fontSize="14" fontWeight="700" fontFamily="Inter,sans-serif">RevioMP</text>
-
-              {/* Output cycling label */}
-              <rect x="85" y="302" width="110" height="36" rx="8"
-                fill="rgba(255,255,255,0.04)" stroke="rgba(255,255,255,0.1)" strokeWidth="1" />
-              <text key={outputLabels[0][cycle % 3]} x="140" y="325" textAnchor="middle"
-                fill="white" fontSize="11" fontWeight="500" fontFamily="Inter,sans-serif"
-                className="flow-label-enter">
-                {outputLabels[0][cycle % 3]}
-              </text>
-
-              {/* Bottom outputs */}
-              <rect x="30" y="394" width="90" height="32" rx="8"
-                fill="rgba(255,255,255,0.04)" stroke="rgba(255,255,255,0.1)" strokeWidth="1" />
-              <text key={outputLabels[1][cycle % 3]} x="75" y="414" textAnchor="middle"
-                fill="white" fontSize="10" fontWeight="500" fontFamily="Inter,sans-serif"
-                className="flow-label-enter">
-                {outputLabels[1][cycle % 3]}
-              </text>
-
-              <rect x="160" y="394" width="90" height="32" rx="8"
-                fill="rgba(255,255,255,0.04)" stroke="rgba(255,255,255,0.1)" strokeWidth="1" />
-              <text key={outputLabels[2][cycle % 3]} x="205" y="414" textAnchor="middle"
-                fill="white" fontSize="10" fontWeight="500" fontFamily="Inter,sans-serif"
-                className="flow-label-enter">
-                {outputLabels[2][cycle % 3]}
-              </text>
-            </svg>
-          </div>
-        </RevealSection>
-      </div>
-    </section>
-  );
-}
-
-// @ts-ignore TS6133
-function _DataFlowSectionV2() {
-  const [cycle, setCycle] = useState(0);
-  useEffect(() => {
-    const timer = setInterval(() => setCycle((c) => (c + 1) % 3), 3000);
-    return () => clearInterval(timer);
-  }, []);
-
-  const inputLabels = [
-    ['Продажи', 'Заказы', 'Выкупы'],
-    ['Остатки', 'FBO', 'Склады'],
-    ['Реклама', 'Удержания', 'Комиссия'],
-  ];
-  const outputLabels = [
-    ['Дашборд', 'Графики', 'Дашборд'],
-    ['Прибыль', 'Маржа', 'ROI'],
-    ['Отчёт', 'PDF', 'Экспорт'],
-  ];
-
-  const rowY = [78, 210, 342];
-
-  const lines = [
-    // WB → все 3 входа
-    'M140,153 C190,153 190,78 225,78',       // 0: WB → Продажи
-    'M140,153 C190,153 190,210 225,210',      // 1: WB → Остатки
-    'M140,153 C190,153 190,342 225,342',      // 2: WB → Реклама
-    // Ozon → все 3 входа
-    'M140,267 C190,267 190,78 225,78',        // 3: Ozon → Продажи
-    'M140,267 C190,267 190,210 225,210',      // 4: Ozon → Остатки
-    'M140,267 C190,267 190,342 225,342',      // 5: Ozon → Реклама
-    // Входы → хаб
-    'M345,78 C395,78 395,210 420,210',        // 6: top → hub
-    'M345,210 L420,210',                       // 7: mid → hub
-    'M345,342 C395,342 395,210 420,210',      // 8: bottom → hub
-    // Хаб → выходы
-    'M580,210 C630,210 630,78 655,78',        // 9: hub → Дашборд
-    'M580,210 L655,210',                       // 10: hub → Прибыль
-    'M580,210 C630,210 630,342 655,342',      // 11: hub → Экспорт
-    // Ветки от Дашборд
-    'M775,68 C800,68 810,48 830,48',          // 12: → Telegram
-    'M775,88 C800,88 810,108 830,108',        // 13: → Webhook
-    // Ветка от Прибыль
-    'M775,210 L830,210',                       // 14: → ROI
-    // Ветки от Экспорт
-    'M775,330 C800,330 810,300 830,300',      // 15: → Excel
-    'M775,342 L830,342',                       // 16: → REST API
-    'M775,354 C800,354 810,384 830,384',      // 17: → PDF
-  ];
-
-  const packets = [
-    // WB → входы (фиолетовые)
-    { path: lines[0], dur: '2.5s', begin: '0s', fill: '#7c3aed' },
-    { path: lines[1], dur: '2.8s', begin: '0.7s', fill: '#7c3aed' },
-    { path: lines[2], dur: '3.2s', begin: '1.4s', fill: '#7c3aed' },
-    // Ozon → входы (синие)
-    { path: lines[3], dur: '3s', begin: '0.3s', fill: '#2563eb' },
-    { path: lines[4], dur: '2.6s', begin: '1s', fill: '#2563eb' },
-    { path: lines[5], dur: '3s', begin: '1.8s', fill: '#2563eb' },
-    // Входы → хаб (индиго)
-    { path: lines[6], dur: '2s', begin: '0.8s', fill: '#6366f1' },
-    { path: lines[7], dur: '1.8s', begin: '1.2s', fill: '#6366f1' },
-    { path: lines[8], dur: '2.5s', begin: '1.6s', fill: '#6366f1' },
-    // Хаб → выходы
-    { path: lines[9], dur: '2s', begin: '0.3s', fill: '#16a34a' },
-    { path: lines[10], dur: '1.8s', begin: '0.7s', fill: '#d97706' },
-    { path: lines[11], dur: '2.5s', begin: '1.1s', fill: '#6366f1' },
-    // Ветки
-    { path: lines[12], dur: '1.5s', begin: '0.5s', fill: '#16a34a' },
-    { path: lines[13], dur: '1.5s', begin: '0.8s', fill: '#16a34a' },
-    { path: lines[14], dur: '1.2s', begin: '0.3s', fill: '#d97706' },
-    { path: lines[15], dur: '1.5s', begin: '0.2s', fill: '#16a34a' },
-    { path: lines[16], dur: '1.2s', begin: '0.7s', fill: '#6366f1' },
-    { path: lines[17], dur: '1.5s', begin: '0.9s', fill: '#dc2626' },
-  ];
-
-  // Микро-метрики — какие данные летят по каждой цепочке
-  const metrics = [
-    // WB данные (фиолетовые)
-    { text: '5 SKU',  path: lines[0], dur: '4s', begin: '0s', fill: '#7c3aed' },
-    { text: 'FBO',    path: lines[1], dur: '4s', begin: '1.5s', fill: '#7c3aed' },
-    { text: 'CPM',    path: lines[2], dur: '4.5s', begin: '3s', fill: '#7c3aed' },
-    // Ozon данные (синие)
-    { text: '3 SKU',  path: lines[3], dur: '4s', begin: '0.8s', fill: '#2563eb' },
-    { text: 'FBO',    path: lines[4], dur: '4s', begin: '2.2s', fill: '#2563eb' },
-    { text: 'ДРР',    path: lines[5], dur: '4.5s', begin: '3.5s', fill: '#2563eb' },
-    // Выходные метрики
-    { text: '+12%',   path: lines[9], dur: '3.5s', begin: '1s', fill: '#16a34a' },
-    { text: '₽',      path: lines[10], dur: '3s', begin: '0.5s', fill: '#d97706' },
-    { text: '−3.2%',  path: lines[11], dur: '3.5s', begin: '2s', fill: '#dc2626' },
-  ];
-
-  return (
-    <section className="py-16 sm:py-24 bg-gray-50 overflow-hidden">
-      <div className="max-w-5xl mx-auto px-4 sm:px-6">
-        <RevealSection>
-          <div className="text-center mb-10 sm:mb-14">
-            <div className="inline-block px-3 py-1 rounded-full text-xs font-semibold text-amber-700 bg-amber-100 border border-amber-300 mb-4">
-              V2 — СРАВНЕНИЕ (удалить после ревью)
-            </div>
-            <h2 className="text-2xl sm:text-3xl font-bold text-gray-900">
-              Как работают ваши данные
-            </h2>
-            <p className="mt-3 text-sm sm:text-base text-gray-500 max-w-lg mx-auto">
-              Автоматический сбор, обработка и визуализация — в реальном времени
-            </p>
-          </div>
-        </RevealSection>
-
-        <RevealSection delay={200}>
-          <div className="hidden sm:block relative rounded-2xl border border-gray-200 bg-white shadow-sm p-6 sm:p-8">
-            {/* Light dot grid */}
-            <div className="absolute inset-0 rounded-2xl" style={{
-              backgroundImage: 'radial-gradient(circle, rgba(99,102,241,0.08) 1px, transparent 1px)',
-              backgroundSize: '20px 20px',
-            }} />
-            <svg
-              viewBox="0 0 960 420"
-              className="w-full h-auto relative"
-              fill="none"
-            >
-              {/* [A+G] Connection lines — animated dash + variable width */}
-              {lines.map((d, i) => {
-                const w = i <= 5 ? 1.2 : i <= 8 ? 1.8 : i <= 11 ? 2 : 1.2;
-                const alpha = i <= 5 ? 0.18 : i <= 8 ? 0.22 : i <= 11 ? 0.28 : 0.15;
-                return (
-                  <path key={`ln-${i}`} d={d} className="flow-line"
-                    stroke={`rgba(99,102,241,${alpha})`} strokeWidth={w} />
-                );
-              })}
-
-              {/* [B] Traveling data packets — color-coded by source */}
-              {packets.map((p, i) => (
-                <circle key={`pk-${i}`} r="3.5" fill={p.fill} opacity="0.7">
-                  <animateMotion dur={p.dur} begin={p.begin} repeatCount="indefinite" path={p.path} />
-                </circle>
-              ))}
-
-              {/* Micro-metrics flying along paths */}
-              {metrics.map((m, i) => (
-                <text key={`mt-${i}`} fontSize="9" fill={m.fill} fontWeight="700" fontFamily="Inter,sans-serif" opacity="0.85">
-                  {m.text}
-                  <animateMotion dur={m.dur} begin={m.begin} repeatCount="indefinite" path={m.path} />
-                </text>
-              ))}
-
-              {/* Source: Wildberries */}
-              <rect x="30" y="130" width="110" height="46" rx="10"
-                fill="rgba(139,63,253,0.08)" stroke="rgba(139,63,253,0.25)" strokeWidth="1" />
-              <text x="85" y="158" textAnchor="middle"
-                fill="#7c3aed" fontSize="13" fontWeight="600" fontFamily="Inter,sans-serif">
-                Wildberries
-              </text>
-              {/* [E] Status dot — connected */}
-              <circle cx="132" cy="138" r="3.5" fill="#22c55e">
-                <animate attributeName="r" values="3;4.5;3" dur="2s" repeatCount="indefinite" />
-                <animate attributeName="opacity" values="0.6;1;0.6" dur="2s" repeatCount="indefinite" />
-              </circle>
-
-              {/* Source: Ozon */}
-              <rect x="30" y="244" width="110" height="46" rx="10"
-                fill="rgba(37,99,235,0.08)" stroke="rgba(37,99,235,0.25)" strokeWidth="1" />
-              <text x="85" y="272" textAnchor="middle"
-                fill="#2563eb" fontSize="13" fontWeight="600" fontFamily="Inter,sans-serif">
-                Ozon
-              </text>
-              {/* [E] Status dot — connected */}
-              <circle cx="132" cy="252" r="3.5" fill="#22c55e">
-                <animate attributeName="r" values="3;4.5;3" dur="2s" begin="0.5s" repeatCount="indefinite" />
-                <animate attributeName="opacity" values="0.6;1;0.6" dur="2s" begin="0.5s" repeatCount="indefinite" />
-              </circle>
-
-              {/* Input labels (cycling) */}
-              {inputLabels.map((variants, idx) => {
-                const label = variants[(cycle + idx) % 3];
-                return (
-                  <g key={`in-${idx}`}>
-                    <rect x="225" y={rowY[idx] - 20} width="120" height="40" rx="8"
-                      fill="white" stroke="#e5e7eb" strokeWidth="1" />
-                    <text
-                      key={label}
-                      x="285" y={rowY[idx] + 5} textAnchor="middle"
-                      fill="#1f2937" fontSize="12" fontWeight="500" fontFamily="Inter,sans-serif"
-                      className="flow-label-enter"
-                    >
-                      {label}
-                    </text>
-                  </g>
-                );
-              })}
-
-              {/* [F] Pulsing central hub with processing spinners */}
-              <g className="flow-hub-pulse">
-                <rect x="420" y="165" width="160" height="90" rx="16"
-                  fill="rgba(99,102,241,0.08)" stroke="rgba(99,102,241,0.3)" strokeWidth="1.5" />
-                {/* Glow ring */}
-                <rect x="414" y="159" width="172" height="102" rx="20"
-                  fill="none" stroke="rgba(99,102,241,0.1)" strokeWidth="3">
-                  <animate attributeName="opacity" values="0.2;0.6;0.2" dur="2s" repeatCount="indefinite" />
-                </rect>
-                {/* Dual counter-rotating processing arcs */}
-                <circle cx="500" cy="210" r="56" fill="none"
-                  stroke="rgba(99,102,241,0.15)" strokeWidth="1.5"
-                  strokeDasharray="25 327" strokeLinecap="round">
-                  <animateTransform attributeName="transform" type="rotate"
-                    values="0 500 210;360 500 210" dur="4s" repeatCount="indefinite" />
-                </circle>
-                <circle cx="500" cy="210" r="56" fill="none"
-                  stroke="rgba(99,102,241,0.1)" strokeWidth="1.5"
-                  strokeDasharray="15 337" strokeLinecap="round">
-                  <animateTransform attributeName="transform" type="rotate"
-                    values="360 500 210;0 500 210" dur="5s" repeatCount="indefinite" />
-                </circle>
-                <text x="500" y="205" textAnchor="middle"
-                  fill="#312e81" fontSize="15" fontWeight="700" fontFamily="Inter,sans-serif">
-                  RevioMP
-                </text>
-                <text x="500" y="225" textAnchor="middle"
-                  fill="#6366f1" fontSize="11" fontWeight="500" fontFamily="Inter,sans-serif">
-                  Analytics
-                </text>
-              </g>
-
-              {/* Floating badges around hub — faster pulse */}
-              <g>
-                <animate attributeName="opacity" values="0.5;1;0.5" dur="2s" repeatCount="indefinite" />
-                <rect x="395" y="138" width="62" height="20" rx="10"
-                  fill="rgba(22,163,74,0.08)" stroke="rgba(22,163,74,0.25)" strokeWidth="0.5" />
-                <text x="426" y="152" textAnchor="middle"
-                  fill="#16a34a" fontSize="8" fontWeight="600" fontFamily="Inter,sans-serif">
-                  AES-128
-                </text>
-              </g>
-              <g>
-                <animate attributeName="opacity" values="0.5;1;0.5" dur="2s" begin="0.7s" repeatCount="indefinite" />
-                <rect x="543" y="262" width="56" height="20" rx="10"
-                  fill="rgba(99,102,241,0.08)" stroke="rgba(99,102,241,0.2)" strokeWidth="0.5" />
-                <text x="571" y="276" textAnchor="middle"
-                  fill="#4f46e5" fontSize="8" fontWeight="600" fontFamily="Inter,sans-serif">
-                  30 мин
-                </text>
-              </g>
-              <g>
-                <animate attributeName="opacity" values="0.5;1;0.5" dur="2s" begin="1.3s" repeatCount="indefinite" />
-                <rect x="543" y="138" width="44" height="20" rx="10"
-                  fill="rgba(139,63,253,0.08)" stroke="rgba(139,63,253,0.2)" strokeWidth="0.5" />
-                <text x="565" y="152" textAnchor="middle"
-                  fill="#7c3aed" fontSize="9">
-                  🔒
-                </text>
-              </g>
-
-              {/* Output labels (cycling) */}
-              {outputLabels.map((variants, idx) => {
-                const label = variants[(cycle + idx) % 3];
-                return (
-                  <g key={`out-${idx}`}>
-                    <rect x="655" y={rowY[idx] - 20} width="120" height="40" rx="8"
-                      fill="white" stroke="#e5e7eb" strokeWidth="1" />
-                    <text
-                      key={label}
-                      x="715" y={rowY[idx] + 5} textAnchor="middle"
-                      fill="#1f2937" fontSize="12" fontWeight="500" fontFamily="Inter,sans-serif"
-                      className="flow-label-enter"
-                    >
-                      {label}
-                    </text>
-                  </g>
-                );
-              })}
-
-              {/* ─── Output badges ─── */}
-
-              {/* Telegram — от Дашборд */}
-              <g>
-                <animate attributeName="opacity" values="0.6;1;0.6" dur="1.5s" repeatCount="indefinite" />
-                <rect x="830" y="34" width="90" height="28" rx="6"
-                  fill="rgba(14,165,233,0.08)" stroke="rgba(14,165,233,0.3)" strokeWidth="1" />
-                <text x="875" y="52" textAnchor="middle"
-                  fill="#0284c7" fontSize="10" fontWeight="600" fontFamily="Inter,sans-serif">
-                  Telegram
-                </text>
-              </g>
-
-              {/* [H] Webhook — от Дашборд */}
-              <g>
-                <animate attributeName="opacity" values="0.6;1;0.6" dur="1.5s" begin="0.3s" repeatCount="indefinite" />
-                <rect x="830" y="94" width="90" height="28" rx="6"
-                  fill="rgba(16,185,129,0.08)" stroke="rgba(16,185,129,0.3)" strokeWidth="1" />
-                <text x="875" y="112" textAnchor="middle"
-                  fill="#059669" fontSize="10" fontWeight="600" fontFamily="Inter,sans-serif">
-                  Webhook
-                </text>
-              </g>
-
-              {/* [C] ROI badge — от Прибыль */}
-              <g>
-                <animate attributeName="opacity" values="0.6;1;0.6" dur="1.5s" begin="0.4s" repeatCount="indefinite" />
-                <rect x="830" y="196" width="80" height="28" rx="6"
-                  fill="rgba(217,119,6,0.08)" stroke="rgba(217,119,6,0.3)" strokeWidth="1" />
-                <text x="870" y="214" textAnchor="middle"
-                  fill="#d97706" fontSize="10" fontWeight="600" fontFamily="Inter,sans-serif">
-                  +42% ROI
-                </text>
-              </g>
-
-              {/* Excel — от Экспорт */}
-              <g>
-                <animate attributeName="opacity" values="0.6;1;0.6" dur="1.5s" begin="0.1s" repeatCount="indefinite" />
-                <rect x="830" y="286" width="80" height="28" rx="6"
-                  fill="rgba(22,163,74,0.08)" stroke="rgba(22,163,74,0.3)" strokeWidth="1" />
-                <text x="870" y="304" textAnchor="middle"
-                  fill="#16a34a" fontSize="11" fontWeight="600" fontFamily="Inter,sans-serif">
-                  Excel
-                </text>
-              </g>
-
-              {/* REST API — от Экспорт */}
-              <g>
-                <animate attributeName="opacity" values="0.6;1;0.6" dur="1.5s" begin="0.5s" repeatCount="indefinite" />
-                <rect x="830" y="328" width="80" height="28" rx="6"
-                  fill="rgba(124,58,237,0.08)" stroke="rgba(124,58,237,0.3)" strokeWidth="1" />
-                <text x="870" y="346" textAnchor="middle"
-                  fill="#7c3aed" fontSize="10" fontWeight="600" fontFamily="Inter,sans-serif">
-                  REST API
-                </text>
-              </g>
-
-              {/* PDF — от Экспорт */}
-              <g>
-                <animate attributeName="opacity" values="0.6;1;0.6" dur="1.5s" begin="0.75s" repeatCount="indefinite" />
-                <rect x="830" y="370" width="80" height="28" rx="6"
-                  fill="rgba(220,38,38,0.08)" stroke="rgba(220,38,38,0.3)" strokeWidth="1" />
-                <text x="870" y="388" textAnchor="middle"
-                  fill="#dc2626" fontSize="11" fontWeight="600" fontFamily="Inter,sans-serif">
-                  PDF
-                </text>
-              </g>
-            </svg>
-          </div>
-
-          {/* Mobile: skip for comparison */}
-          <div className="sm:hidden text-center text-gray-400 text-sm py-8">
-            V2 comparison — desktop only
-          </div>
-        </RevealSection>
-      </div>
-    </section>
-  );
-}
 
 /* ──────────────────────────────────────────────
    DATAFLOW V3 — LIVING ECOSYSTEM
@@ -1462,6 +851,7 @@ function _DataFlowSectionV2() {
    ────────────────────────────────────────────── */
 
 function DataFlowSectionV3() {
+  const SHOW_PRO = false; // flip to true when Order Monitor is ready
   const [triggered, setTriggered] = useState(false);
   const [alive, setAlive] = useState(false);
   const [proActive, setProActive] = useState(false);
@@ -1869,152 +1259,318 @@ function DataFlowSectionV3() {
               </g>
             </g>
 
-            {/* ═══ PRO SUBSCRIPTION TOGGLE ═══ */}
-            <g style={{ ...show(2.6), cursor: alive ? 'pointer' : 'default' }}
-               onClick={() => alive && setProActive(p => !p)}>
-              <rect x={700} y={462} width={130} height={36} rx={12}
-                fill={proActive ? 'rgba(245,158,11,0.12)' : 'rgba(255,255,255,0.04)'}
-                stroke={proActive ? 'rgba(245,158,11,0.45)' : 'rgba(255,255,255,0.15)'}
-                strokeWidth={proActive ? 1.5 : 1} />
-              {proActive && <rect x={698} y={460} width={134} height={40} rx={14}
-                fill="none" stroke="rgba(245,158,11,0.25)" strokeWidth={2.5}
-                className="v3-pro-glow" />}
-              <text x={765} y={485} textAnchor="middle"
-                fill={proActive ? '#fbbf24' : '#6b7280'} fontSize={11} fontWeight="700"
-                fontFamily="Inter,sans-serif">
-                {'\u26A1 PRO \u043F\u043E\u0434\u043F\u0438\u0441\u043A\u0430'}
-              </text>
-            </g>
-
-            {/* ═══ PRO GOLDEN HUB GLOW (when active) ═══ */}
-            {proActive && (
-              <rect x={414} y={212} width={182} height={102} rx={24}
-                fill="none" stroke="rgba(245,158,11,0.15)" strokeWidth={2}
-                className="v3-pro-glow" />
-            )}
-
-            {/* ═══ PRO TREE — trunk + branches ═══ */}
-            <path d={proP.trunk} stroke="rgba(245,158,11,0.4)" strokeWidth={1.5}
-              vectorEffect="non-scaling-stroke" fill="none" {...proDraw(0.05, 20)} />
-            <path d={proP.left} stroke="rgba(245,158,11,0.3)" strokeWidth={1}
-              vectorEffect="non-scaling-stroke" fill="none" {...proDraw(0.15, 120)} />
-            <path d={proP.center} stroke="rgba(245,158,11,0.3)" strokeWidth={1}
-              vectorEffect="non-scaling-stroke" fill="none" {...proDraw(0.15, 30)} />
-            <path d={proP.right} stroke="rgba(245,158,11,0.3)" strokeWidth={1}
-              vectorEffect="non-scaling-stroke" fill="none" {...proDraw(0.2, 120)} />
-
-            {/* ═══ PRO FEATURE NODES ═══ */}
-            <g style={proShow(0.25)}>
-              <rect x={615} y={544} width={100} height={30} rx={8}
-                fill="rgba(139,92,246,0.1)" stroke="rgba(139,92,246,0.35)" strokeWidth={0.75} />
-              <text x={665} y={563} textAnchor="middle"
-                fill="#a78bfa" fontSize={9.5} fontWeight="600" fontFamily="Inter,sans-serif">
-                Монитор заказов
-              </text>
-            </g>
-
-            <g style={proShow(0.35)}>
-              <rect x={715} y={544} width={100} height={30} rx={8}
-                fill="rgba(14,165,233,0.1)" stroke="rgba(14,165,233,0.35)" strokeWidth={0.75} />
-              <text x={765} y={563} textAnchor="middle"
-                fill="#38bdf8" fontSize={9.5} fontWeight="600" fontFamily="Inter,sans-serif">
-                Уведомления
-              </text>
-            </g>
-
-            <g style={proShow(0.45)}>
-              <rect x={815} y={544} width={100} height={30} rx={8}
-                fill="rgba(16,185,129,0.1)" stroke="rgba(16,185,129,0.35)" strokeWidth={0.75} />
-              <text x={865} y={563} textAnchor="middle"
-                fill="#34d399" fontSize={9.5} fontWeight="600" fontFamily="Inter,sans-serif">
-                Авто-отчёты
-              </text>
-            </g>
-
-            {/* Pro traveling dots */}
-            {proActive && alive && <>
-              <circle r={1.5} fill="#f59e0b" opacity={0.5}>
-                <animateMotion dur="1.2s" begin="0s" repeatCount="indefinite" path={proP.left} />
-              </circle>
-              <circle r={1.5} fill="#f59e0b" opacity={0.5}>
-                <animateMotion dur="0.8s" begin="0.3s" repeatCount="indefinite" path={proP.center} />
-              </circle>
-              <circle r={1.5} fill="#f59e0b" opacity={0.5}>
-                <animateMotion dur="1.2s" begin="0.6s" repeatCount="indefinite" path={proP.right} />
-              </circle>
+            {/* ═══ PRO SUBSCRIPTION (hidden until SHOW_PRO=true) ═══ */}
+            {SHOW_PRO && <>
+              <g style={{ ...show(2.6), cursor: alive ? 'pointer' : 'default' }}
+                 onClick={() => alive && setProActive(p => !p)}>
+                <rect x={700} y={462} width={130} height={36} rx={12}
+                  fill={proActive ? 'rgba(245,158,11,0.12)' : 'rgba(255,255,255,0.04)'}
+                  stroke={proActive ? 'rgba(245,158,11,0.45)' : 'rgba(255,255,255,0.15)'}
+                  strokeWidth={proActive ? 1.5 : 1} />
+                {proActive && <rect x={698} y={460} width={134} height={40} rx={14}
+                  fill="none" stroke="rgba(245,158,11,0.25)" strokeWidth={2.5}
+                  className="v3-pro-glow" />}
+                <text x={765} y={485} textAnchor="middle"
+                  fill={proActive ? '#fbbf24' : '#6b7280'} fontSize={11} fontWeight="700"
+                  fontFamily="Inter,sans-serif">
+                  {'\u26A1 PRO \u043F\u043E\u0434\u043F\u0438\u0441\u043A\u0430'}
+                </text>
+              </g>
+              {proActive && (
+                <rect x={414} y={212} width={182} height={102} rx={24}
+                  fill="none" stroke="rgba(245,158,11,0.15)" strokeWidth={2}
+                  className="v3-pro-glow" />
+              )}
+              <path d={proP.trunk} stroke="rgba(245,158,11,0.4)" strokeWidth={1.5}
+                vectorEffect="non-scaling-stroke" fill="none" {...proDraw(0.05, 20)} />
+              <path d={proP.left} stroke="rgba(245,158,11,0.3)" strokeWidth={1}
+                vectorEffect="non-scaling-stroke" fill="none" {...proDraw(0.15, 120)} />
+              <path d={proP.center} stroke="rgba(245,158,11,0.3)" strokeWidth={1}
+                vectorEffect="non-scaling-stroke" fill="none" {...proDraw(0.15, 30)} />
+              <path d={proP.right} stroke="rgba(245,158,11,0.3)" strokeWidth={1}
+                vectorEffect="non-scaling-stroke" fill="none" {...proDraw(0.2, 120)} />
+              <g style={proShow(0.25)}>
+                <rect x={615} y={544} width={100} height={30} rx={8}
+                  fill="rgba(139,92,246,0.1)" stroke="rgba(139,92,246,0.35)" strokeWidth={0.75} />
+                <text x={665} y={563} textAnchor="middle"
+                  fill="#a78bfa" fontSize={9.5} fontWeight="600" fontFamily="Inter,sans-serif">
+                  Монитор заказов
+                </text>
+              </g>
+              <g style={proShow(0.35)}>
+                <rect x={715} y={544} width={100} height={30} rx={8}
+                  fill="rgba(14,165,233,0.1)" stroke="rgba(14,165,233,0.35)" strokeWidth={0.75} />
+                <text x={765} y={563} textAnchor="middle"
+                  fill="#38bdf8" fontSize={9.5} fontWeight="600" fontFamily="Inter,sans-serif">
+                  Уведомления
+                </text>
+              </g>
+              <g style={proShow(0.45)}>
+                <rect x={815} y={544} width={100} height={30} rx={8}
+                  fill="rgba(16,185,129,0.1)" stroke="rgba(16,185,129,0.35)" strokeWidth={0.75} />
+                <text x={865} y={563} textAnchor="middle"
+                  fill="#34d399" fontSize={9.5} fontWeight="600" fontFamily="Inter,sans-serif">
+                  Авто-отчёты
+                </text>
+              </g>
+              {proActive && alive && <>
+                <circle r={1.5} fill="#f59e0b" opacity={0.5}>
+                  <animateMotion dur="1.2s" begin="0s" repeatCount="indefinite" path={proP.left} />
+                </circle>
+                <circle r={1.5} fill="#f59e0b" opacity={0.5}>
+                  <animateMotion dur="0.8s" begin="0.3s" repeatCount="indefinite" path={proP.center} />
+                </circle>
+                <circle r={1.5} fill="#f59e0b" opacity={0.5}>
+                  <animateMotion dur="1.2s" begin="0.6s" repeatCount="indefinite" path={proP.right} />
+                </circle>
+              </>}
             </>}
           </svg>
         </div>
 
-        {/* ── Mobile: simplified dark theme with traveling dots + cycling labels ── */}
-        <div className="sm:hidden relative p-4 overflow-hidden">
-          <svg viewBox="0 0 300 400" className="w-full h-auto max-w-[320px] mx-auto relative" fill="none">
+        {/* ── Mobile: full-featured vertical flow with all desktop elements ── */}
+        <div className="sm:hidden relative p-2 overflow-hidden">
+          <svg viewBox="0 0 300 450" className="w-full h-auto max-w-[340px] mx-auto relative" fill="none">
             <defs>
               <linearGradient id="v3-hub-grad-m" x1="0%" y1="0%" x2="100%" y2="100%">
                 <stop offset="0%" stopColor="#6366f1" />
                 <stop offset="50%" stopColor="#a855f7" />
                 <stop offset="100%" stopColor="#6366f1" />
               </linearGradient>
+              <filter id="v3-hub-shadow-m" x="-10%" y="-10%" width="120%" height="130%">
+                <feDropShadow dx="0" dy="4" stdDeviation="8" floodColor="rgba(99,102,241,0.2)" />
+              </filter>
             </defs>
 
-            {/* Lines with flow-dash */}
-            <path d="M90,66 L90,95 L150,120" stroke="rgba(139,63,253,0.3)" strokeWidth="1" strokeDasharray="6 10" vectorEffect="non-scaling-stroke" className={alive ? 'v4-flow-a' : ''} />
-            <path d="M210,66 L210,95 L150,120" stroke="rgba(37,99,235,0.3)" strokeWidth="1" strokeDasharray="6 10" vectorEffect="non-scaling-stroke" className={alive ? 'v4-flow-b' : ''} />
-            <path d="M150,195 L150,230" stroke="rgba(99,102,241,0.3)" strokeWidth="1" strokeDasharray="6 10" vectorEffect="non-scaling-stroke" className={alive ? 'v4-flow-c' : ''} />
+            {/* ─── STAGE LINES: Sources → Shelf (draw-on + flow-dash) ─── */}
+            <path d="M77,48 C77,58 52,58 52,70" stroke="rgba(139,63,253,0.3)" strokeWidth={1} vectorEffect="non-scaling-stroke" fill="none" className={alive ? 'v4-flow-a' : ''} {...draw(0.3, 60, '4 8')} />
+            <path d="M77,48 C77,58 150,58 150,70" stroke="rgba(139,63,253,0.2)" strokeWidth={1} vectorEffect="non-scaling-stroke" fill="none" className={alive ? 'v4-flow-b' : ''} {...draw(0.4, 100, '4 8')} />
+            <path d="M222,48 C222,58 150,58 150,70" stroke="rgba(37,99,235,0.2)" strokeWidth={1} vectorEffect="non-scaling-stroke" fill="none" className={alive ? 'v4-flow-c' : ''} {...draw(0.4, 100, '4 8')} />
+            <path d="M222,48 C222,58 248,58 248,70" stroke="rgba(37,99,235,0.3)" strokeWidth={1} vectorEffect="non-scaling-stroke" fill="none" className={alive ? 'v4-flow-a' : ''} {...draw(0.3, 60, '4 8')} />
 
-            {/* Mobile traveling dots */}
+            {/* ─── STAGE LINES: Shelf → Hub ─── */}
+            <path d="M52,104 C52,118 150,118 150,132" stroke="rgba(99,102,241,0.35)" strokeWidth={1} vectorEffect="non-scaling-stroke" fill="none" className={alive ? 'v4-flow-b' : ''} {...draw(0.6, 140, '4 8')} />
+            <path d="M150,104 L150,132" stroke="rgba(99,102,241,0.4)" strokeWidth={1} vectorEffect="non-scaling-stroke" fill="none" className={alive ? 'v4-flow-c' : ''} {...draw(0.7, 30, '4 8')} />
+            <path d="M248,104 C248,118 150,118 150,132" stroke="rgba(99,102,241,0.35)" strokeWidth={1} vectorEffect="non-scaling-stroke" fill="none" className={alive ? 'v4-flow-a' : ''} {...draw(0.6, 140, '4 8')} />
+
+            {/* ─── STAGE LINES: Hub → Outputs ─── */}
+            <path d="M150,204 C150,218 52,218 52,232" stroke="rgba(99,102,241,0.45)" strokeWidth={1} vectorEffect="non-scaling-stroke" fill="none" className={alive ? 'v4-flow-c' : ''} {...draw(1.0, 140, '4 8')} />
+            <path d="M150,204 L150,232" stroke="rgba(99,102,241,0.5)" strokeWidth={1} vectorEffect="non-scaling-stroke" fill="none" className={alive ? 'v4-flow-a' : ''} {...draw(1.1, 30, '4 8')} />
+            <path d="M150,204 C150,218 248,218 248,232" stroke="rgba(99,102,241,0.45)" strokeWidth={1} vectorEffect="non-scaling-stroke" fill="none" className={alive ? 'v4-flow-b' : ''} {...draw(1.0, 140, '4 8')} />
+
+            {/* ─── STAGE LINES: Outputs → Badges Row 1 ─── */}
+            <path d="M52,264 L52,292" stroke="rgba(14,165,233,0.3)" strokeWidth={1} vectorEffect="non-scaling-stroke" fill="none" className={alive ? 'v4-flow-a' : ''} {...draw(1.4, 30, '4 8')} />
+            <path d="M150,264 L150,292" stroke="rgba(217,119,6,0.3)" strokeWidth={1} vectorEffect="non-scaling-stroke" fill="none" className={alive ? 'v4-flow-b' : ''} {...draw(1.5, 30, '4 8')} />
+            <path d="M248,264 L248,292" stroke="rgba(16,185,129,0.3)" strokeWidth={1} vectorEffect="non-scaling-stroke" fill="none" className={alive ? 'v4-flow-c' : ''} {...draw(1.4, 30, '4 8')} />
+
+            {/* ─── STAGE LINES: Badges R1 → R2 ─── */}
+            <path d="M52,316 L52,330" stroke="rgba(34,197,94,0.2)" strokeWidth={1} vectorEffect="non-scaling-stroke" fill="none" className={alive ? 'v4-flow-c' : ''} {...draw(1.7, 16, '4 8')} />
+            <path d="M150,316 L150,330" stroke="rgba(99,102,241,0.2)" strokeWidth={1} vectorEffect="non-scaling-stroke" fill="none" className={alive ? 'v4-flow-a' : ''} {...draw(1.8, 16, '4 8')} />
+            <path d="M248,316 L248,330" stroke="rgba(220,38,38,0.2)" strokeWidth={1} vectorEffect="non-scaling-stroke" fill="none" className={alive ? 'v4-flow-b' : ''} {...draw(1.7, 16, '4 8')} />
+
+            {/* ─── TRAVELING DATA PACKETS ─── */}
             {alive && <>
-              <circle r="2" fill="#8b5cf6" opacity="0.7">
-                <animateMotion dur="2s" begin="0s" repeatCount="indefinite" path="M90,66 L90,95 L150,120" />
+              {/* WB → shelf */}
+              <circle r={2} fill="#8b5cf6" opacity={0.7}>
+                <animateMotion dur="1.8s" begin="0s" repeatCount="indefinite" path="M77,48 C77,58 52,58 52,70" />
               </circle>
-              <circle r="2" fill="#3b82f6" opacity="0.7">
-                <animateMotion dur="2.5s" begin="0.5s" repeatCount="indefinite" path="M210,66 L210,95 L150,120" />
+              <circle r={1.5} fill="#8b5cf6" opacity={0.4}>
+                <animateMotion dur="2.2s" begin="0.8s" repeatCount="indefinite" path="M77,48 C77,58 150,58 150,70" />
               </circle>
-              <circle r="2" fill="#6366f1" opacity="0.6">
-                <animateMotion dur="1.5s" begin="0.3s" repeatCount="indefinite" path="M150,195 L150,230" />
+              {/* Ozon → shelf */}
+              <circle r={2} fill="#3b82f6" opacity={0.7}>
+                <animateMotion dur="1.8s" begin="0.3s" repeatCount="indefinite" path="M222,48 C222,58 248,58 248,70" />
+              </circle>
+              <circle r={1.5} fill="#3b82f6" opacity={0.4}>
+                <animateMotion dur="2.2s" begin="1s" repeatCount="indefinite" path="M222,48 C222,58 150,58 150,70" />
+              </circle>
+              {/* Shelf → Hub */}
+              <circle r={1.5} fill="#6366f1" opacity={0.55}>
+                <animateMotion dur="2s" begin="0.2s" repeatCount="indefinite" path="M52,104 C52,118 150,118 150,132" />
+              </circle>
+              <circle r={1.5} fill="#6366f1" opacity={0.5}>
+                <animateMotion dur="1.2s" begin="0.6s" repeatCount="indefinite" path="M150,104 L150,132" />
+              </circle>
+              <circle r={1.5} fill="#6366f1" opacity={0.55}>
+                <animateMotion dur="2s" begin="1s" repeatCount="indefinite" path="M248,104 C248,118 150,118 150,132" />
+              </circle>
+              {/* Hub → Outputs */}
+              <circle r={1.5} fill="#6366f1" opacity={0.5}>
+                <animateMotion dur="2s" begin="0.1s" repeatCount="indefinite" path="M150,204 C150,218 52,218 52,232" />
+              </circle>
+              <circle r={1.5} fill="#6366f1" opacity={0.45}>
+                <animateMotion dur="1s" begin="0.5s" repeatCount="indefinite" path="M150,204 L150,232" />
+              </circle>
+              <circle r={1.5} fill="#6366f1" opacity={0.5}>
+                <animateMotion dur="2s" begin="0.9s" repeatCount="indefinite" path="M150,204 C150,218 248,218 248,232" />
               </circle>
             </>}
 
-            {/* Sources */}
-            <rect x="30" y="26" width="120" height="40" rx="10" fill="rgba(139,63,253,0.12)" stroke="rgba(139,63,253,0.35)" strokeWidth="1" />
-            <text x="90" y="51" textAnchor="middle" fill="#a78bfa" fontSize="12" fontWeight="600" fontFamily="Inter,sans-serif">Wildberries</text>
-            <circle cx="142" cy="33" r="3" fill="#22c55e" className="v3-status-pulse" />
-
-            <rect x="150" y="26" width="120" height="40" rx="10" fill="rgba(0,91,255,0.12)" stroke="rgba(0,91,255,0.35)" strokeWidth="1" />
-            <text x="210" y="51" textAnchor="middle" fill="#60a5fa" fontSize="12" fontWeight="600" fontFamily="Inter,sans-serif">Ozon</text>
-            <circle cx="262" cy="33" r="3" fill="#22c55e" className="v3-status-pulse" />
-
-            {/* Hub */}
-            <rect x="55" y="120" width="190" height="75" rx="16" fill="rgba(99,102,241,0.15)" stroke="rgba(99,102,241,0.4)" strokeWidth="1.5" />
-            <rect x="51" y="116" width="198" height="83" rx="20"
-              fill="none" stroke="url(#v3-hub-grad-m)" strokeWidth="1.5"
-              strokeDasharray="8 4" strokeOpacity="0.5" className="v3-hub-border" />
-            <text x="150" y="155" textAnchor="middle" fill="white" fontSize="15" fontWeight="700" fontFamily="Inter,sans-serif">RevioMP</text>
-            <text x="150" y="175" textAnchor="middle" fill="rgba(255,255,255,0.6)" fontSize="10" fontWeight="500" fontFamily="Inter,sans-serif">Analytics Hub</text>
-
-            {/* Output with cycling label */}
-            <rect x="55" y="230" width="190" height="55" rx="12" fill="rgba(255,255,255,0.04)" stroke="rgba(255,255,255,0.1)" strokeWidth="1" />
-            <text key={o1} x="150" y="256" textAnchor="middle" fill="white" fontSize="13" fontWeight="500" fontFamily="Inter,sans-serif"
-              className={tick >= 0 ? 'v3-fade-in' : ''}>
-              {o1}
-            </text>
-            <text key={`sub-${o2}-${o3}`} x="150" y="274" textAnchor="middle" fill="rgba(255,255,255,0.5)" fontSize="9" fontFamily="Inter,sans-serif"
-              className={tick >= 0 ? 'v3-slide-up' : ''}>
-              {o2} · {o3}
-            </text>
-
-            {/* Bottom badges */}
-            <rect x="15" y="310" width="130" height="30" rx="8" fill="rgba(34,197,94,0.12)" stroke="rgba(34,197,94,0.35)" strokeWidth="1" />
-            <text x="80" y="330" textAnchor="middle" fill="#4ade80" fontSize="10" fontWeight="600" fontFamily="Inter,sans-serif">Excel · PDF</text>
-
-            <rect x="155" y="310" width="130" height="30" rx="8" fill="rgba(14,165,233,0.12)" stroke="rgba(14,165,233,0.35)" strokeWidth="1" />
-            <g className={alive ? 'v3-float' : ''}>
-              <text x="220" y="330" textAnchor="middle" fill="#38bdf8" fontSize="10" fontWeight="600" fontFamily="Inter,sans-serif">Telegram</text>
+            {/* ═══ SOURCES: WB + Ozon ═══ */}
+            <g style={show(0)}>
+              <g className={alive ? 'v3-wb-pulse' : ''}>
+                <rect x="12" y="10" width="131" height="38" rx="11" fill="rgba(139,63,253,0.12)" stroke="rgba(139,63,253,0.35)" strokeWidth="1" />
+                <circle cx="35" cy="29" r="10" fill="rgba(139,63,253,0.15)" stroke="rgba(139,63,253,0.25)" strokeWidth="0.75" />
+                {alive && <circle cx="35" cy="29" r="13" fill="none" stroke="rgba(139,63,253,0.2)" strokeWidth="1" strokeDasharray="3 5" className="v3-wb-ring" />}
+                <text x="35" y="33" textAnchor="middle" fill="#a78bfa" fontSize="8" fontWeight="700" fontFamily="Inter,sans-serif">WB</text>
+                <text x="88" y="33" textAnchor="middle" fill="#a78bfa" fontSize="10.5" fontWeight="600" fontFamily="Inter,sans-serif">Wildberries</text>
+                <circle cx="136" cy="17" r="3" fill="#22c55e" className="v3-status-pulse" />
+              </g>
+            </g>
+            <g style={show(0.12)}>
+              <g className={alive ? 'v3-ozon-tilt' : ''}>
+                <rect x="157" y="10" width="131" height="38" rx="11" fill="rgba(0,91,255,0.12)" stroke="rgba(0,91,255,0.35)" strokeWidth="1" />
+                <circle cx="180" cy="29" r="10" fill="rgba(37,99,235,0.15)" stroke="rgba(37,99,235,0.25)" strokeWidth="0.75" />
+                {alive && <circle cx="180" cy="29" r="11" fill="none" stroke="rgba(37,99,235,0.25)" strokeWidth="1" className="v3-ozon-ring" />}
+                <text x="180" y="33" textAnchor="middle" fill="#60a5fa" fontSize="8" fontWeight="700" fontFamily="Inter,sans-serif">Oz</text>
+                <text x="228" y="33" textAnchor="middle" fill="#60a5fa" fontSize="10.5" fontWeight="600" fontFamily="Inter,sans-serif">Ozon</text>
+                <circle cx="281" cy="17" r="3" fill="#22c55e" className="v3-status-pulse" />
+              </g>
             </g>
 
-            {/* YM placeholder */}
-            <rect x="85" y="355" width="130" height="22" rx="6" fill="none" stroke="rgba(156,163,175,0.15)" strokeWidth="0.75" strokeDasharray="3 3" />
-            <text x="150" y="370" textAnchor="middle" fill="#4b5563" fontSize="8" fontFamily="Inter,sans-serif">Яндекс.Маркет · скоро</text>
+            {/* ═══ SHELF: 3 cycling data-category cards ═══ */}
+            {shelf.map((label, i) => {
+              const cx = [52, 150, 248][i];
+              const rx = [10, 108, 206][i];
+              const isActive = activeSlot === i;
+              return (
+                <g key={`m-shelf-${i}`} style={show(0.25 + i * 0.08)}>
+                  {isActive && alive && (
+                    <rect x={rx - 2} y={68} width={88} height={38} rx={12}
+                      fill="none" stroke="rgba(99,102,241,0.18)" strokeWidth={1.5}
+                      className="v3-status-pulse" />
+                  )}
+                  <rect x={rx} y={70} width={84} height={34} rx={10}
+                    fill={isActive ? 'rgba(99,102,241,0.12)' : 'rgba(255,255,255,0.04)'}
+                    stroke={isActive ? 'rgba(99,102,241,0.45)' : 'rgba(99,102,241,0.2)'}
+                    strokeWidth={isActive ? 1 : 0.75} />
+                  <text key={label} x={cx} y={91} textAnchor="middle"
+                    fill={isActive ? '#a78bfa' : '#818cf8'}
+                    fontSize={10} fontWeight={isActive ? '700' : '600'}
+                    fontFamily="Inter,sans-serif"
+                    opacity={isActive ? 1 : 0.6}
+                    className={tick >= 0 ? 'v3-fade-in' : ''}>
+                    {label}
+                  </text>
+                  {isActive && alive && (
+                    <circle cx={rx + 76} cy={76} r={2} fill="#6366f1" className="v3-status-pulse" />
+                  )}
+                </g>
+              );
+            })}
+
+            {/* ═══ PRO GOLDEN HUB GLOW (mobile, hidden until SHOW_PRO=true) ═══ */}
+            {SHOW_PRO && proActive && (
+              <rect x={30} y={124} width={240} height={88} rx={22}
+                fill="none" stroke="rgba(245,158,11,0.15)" strokeWidth={2}
+                className="v3-pro-glow" />
+            )}
+
+            {/* ═══ CENTRAL HUB with spinning border ═══ */}
+            <g style={show(0.6)}>
+              <g filter="url(#v3-hub-shadow-m)">
+                <rect x="38" y="132" width="224" height="72" rx="16" fill="rgba(99,102,241,0.15)" stroke="rgba(99,102,241,0.4)" strokeWidth="1.5" />
+                <rect x="34" y="128" width="232" height="80" rx="20"
+                  fill="none" stroke="url(#v3-hub-grad-m)" strokeWidth="1.5"
+                  strokeDasharray="8 4" strokeOpacity="0.5" className="v3-hub-border" />
+                <text x="150" y="164" textAnchor="middle" fill="white" fontSize="15" fontWeight="700" fontFamily="Inter,sans-serif">RevioMP</text>
+                <text x="150" y="184" textAnchor="middle" fill="rgba(255,255,255,0.6)" fontSize="10" fontWeight="500" fontFamily="Inter,sans-serif">Analytics Hub</text>
+              </g>
+            </g>
+
+            {/* ═══ 3 OUTPUT CARDS with cycling labels + different animations ═══ */}
+            {outTexts.map((text, i) => {
+              const cx = [52, 150, 248][i];
+              const rx = [10, 108, 206][i];
+              return (
+                <g key={`m-out-${i}`} style={show(1.2 + i * 0.1)}>
+                  <rect x={rx} y={232} width={84} height={32} rx={9}
+                    fill="rgba(255,255,255,0.04)" stroke="rgba(255,255,255,0.1)" strokeWidth="1" />
+                  <text key={text} x={cx} y={252} textAnchor="middle"
+                    fill="white" fontSize={10} fontWeight="500" fontFamily="Inter,sans-serif"
+                    className={tick >= 0 ? outAnim[i] : ''}>
+                    {text}
+                  </text>
+                </g>
+              );
+            })}
+
+            {/* ═══ BADGES ROW 1: Telegram / ROI / Webhook ═══ */}
+            <g style={show(1.6)} opacity="0.85">
+              <g className={alive ? 'v3-float' : ''}>
+                <rect x="10" y="292" width="84" height="24" rx="7" fill="rgba(14,165,233,0.12)" stroke="rgba(14,165,233,0.35)" strokeWidth="0.75" />
+                <g transform="translate(22,300)" opacity="0.5"><path d="M0,4 L6,0 L5,6 L3,4.5 Z" fill="#38bdf8" /></g>
+                <text x="57" y="308" textAnchor="middle" fill="#38bdf8" fontSize="8.5" fontWeight="600" fontFamily="Inter,sans-serif">Telegram</text>
+              </g>
+            </g>
+            <g style={show(1.7)} opacity="0.85">
+              <g className={alive ? 'v3-scale-in' : ''}>
+                <rect x="108" y="292" width="84" height="24" rx="7" fill="rgba(217,119,6,0.12)" stroke="rgba(217,119,6,0.35)" strokeWidth="0.75" />
+                <text key={`m-roi-${roi}`} x="150" y="308" textAnchor="middle" fill="#fbbf24" fontSize="8.5" fontWeight="700" fontFamily="Inter,sans-serif">{roi}</text>
+              </g>
+            </g>
+            <g style={show(1.65)} opacity="0.85">
+              <g className={alive ? 'v3-blink' : ''}>
+                <rect x="206" y="292" width="84" height="24" rx="7" fill="rgba(16,185,129,0.12)" stroke="rgba(16,185,129,0.35)" strokeWidth="0.75" />
+                <g transform="translate(218,299)" opacity="0.55"><path d="M4,0 L2,4 L4,4 L2,8" stroke="#34d399" strokeWidth="1" strokeLinecap="round" fill="none" /></g>
+                <text x="253" y="308" textAnchor="middle" fill="#34d399" fontSize="8.5" fontWeight="600" fontFamily="Inter,sans-serif">Webhook</text>
+              </g>
+            </g>
+
+            {/* ═══ BADGES ROW 2: Excel / REST API / PDF ═══ */}
+            <g style={show(1.85)} opacity="0.85">
+              <g className={alive ? 'v3-flip-loop' : ''}>
+                <rect x="10" y="330" width="84" height="24" rx="7" fill="rgba(34,197,94,0.15)" stroke="rgba(34,197,94,0.4)" strokeWidth="0.75" />
+                <g transform="translate(20,337)" opacity="0.45">
+                  <rect width="7" height="7" rx="1" stroke="#4ade80" strokeWidth="0.7" fill="none" />
+                  <line x1="3.5" y1="0" x2="3.5" y2="7" stroke="#4ade80" strokeWidth="0.4" />
+                  <line x1="0" y1="3.5" x2="7" y2="3.5" stroke="#4ade80" strokeWidth="0.4" />
+                </g>
+                <text x="57" y="346" textAnchor="middle" fill="#4ade80" fontSize="8.5" fontWeight="600" fontFamily="Inter,sans-serif">Excel</text>
+              </g>
+            </g>
+            <g style={show(1.9)} opacity="0.85">
+              <g className={alive ? 'v3-float' : ''}>
+                <rect x="108" y="330" width="84" height="24" rx="7" fill="rgba(99,102,241,0.12)" stroke="rgba(99,102,241,0.35)" strokeWidth="0.75" />
+                <text x="134" y="346" textAnchor="middle" fill="#818cf8" fontSize="9" fontWeight="700" fontFamily="monospace">{'</>'}</text>
+                <text x="168" y="346" textAnchor="middle" fill="#a5b4fc" fontSize="8" fontWeight="600" fontFamily="Inter,sans-serif">API</text>
+              </g>
+            </g>
+            <g style={show(1.95)} opacity="0.85">
+              <g className={alive ? 'v3-flip-loop v3-flip-delay' : ''}>
+                <rect x="206" y="330" width="84" height="24" rx="7" fill="rgba(220,38,38,0.15)" stroke="rgba(220,38,38,0.4)" strokeWidth="0.75" />
+                <g transform="translate(216,337)" opacity="0.45">
+                  <path d="M0,0 L4,0 L6,2.5 L6,8 L0,8 Z" stroke="#f87171" strokeWidth="0.7" fill="none" />
+                  <path d="M4,0 L4,2.5 L6,2.5" stroke="#f87171" strokeWidth="0.5" fill="none" />
+                </g>
+                <text x="253" y="346" textAnchor="middle" fill="#f87171" fontSize="8.5" fontWeight="600" fontFamily="Inter,sans-serif">PDF</text>
+              </g>
+            </g>
+
+            {/* ═══ PRO TOGGLE (hidden until SHOW_PRO=true) ═══ */}
+            {SHOW_PRO && (
+              <g style={{ ...show(2.2), cursor: alive ? 'pointer' : 'default' }}
+                 onClick={() => alive && setProActive(p => !p)}>
+                <rect x={68} y={372} width={164} height={30} rx={12}
+                  fill={proActive ? 'rgba(245,158,11,0.12)' : 'rgba(255,255,255,0.04)'}
+                  stroke={proActive ? 'rgba(245,158,11,0.45)' : 'rgba(255,255,255,0.15)'}
+                  strokeWidth={proActive ? 1.5 : 1} />
+                {proActive && <rect x={66} y={370} width={168} height={34} rx={14}
+                  fill="none" stroke="rgba(245,158,11,0.25)" strokeWidth={2}
+                  className="v3-pro-glow" />}
+                <text x={150} y={391} textAnchor="middle"
+                  fill={proActive ? '#fbbf24' : '#6b7280'} fontSize={10} fontWeight="700"
+                  fontFamily="Inter,sans-serif">
+                  {'\u26A1 PRO \u043F\u043E\u0434\u043F\u0438\u0441\u043A\u0430'}
+                </text>
+              </g>
+            )}
+
+            {/* ═══ YM PLACEHOLDER ═══ */}
+            <g style={show(2.4)}>
+              <rect x="85" y="416" width="130" height="20" rx="6" fill="none" stroke="rgba(156,163,175,0.15)" strokeWidth="0.75" strokeDasharray="3 3" />
+              <text x="150" y="430" textAnchor="middle" fill="#4b5563" fontSize="8" fontFamily="Inter,sans-serif" opacity="0.6">Яндекс.Маркет · скоро</text>
+            </g>
           </svg>
         </div>
       </div>
