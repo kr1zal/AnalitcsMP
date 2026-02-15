@@ -2,6 +2,26 @@
 
 > Полная история выполненных задач. Для текущего статуса см. [CLAUDE.md](CLAUDE.md).
 
+## 16.02.2026 — StocksTable: enterprise redesign + tooltips
+
+**Enterprise redesign:**
+- Поиск по названию / штрихкоду
+- Фильтры: Все / OOS WB / OOS Ozon / Мало (с Tip-тултипами)
+- Сортировка: 6 полей (desktop headers / mobile dropdown)
+- Клиентская пагинация (20 desktop / 10 mobile)
+- Progress bars WB/OZON пропорциональные max значению
+- Раскрывающиеся детали: склады + штрихкод + ср. продажи
+- Итоговая строка: ΣWB/Ozon/Total, средний прогноз
+- Sticky header (desktop), адаптивные карточки (mobile)
+
+**Tooltips (Tip component):**
+- Паттерн SummaryCard: `group/tip` + `peer-focus` для mobile tap
+- Фильтры OOS WB/Ozon/Мало — пояснение порогов
+- Заголовок «Остатки» — легенда статусов (OOS/Крит./Низкий/OK)
+- Колонка «Прогноз» — формула, пример расчёта, цветовая шкала
+- Сводка «Ср.» — пояснение среднего прогноза
+- Status labels — native title tooltip на каждом лейбле
+
 ## 16.02.2026 — Sales Plan: 3-level + reset + completion bugfix
 
 **Plan Editor (3 levels):**

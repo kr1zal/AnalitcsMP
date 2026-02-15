@@ -35,7 +35,7 @@ frontend/src/
 │   │   ├── SalesChart.tsx          # График продаж (100/140px, табы)
 │   │   ├── AvgCheckChart.tsx       # Средний чек (80/100px)
 │   │   ├── DrrChart.tsx            # ДРР (80/100px, zero-line)
-│   │   ├── StocksTable.tsx         # Остатки (card-based mobile)
+│   │   ├── StocksTable.tsx         # Остатки (enterprise: search, sort, pagination, tooltips)
 │   │   ├── MarketplaceBreakdown.tsx # OZON+WB grid-cols-2
 │   │   ├── OzonAccrualsCard.tsx    # Начисления Ozon + дерево
 │   │   └── WbAccrualsCard.tsx      # Начисления WB + СПП
