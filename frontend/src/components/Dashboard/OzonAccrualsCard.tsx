@@ -6,7 +6,7 @@
  * чтобы избежать дублирования запросов.
  */
 import { useMemo, useState } from 'react';
-import { AlertTriangle, ChevronDown, ChevronUp } from 'lucide-react';
+import { AlertTriangle, ChevronDown, ChevronUp, HelpCircle } from 'lucide-react';
 import { formatCurrency } from '../../lib/utils';
 import type { CostsTreeItem, CostsTreeResponse, MpProfitData } from '../../types';
 
@@ -42,15 +42,6 @@ const COLORS: Record<ColorToken, { dot: string; bar: string }> = {
   fbo: { dot: 'bg-orange-400', bar: 'bg-orange-400' },
   promo: { dot: 'bg-pink-500', bar: 'bg-pink-500' },
   other: { dot: 'bg-gray-300', bar: 'bg-gray-300' },
-};
-
-const formatCurrencyRounded = (value: number): string => {
-  return new Intl.NumberFormat('ru-RU', {
-    style: 'currency',
-    currency: 'RUB',
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  }).format(value);
 };
 
 function formatOzonAmount(amount: number): string {
@@ -216,14 +207,32 @@ export const OzonAccrualsCard = ({
         {/* Row 1: Sales + Total */}
         <div className="flex justify-between items-start gap-2">
           <div className="min-w-0 flex-1">
-            <div className="text-[10px] sm:text-xs font-semibold text-gray-500 mb-0.5">Продажи</div>
-            <div className="text-lg sm:text-2xl font-bold tabular-nums text-gray-900" title={`Точно: ${formatExactSigned(computed.salesTotal)}`}>
+            <div className="flex items-center gap-1 mb-0.5">
+              <span className="text-[10px] sm:text-xs font-semibold text-gray-500">Продажи</span>
+              <div className="group relative flex-shrink-0">
+                <HelpCircle className="w-3 h-3 text-gray-400 cursor-help" />
+                <div className="invisible group-hover:visible absolute z-50 top-5 left-0 w-48 sm:w-56 p-2 sm:p-3 bg-gray-900 text-white text-[10px] sm:text-xs rounded-lg shadow-2xl leading-relaxed whitespace-pre-line">
+                  {`Продажи товаров из\nфинансового отчёта OZON\n\nТочно: ${formatExactSigned(computed.salesTotal)}`}
+                  <div className="absolute -top-1 left-2 w-2 h-2 bg-gray-900 rotate-45" />
+                </div>
+              </div>
+            </div>
+            <div className="text-lg sm:text-2xl font-bold tabular-nums text-gray-900">
               {formatOzonAmount(computed.salesTotal)}
             </div>
           </div>
           <div className="text-right min-w-0">
-            <div className="text-[10px] sm:text-xs font-semibold text-gray-500 mb-0.5">Начислено</div>
-            <div className="text-lg sm:text-2xl font-bold tabular-nums text-teal-600" title={`Точно: ${formatExactSigned(computed.totalAccrued)}`}>
+            <div className="flex items-center justify-end gap-1 mb-0.5">
+              <span className="text-[10px] sm:text-xs font-semibold text-gray-500">Начислено</span>
+              <div className="group relative flex-shrink-0">
+                <HelpCircle className="w-3 h-3 text-gray-400 cursor-help" />
+                <div className="invisible group-hover:visible absolute z-50 top-5 right-0 w-48 sm:w-56 p-2 sm:p-3 bg-gray-900 text-white text-[10px] sm:text-xs rounded-lg shadow-2xl leading-relaxed whitespace-pre-line">
+                  {`Итого начислено к выплате\nот OZON за период\n\nПродажи: ${formatOzonAmount(computed.salesTotal)}\nУдержания: ${formatOzonAmount(computed.costsTotal)}\nИтого: ${formatOzonAmount(computed.totalAccrued)}`}
+                  <div className="absolute -top-1 right-2 w-2 h-2 bg-gray-900 rotate-45" />
+                </div>
+              </div>
+            </div>
+            <div className="text-lg sm:text-2xl font-bold tabular-nums text-teal-600">
               {formatOzonAmount(computed.totalAccrued)}
             </div>
           </div>
@@ -283,16 +292,18 @@ export const OzonAccrualsCard = ({
         {profitData && (
           <div className="pt-2 border-t border-gray-100">
             <div className="flex justify-between items-start">
-              <span className="text-[10px] sm:text-xs font-semibold text-gray-500">Прибыль</span>
+              <div className="flex items-center gap-1">
+                <span className="text-[10px] sm:text-xs font-semibold text-gray-500">Прибыль</span>
+                <div className="group relative flex-shrink-0">
+                  <HelpCircle className="w-3 h-3 text-gray-400 cursor-help" />
+                  <div className="invisible group-hover:visible absolute z-50 top-5 left-0 w-48 sm:w-56 p-2 sm:p-3 bg-gray-900 text-white text-[10px] sm:text-xs rounded-lg shadow-2xl leading-relaxed whitespace-pre-line">
+                    {`Прибыль = Начислено\n− Закупка − Реклама\n\nНачислено: ${formatOzonAmount(computed.totalAccrued)}\nЗакупка: −${formatOzonAmount(profitData.purchase)}\nРеклама: −${formatOzonAmount(profitData.ad)}\nПрибыль: ${formatOzonAmount(profitData.profit)}`}
+                    <div className="absolute -top-1 left-2 w-2 h-2 bg-gray-900 rotate-45" />
+                  </div>
+                </div>
+              </div>
               <div className="text-right">
-                <div
-                  className={`text-sm sm:text-base font-bold tabular-nums ${profitData.profit >= 0 ? 'text-emerald-600' : 'text-red-600'}`}
-                  title={[
-                    `Прибыль = Начислено − Закупка − Реклама`,
-                    `= ${formatCurrencyRounded(computed.totalAccrued)} − ${formatCurrencyRounded(profitData.purchase)} − ${formatCurrencyRounded(profitData.ad)}`,
-                    `= ${formatCurrencyRounded(profitData.profit)}`,
-                  ].join('\n')}
-                >
+                <div className={`text-sm sm:text-base font-bold tabular-nums ${profitData.profit >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
                   {formatOzonAmount(profitData.profit)}
                 </div>
                 {computed.salesTotal !== 0 && (

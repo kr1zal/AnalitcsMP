@@ -177,11 +177,17 @@ export const WbAccrualsCard = ({
             </div>
           </div>
           <div className="text-right min-w-0">
-            <div className="text-[10px] sm:text-xs font-semibold text-gray-500 mb-0.5">Начислено</div>
-            <div
-              className="text-lg sm:text-2xl font-bold tabular-nums text-purple-600"
-              title={`Точно: ${formatExactSigned(computed.totalAccrued)}`}
-            >
+            <div className="flex items-center justify-end gap-1 mb-0.5">
+              <span className="text-[10px] sm:text-xs font-semibold text-gray-500">Начислено</span>
+              <div className="group relative flex-shrink-0">
+                <HelpCircle className="w-3 h-3 text-gray-400 cursor-help" />
+                <div className="invisible group-hover:visible absolute z-50 top-5 right-0 w-52 sm:w-56 p-2 sm:p-3 bg-gray-900 text-white text-[10px] sm:text-xs rounded-lg shadow-2xl leading-relaxed whitespace-pre-line">
+                  {`Итого начислено к выплате\nот WB за период\n\nПродажи: ${formatWbAmount(computed.salesTotal + computed.creditsTotal)}\nУдержания: ${formatWbAmount(computed.costsTotal)}\nИтого: ${formatWbAmount(computed.totalAccrued)}`}
+                  <div className="absolute -top-1 right-2 w-2 h-2 bg-gray-900 rotate-45" />
+                </div>
+              </div>
+            </div>
+            <div className="text-lg sm:text-2xl font-bold tabular-nums text-purple-600">
               {formatWbAmount(computed.totalAccrued)}
             </div>
           </div>
@@ -253,16 +259,18 @@ export const WbAccrualsCard = ({
         {profitData && (
           <div className="pt-2 border-t border-gray-100">
             <div className="flex justify-between items-start">
-              <span className="text-[10px] sm:text-xs font-semibold text-gray-500">Прибыль</span>
+              <div className="flex items-center gap-1">
+                <span className="text-[10px] sm:text-xs font-semibold text-gray-500">Прибыль</span>
+                <div className="group relative flex-shrink-0">
+                  <HelpCircle className="w-3 h-3 text-gray-400 cursor-help" />
+                  <div className="invisible group-hover:visible absolute z-50 top-5 -right-2 sm:left-0 sm:right-auto w-52 sm:w-56 p-2 sm:p-3 bg-gray-900 text-white text-[10px] sm:text-xs rounded-lg shadow-2xl leading-relaxed whitespace-pre-line">
+                    {`Прибыль = Начислено\n− Закупка − Реклама\n\nНачислено: ${formatWbAmount(computed.totalAccrued)}\nЗакупка: −${formatWbAmount(profitData.purchase)}\nРеклама: −${formatWbAmount(profitData.ad)}\nПрибыль: ${formatWbAmount(profitData.profit)}`}
+                    <div className="absolute -top-1 right-3 sm:right-auto sm:left-2 w-2 h-2 bg-gray-900 rotate-45" />
+                  </div>
+                </div>
+              </div>
               <div className="text-right">
-                <div
-                  className={`text-sm sm:text-base font-bold tabular-nums ${profitData.profit >= 0 ? 'text-emerald-600' : 'text-red-600'}`}
-                  title={[
-                    `Прибыль = Начислено − Закупка − Реклама`,
-                    `= ${formatWbAmount(computed.totalAccrued)} − ${formatWbAmount(profitData.purchase)} − ${formatWbAmount(profitData.ad)}`,
-                    `= ${formatWbAmount(profitData.profit)}`,
-                  ].join('\n')}
-                >
+                <div className={`text-sm sm:text-base font-bold tabular-nums ${profitData.profit >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
                   {formatWbAmount(profitData.profit)}
                 </div>
                 {computed.salesTotal !== 0 && (
