@@ -103,12 +103,26 @@ sshpass -p '@vnDBp5VCt2+' rsync -avz --delete -e "ssh -o StrictHostKeyChecking=n
 - **Bugfix:** `tokens.py` trigger "onboarding" → "manual" (CHECK constraint mp_sync_log_trigger_check)
 - **Полная CJM-документация:** [docs/auth-flow.md](docs/auth-flow.md)
 
+### Product Management — DEPLOYED (15.02.2026)
+- **Компонент:** `frontend/src/components/Settings/ProductManagement.tsx` (~700 строк)
+- **Раздел в SettingsPage:** вкладка "Товары" — управление товарами, себестоимость, группы
+- **Drag & Drop:** @dnd-kit (core + sortable + utilities) — сортировка товаров с сохранением sort_order
+- **Двухколоночный layout:** WB (левая) + Ozon (правая), замки-связки по центру
+- **Связки (groups):** авто-связка (один товар с wb_nm_id + ozon_product_id) + ручная (product_group_id)
+- **Себестоимость (CC):** инлайн-редактирование, автосинхронизация в группе, конфликт-детектор
+- **Help-модалы:** `?` иконки у заголовка "Товары" и у колонки замков, mobile bottom-sheet
+- **Backend:** 5 эндпоинтов в `products.py`: GET /products, GET /products/{id}, PUT /purchase-price, PUT /reorder, POST /link, POST /unlink/{group_id}
+- **Migration 013:** `sort_order INTEGER DEFAULT 0` + `product_group_id UUID` в mp_products
+- **Hook:** `useProducts.ts` — React Query + mutation hooks
+- **Подробности:** [docs/product-management.md](docs/product-management.md)
+
 ### Активные задачи
 - [x] Позаказный монитор v1 (воронка) — Pro-фича ✓
 - [x] Позаказный монитор v2 (детализация) — позаказные издержки ✓
 - [x] Landing Page — DEPLOYED (V1/V2 удалены, мобильная DataFlowV3, pricing 2-col, PRO скрыт)
 - [x] YooKassa Payment — TESTED & DEPLOYED ✓
 - [x] Auth Flow (регистрация, сброс пароля, удаление аккаунта) — DEPLOYED ✓
+- [x] Product Management — DEPLOYED (drag&drop, link/unlink, CC conflict, help modals, migration 013) ✓
 - [ ] Hide Business tier, SEO index.html, admin ID→config — ожидает
 - [ ] Прибыль на карточках OZON/WB (MarketplaceBreakdown)
 - [ ] Возвраты + ДРР от заказов/выкупов
@@ -183,7 +197,7 @@ Analitics/
 
 | Таблица | Назначение |
 |---------|-----------|
-| mp_products | Товары + закупочные цены + WB/Ozon ID |
+| mp_products | Товары + закупочные цены + WB/Ozon ID + sort_order + product_group_id |
 | mp_sales | Продажи (ежедневная агрегация) |
 | mp_stocks | Остатки на складах |
 | mp_costs | Удержания МП (агрегация) |
@@ -244,6 +258,7 @@ FRONTEND_URL                          # Для Playwright PDF (http://localhost:
 14. **Landing Hero:** Canvas MatrixRain (НЕ CSS gradient waves, НЕ SVG chart).
 15. **DataFlow PRO блок:** скрыт через `SHOW_PRO = false` (НЕ удалён). Включить → `true` когда Order Monitor готов.
 16. **Pricing:** всегда `grid-cols-2` (НЕ `grid-cols-1` на мобиле).
+17. **Product Management:** 3-column layout (WB | locks | Ozon) с общими константами высот (`ROW_H`, `HEADER_H`). @dnd-kit для drag&drop. Авто-связка (один товар = wb+ozon) НЕ отключается. Help-модалы: click-to-open, mobile bottom-sheet (НЕ hover tooltips).
 
 ## Важные нюансы
 
