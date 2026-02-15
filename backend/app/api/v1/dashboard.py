@@ -130,9 +130,10 @@ async def get_unit_economics(
         for sale in sales_result.data:
             product_id = sale["product_id"]
             if product_id not in product_metrics:
-                product_metrics[product_id] = {"sales": 0, "revenue": 0, "costs": 0}
+                product_metrics[product_id] = {"sales": 0, "revenue": 0, "costs": 0, "returns": 0}
             product_metrics[product_id]["sales"] += sale.get("sales_count", 0)
             product_metrics[product_id]["revenue"] += float(sale.get("revenue", 0))
+            product_metrics[product_id]["returns"] += sale.get("returns_count", 0) or 0
 
         for cost in costs_result.data:
             product_id = cost["product_id"]
@@ -252,6 +253,7 @@ async def get_unit_economics(
                 },
                 "metrics": {
                     "sales_count": sales_count,
+                    "returns_count": metrics["returns"],
                     "revenue": round(displayed_revenue, 2),
                     "mp_costs": round(mp_costs_consistent, 2),
                     "purchase_costs": round(adjusted_purchase, 2),
@@ -265,6 +267,7 @@ async def get_unit_economics(
         result.sort(key=lambda x: x["metrics"]["net_profit"], reverse=True)
 
         total_ad_cost = sum(p["metrics"]["ad_cost"] for p in result)
+        total_returns = sum(p["metrics"]["returns_count"] for p in result)
 
         return {
             "status": "success",
@@ -273,6 +276,7 @@ async def get_unit_economics(
             "costs_tree_ratio": round(costs_tree_ratio, 4),
             "total_ad_cost": round(total_ad_cost, 2),
             "total_payout": round(total_payout, 2),
+            "total_returns": total_returns,
             "products": result
         }
 

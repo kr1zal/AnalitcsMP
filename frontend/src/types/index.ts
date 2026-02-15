@@ -147,6 +147,7 @@ export interface DashboardSummaryWithPrevResponse {
 
 export interface ProductMetrics {
   sales_count: number;
+  returns_count: number;
   revenue: number;
   mp_costs: number;
   purchase_costs: number;
@@ -176,6 +177,7 @@ export interface UnitEconomicsResponse {
   costs_tree_ratio: number;
   total_ad_cost: number;
   total_payout: number;
+  total_returns: number;
   products: UnitEconomicsItem[];
 }
 

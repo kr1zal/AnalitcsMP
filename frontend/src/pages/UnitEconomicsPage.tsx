@@ -26,7 +26,7 @@ import type { UnitEconomicsItem } from '../types';
 
 // ==================== TYPES ====================
 
-type SortField = 'name' | 'sales_count' | 'revenue' | 'purchase_costs' | 'mp_costs' | 'ad_cost' | 'drr' | 'net_profit' | 'unit_profit' | 'margin';
+type SortField = 'name' | 'sales_count' | 'returns_count' | 'revenue' | 'purchase_costs' | 'mp_costs' | 'ad_cost' | 'drr' | 'net_profit' | 'unit_profit' | 'margin';
 type SortDirection = 'asc' | 'desc';
 
 const ITEMS_PER_PAGE = 20;
@@ -86,7 +86,7 @@ export const UnitEconomicsPage = () => {
 
   // Aggregates
   const totals = useMemo(() => {
-    const t = { revenue: 0, purchase: 0, mpCosts: 0, adCost: 0, profit: 0, sales: 0 };
+    const t = { revenue: 0, purchase: 0, mpCosts: 0, adCost: 0, profit: 0, sales: 0, returns: 0 };
     for (const p of unitProducts) {
       t.revenue += p.metrics.revenue;
       t.purchase += p.metrics.purchase_costs;
@@ -94,11 +94,13 @@ export const UnitEconomicsPage = () => {
       t.adCost += p.metrics.ad_cost ?? 0;
       t.profit += p.metrics.net_profit;
       t.sales += p.metrics.sales_count;
+      t.returns += p.metrics.returns_count ?? 0;
     }
     return t;
   }, [unitProducts]);
 
   const hasAds = totals.adCost > 0;
+  const hasReturns = totals.returns > 0;
   const costsTreeRatio = unitData?.costs_tree_ratio ?? 1;
 
   const avgMargin = totals.revenue > 0 ? (totals.profit / totals.revenue) * 100 : 0;
@@ -203,7 +205,7 @@ export const UnitEconomicsPage = () => {
         <KpiCard
           label="Выручка"
           value={formatCurrency(totals.revenue)}
-          sub={`${totals.sales} шт`}
+          sub={`${totals.sales} шт${hasReturns ? ` · ${totals.returns} возвр.` : ''}`}
           icon={<ShoppingCart className="w-3.5 h-3.5" />}
           color="blue"
         />
@@ -334,6 +336,7 @@ export const UnitEconomicsPage = () => {
               <tr>
                 <SortableHeader field="name" label="Товар" current={sortField} dir={sortDir} onSort={handleSort} align="left" />
                 <SortableHeader field="sales_count" label="Кол-во" current={sortField} dir={sortDir} onSort={handleSort} />
+                {hasReturns && <SortableHeader field="returns_count" label="Возвр." current={sortField} dir={sortDir} onSort={handleSort} />}
                 <SortableHeader field="revenue" label="Продажи" current={sortField} dir={sortDir} onSort={handleSort} />
                 <SortableHeader field="purchase_costs" label="Закупка" current={sortField} dir={sortDir} onSort={handleSort} />
                 <SortableHeader field="mp_costs" label="Удерж. МП" current={sortField} dir={sortDir} onSort={handleSort} />
@@ -347,7 +350,7 @@ export const UnitEconomicsPage = () => {
             <tbody className="divide-y divide-gray-100">
               {paginatedProducts.length === 0 ? (
                 <tr>
-                  <td colSpan={hasAds ? 10 : 8} className="px-4 py-8 text-center text-sm text-gray-400">
+                  <td colSpan={(hasAds ? 10 : 8) + (hasReturns ? 1 : 0)} className="px-4 py-8 text-center text-sm text-gray-400">
                     {search ? 'Ничего не найдено' : 'Нет данных за период'}
                   </td>
                 </tr>
@@ -362,6 +365,11 @@ export const UnitEconomicsPage = () => {
                         <div className="text-[10px] text-gray-400">{item.product.barcode}</div>
                       </td>
                       <td className="px-3 py-2.5 text-right text-sm tabular-nums">{item.metrics.sales_count}</td>
+                      {hasReturns && (
+                        <td className="px-3 py-2.5 text-right text-sm tabular-nums text-red-500">
+                          {item.metrics.returns_count > 0 ? item.metrics.returns_count : '—'}
+                        </td>
+                      )}
                       <td className="px-3 py-2.5 text-right text-sm tabular-nums font-medium">{formatCurrency(item.metrics.revenue)}</td>
                       <td className="px-3 py-2.5 text-right text-sm tabular-nums text-amber-600">{formatCurrency(item.metrics.purchase_costs)}</td>
                       <td className="px-3 py-2.5 text-right text-sm tabular-nums text-purple-600">{formatCurrency(item.metrics.mp_costs)}</td>
@@ -402,6 +410,9 @@ export const UnitEconomicsPage = () => {
                     <span className="font-normal text-gray-400 text-xs ml-1">({unitProducts.length})</span>
                   </td>
                   <td className="px-3 py-2.5 text-right text-sm tabular-nums">{totals.sales}</td>
+                  {hasReturns && (
+                    <td className="px-3 py-2.5 text-right text-sm tabular-nums text-red-500">{totals.returns}</td>
+                  )}
                   <td className="px-3 py-2.5 text-right text-sm tabular-nums">{formatCurrency(totals.revenue)}</td>
                   <td className="px-3 py-2.5 text-right text-sm tabular-nums text-amber-600">{formatCurrency(totals.purchase)}</td>
                   <td className="px-3 py-2.5 text-right text-sm tabular-nums text-purple-600">{formatCurrency(totals.mpCosts)}</td>
@@ -470,6 +481,11 @@ export const UnitEconomicsPage = () => {
                       </div>
                     </div>
                   </div>
+                  {item.metrics.returns_count > 0 && (
+                    <div className="text-[10px] text-red-500 mt-0.5">
+                      возвр. {item.metrics.returns_count}
+                    </div>
+                  )}
                 </div>
               );
             })

@@ -69,6 +69,7 @@ export const DrrChart = ({ data, isLoading = false }: DrrChartProps) => {
         <p className="text-sm text-gray-700">
           <span className="font-medium">Выручка:</span> {formatCurrency(d.revenue || 0)}
         </p>
+        <p className="text-[10px] text-gray-400 mt-1">от всех заказов (вкл. непроведённые)</p>
       </div>
     );
   };

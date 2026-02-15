@@ -22,6 +22,8 @@ import type { ExcelExportData } from '../lib/exportExcel';
 import { SummaryCard } from '../components/Dashboard/SummaryCard';
 import { MarketplaceBreakdown } from '../components/Dashboard/MarketplaceBreakdown';
 import { StocksTable } from '../components/Dashboard/StocksTable';
+import { ProfitWaterfall } from '../components/Dashboard/ProfitWaterfall';
+import { TopProductsChart } from '../components/Dashboard/TopProductsChart';
 import { FilterPanel } from '../components/Shared/FilterPanel';
 import { LoadingSpinner } from '../components/Shared/LoadingSpinner';
 import {
@@ -41,8 +43,8 @@ import type { CostsTreeResponse, Marketplace, MpProfitData } from '../types';
 const SalesChart = lazy(() =>
   import('../components/Dashboard/SalesChart').then((m) => ({ default: m.SalesChart }))
 );
-const AvgCheckChart = lazy(() =>
-  import('../components/Dashboard/AvgCheckChart').then((m) => ({ default: m.AvgCheckChart }))
+const ProfitChart = lazy(() =>
+  import('../components/Dashboard/ProfitChart').then((m) => ({ default: m.ProfitChart }))
 );
 const DrrChart = lazy(() =>
   import('../components/Dashboard/DrrChart').then((m) => ({ default: m.DrrChart }))
@@ -174,10 +176,9 @@ export const DashboardPage = () => {
 
   // Закупка: считаем по unit-economics (purchase_costs = purchase_price * qty).
   // ОПТИМИЗАЦИЯ: purchase_costs_total теперь приходит из RPC get_dashboard_summary
-  const hasPurchaseCostsInSummary = typeof summaryData?.summary?.purchase_costs_total === 'number';
-  const { data: unitEconomicsData } = useUnitEconomics(filters, {
-    // Если summary уже содержит purchase_costs_total — unit-economics не нужен
-    enabled: Boolean(summaryData) && !hasPurchaseCostsInSummary,
+  const { data: unitEconomicsData, isLoading: ueLoading } = useUnitEconomics(filters, {
+    // Всегда загружаем: нужен для TopProductsChart + purchase fallback
+    enabled: Boolean(summaryData),
   });
 
   // Графики и остатки загружаются сразу (RPC оптимизированы)
@@ -445,6 +446,10 @@ export const DashboardPage = () => {
   })();
 
   const salesCountForTile = Math.round((summary?.sales ?? 0) * costsTreeRatio);
+  const returnsCountForTile = summary?.returns ?? 0;
+
+  // Margin ratio for ProfitChart (daily profit estimate = daily_revenue × profitMargin)
+  const profitMargin = revenueForTile > 0 ? netProfitForTile / revenueForTile : 0;
 
   // ── Per-marketplace profit (IIFE, not useMemo — after early returns) ──
   const ozonProfitData: MpProfitData | null = (() => {
@@ -552,11 +557,14 @@ export const DashboardPage = () => {
           title="Продажи"
           value={revenueForTile}
           format="currency"
-          subtitle={`${salesCountForTile} выкупов`}
+          subtitle={`${salesCountForTile} выкупов${returnsCountForTile > 0 ? ` · ${returnsCountForTile} возвр.` : ''}`}
           tooltip={[
             'Данные из финансового отчёта МП (проведённые заказы).',
             'Может отличаться от раздела «Аналитика» в ЛК —',
             'там учтены все заказы, вкл. непроведённые.',
+            returnsCountForTile > 0
+              ? `Возвраты: ${returnsCountForTile} шт (${summary?.orders ? Math.round((returnsCountForTile / summary.orders) * 100) : 0}% от заказов)`
+              : undefined,
             marketplace === 'all'
               ? `OZON + WB = ${formatCurrency(getSalesTotalFromCostsTree(ozonCostsTreeData) ?? 0)} + ${formatCurrency(getSalesTotalFromCostsTree(wbCostsTreeData) ?? 0)}`
               : undefined,
@@ -605,10 +613,12 @@ export const DashboardPage = () => {
           value={drrForTile}
           format="percent"
           tooltip={[
-            'Доля рекламных расходов',
-            `= Реклама / Продажи × 100%`,
+            'Доля рекламных расходов (от выкупов)',
+            `= Реклама / Продажи (финотчёт) × 100%`,
             `= ${formatCurrency(adCostForTile)} / ${formatCurrency(revenueForTile)} × 100%`,
             `= ${drrForTile}%`,
+            '',
+            'Рассчитано от проведённых заказов (выкупов).',
           ].join('\n')}
           icon={Percent}
           loading={isSummaryLoading}
@@ -680,6 +690,16 @@ export const DashboardPage = () => {
           </>
         )}
       </div>
+
+      {/* 2.5. Каскад прибыли */}
+      <ProfitWaterfall
+        revenue={revenueForTile}
+        mpDeductions={mpDeductionsForTile}
+        purchase={adjustedPurchase}
+        ads={adCostForTile}
+        profit={netProfitForTile}
+        loading={isSummaryLoading || isCostsTreeLoading}
+      />
 
       {/* 3. MarketplaceBreakdown (OZON / WB) */}
       <MarketplaceBreakdown
@@ -767,14 +787,24 @@ export const DashboardPage = () => {
             {/* График заказов с табами */}
             <SalesChart data={salesChartSeries as any} isLoading={!chartsEnabled || chartLoading} />
 
-            {/* График Средний чек */}
-            <AvgCheckChart data={salesChartSeries as any} isLoading={!chartsEnabled || chartLoading} />
+            {/* График Прибыль (replaces AvgCheckChart) */}
+            <ProfitChart
+              data={salesChartSeries as any}
+              profitMargin={profitMargin}
+              isLoading={!chartsEnabled || chartLoading}
+            />
 
             {/* График ДРР */}
             <DrrChart data={adCostsSeriesFull as any} isLoading={!chartsEnabled || adCostsLoading} />
           </Suspense>
         </div>
       </div>
+
+      {/* 4.5. Топ товаров по прибыли */}
+      <TopProductsChart
+        products={unitEconomicsData?.products ?? []}
+        isLoading={ueLoading}
+      />
 
       {/* 5. Таблица остатков */}
       <div className="mb-4 sm:mb-5 lg:mb-6">

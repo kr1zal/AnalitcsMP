@@ -23,12 +23,12 @@ Read and follow coding standards: .claude/rules/coding-standards.md
 - UE Profit Fix + P1 (ДРР, прогноз остатков)
 - СПП в Продажах (credits included)
 - Прибыль per OZON/WB в карточках MarketplaceBreakdown
+- Dashboard v2: ProfitWaterfall + ProfitChart + TopProductsChart
 
 ## Активные задачи
 - [ ] Hide Business tier, SEO index.html, admin ID→config
 - [ ] Возвраты + ДРР от заказов/выкупов
 - [ ] План продаж (ручной ввод)
-- [ ] Donut chart по категориям
 - [ ] Улучшить PDF экспорт
 
 ## Архитектурные решения (НЕ МЕНЯТЬ — 21 правило)
@@ -53,6 +53,9 @@ Read and follow coding standards: .claude/rules/coding-standards.md
 19. **СПП:** credits ВХОДЯТ в displayed_revenue. Ratio = ЧИСТЫЕ sales (без credits)
 20. **WB Методология:** ВЕРИФИЦИРОВАНА (аудит 15.02.2026). Двойного учёта СПП нет. Подробности → docs/phases-history.md
 21. **OZON Методология:** ВЕРИФИЦИРОВАНА (аудит 15.02.2026). Diff с ЛК = 0.00₽ по всем категориям. Нет credits. Подробности → docs/phases-history.md
+22. **ProfitChart:** dual area (revenue+profit), profitMargin=netProfit/revenue, daily estimate. Заменяет AvgCheckChart
+23. **ProfitWaterfall:** div-based bars (НЕ Recharts). Пропорции от revenue. Скрывает нулевые строки
+24. **TopProductsChart:** top 5 + link "все N →" UE page. Масштабируется на 100+ SKU
 
 ## Формулы (КРИТИЧНО)
 ```
@@ -67,6 +70,9 @@ WB Начислено = total_accrued = SUM(all tree items) = Продажи + C
 WB Продажи_display = pure_sales + credits (СПП/возмещения)
 OZON Начислено = total_accrued = SUM(all tree items) = Продажи + Удержания (нет credits)
 OZON Продажи = tree["Продажи"] (Выручка + Баллы + Партнёры, как в ЛК)
+ProfitChart daily: profitMargin = netProfit / revenueForTile; dailyProfit = dailyRevenue × profitMargin
+Waterfall: revenue → −mpDeductions → −purchase → −ads = profit (margin%)
+TopProducts: sort by net_profit desc, show top 5, filter WB_ACCOUNT
 ```
 
 ## Источники данных
