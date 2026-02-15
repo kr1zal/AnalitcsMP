@@ -150,6 +150,7 @@ export interface ProductMetrics {
   revenue: number;
   mp_costs: number;
   purchase_costs: number;
+  ad_cost: number;
   net_profit: number;
   unit_profit: number;
 }
@@ -171,6 +172,8 @@ export interface UnitEconomicsResponse {
     to: string;
   };
   marketplace: Marketplace;
+  costs_tree_ratio: number;
+  total_ad_cost: number;
   products: UnitEconomicsItem[];
 }
 

@@ -26,7 +26,7 @@ import type { UnitEconomicsItem } from '../types';
 
 // ==================== TYPES ====================
 
-type SortField = 'name' | 'sales_count' | 'revenue' | 'purchase_costs' | 'mp_costs' | 'net_profit' | 'unit_profit' | 'margin';
+type SortField = 'name' | 'sales_count' | 'revenue' | 'purchase_costs' | 'mp_costs' | 'ad_cost' | 'net_profit' | 'unit_profit' | 'margin';
 type SortDirection = 'asc' | 'desc';
 
 const ITEMS_PER_PAGE = 20;
@@ -86,16 +86,20 @@ export const UnitEconomicsPage = () => {
 
   // Aggregates
   const totals = useMemo(() => {
-    const t = { revenue: 0, purchase: 0, mpCosts: 0, profit: 0, sales: 0 };
+    const t = { revenue: 0, purchase: 0, mpCosts: 0, adCost: 0, profit: 0, sales: 0 };
     for (const p of unitProducts) {
       t.revenue += p.metrics.revenue;
       t.purchase += p.metrics.purchase_costs;
       t.mpCosts += p.metrics.mp_costs;
+      t.adCost += p.metrics.ad_cost ?? 0;
       t.profit += p.metrics.net_profit;
       t.sales += p.metrics.sales_count;
     }
     return t;
   }, [unitProducts]);
+
+  const hasAds = totals.adCost > 0;
+  const costsTreeRatio = unitData?.costs_tree_ratio ?? 1;
 
   const avgMargin = totals.revenue > 0 ? (totals.profit / totals.revenue) * 100 : 0;
   const avgUnitProfit = totals.sales > 0 ? totals.profit / totals.sales : 0;
@@ -183,6 +187,11 @@ export const UnitEconomicsPage = () => {
         <h2 className="text-lg sm:text-2xl font-bold text-gray-900">Unit-экономика</h2>
         <p className="text-xs sm:text-sm text-gray-500 mt-0.5">
           Прибыль на единицу · {unitProducts.length} товаров · {dateRange.from} — {dateRange.to}
+          {costsTreeRatio < 1 && (
+            <span className="ml-1 text-amber-600" title="Закупка скорректирована по доле проведённых заказов из финотчёта МП">
+              · проведено {Math.round(costsTreeRatio * 100)}%
+            </span>
+          )}
         </p>
       </div>
 
@@ -266,6 +275,12 @@ export const UnitEconomicsPage = () => {
               className="h-full bg-purple-400 transition-all"
               style={{ width: `${(totals.mpCosts / totals.revenue) * 100}%` }}
             />
+            {hasAds && (
+              <div
+                className="h-full bg-blue-400 transition-all"
+                style={{ width: `${(totals.adCost / totals.revenue) * 100}%` }}
+              />
+            )}
             <div
               className={cn('h-full transition-all', totals.profit >= 0 ? 'bg-green-400' : 'bg-red-400')}
               style={{ width: `${(Math.abs(totals.profit) / totals.revenue) * 100}%` }}
@@ -275,6 +290,7 @@ export const UnitEconomicsPage = () => {
           <div className="flex justify-between mt-1.5 sm:mt-2 text-[10px] sm:text-xs text-gray-500">
             <span>Закупка {formatPercent((totals.purchase / totals.revenue) * 100)}</span>
             <span>Удержания МП {formatPercent((totals.mpCosts / totals.revenue) * 100)}</span>
+            {hasAds && <span>Реклама {formatPercent((totals.adCost / totals.revenue) * 100)}</span>}
             <span>Прибыль {formatPercent((Math.abs(totals.profit) / totals.revenue) * 100)}</span>
           </div>
         </div>
@@ -310,6 +326,7 @@ export const UnitEconomicsPage = () => {
                 <SortableHeader field="revenue" label="Продажи" current={sortField} dir={sortDir} onSort={handleSort} />
                 <SortableHeader field="purchase_costs" label="Закупка" current={sortField} dir={sortDir} onSort={handleSort} />
                 <SortableHeader field="mp_costs" label="Удерж. МП" current={sortField} dir={sortDir} onSort={handleSort} />
+                {hasAds && <SortableHeader field="ad_cost" label="Реклама" current={sortField} dir={sortDir} onSort={handleSort} />}
                 <SortableHeader field="net_profit" label="Прибыль" current={sortField} dir={sortDir} onSort={handleSort} />
                 <SortableHeader field="unit_profit" label="На ед." current={sortField} dir={sortDir} onSort={handleSort} />
                 <SortableHeader field="margin" label="Маржа" current={sortField} dir={sortDir} onSort={handleSort} />
@@ -318,7 +335,7 @@ export const UnitEconomicsPage = () => {
             <tbody className="divide-y divide-gray-100">
               {paginatedProducts.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="px-4 py-8 text-center text-sm text-gray-400">
+                  <td colSpan={hasAds ? 9 : 8} className="px-4 py-8 text-center text-sm text-gray-400">
                     {search ? 'Ничего не найдено' : 'Нет данных за период'}
                   </td>
                 </tr>
@@ -336,6 +353,9 @@ export const UnitEconomicsPage = () => {
                       <td className="px-3 py-2.5 text-right text-sm tabular-nums font-medium">{formatCurrency(item.metrics.revenue)}</td>
                       <td className="px-3 py-2.5 text-right text-sm tabular-nums text-amber-600">{formatCurrency(item.metrics.purchase_costs)}</td>
                       <td className="px-3 py-2.5 text-right text-sm tabular-nums text-purple-600">{formatCurrency(item.metrics.mp_costs)}</td>
+                      {hasAds && (
+                        <td className="px-3 py-2.5 text-right text-sm tabular-nums text-blue-600">{formatCurrency(item.metrics.ad_cost ?? 0)}</td>
+                      )}
                       <td className="px-3 py-2.5 text-right">
                         <span className={cn('text-sm font-semibold tabular-nums', positive ? 'text-green-600' : 'text-red-600')}>
                           {formatCurrency(item.metrics.net_profit)}
@@ -368,6 +388,9 @@ export const UnitEconomicsPage = () => {
                   <td className="px-3 py-2.5 text-right text-sm tabular-nums">{formatCurrency(totals.revenue)}</td>
                   <td className="px-3 py-2.5 text-right text-sm tabular-nums text-amber-600">{formatCurrency(totals.purchase)}</td>
                   <td className="px-3 py-2.5 text-right text-sm tabular-nums text-purple-600">{formatCurrency(totals.mpCosts)}</td>
+                  {hasAds && (
+                    <td className="px-3 py-2.5 text-right text-sm tabular-nums text-blue-600">{formatCurrency(totals.adCost)}</td>
+                  )}
                   <td className="px-3 py-2.5 text-right text-sm tabular-nums">
                     <span className={totals.profit >= 0 ? 'text-green-600' : 'text-red-600'}>{formatCurrency(totals.profit)}</span>
                   </td>

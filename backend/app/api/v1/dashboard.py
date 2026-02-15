@@ -75,7 +75,11 @@ async def get_unit_economics(
     marketplace: Optional[str] = Query(None)
 ):
     """
-    Unit-экономика по товарам
+    Unit-экономика по товарам.
+    Методология совпадает с дашбордом:
+    - Закупка корректируется по costsTreeRatio (доля проведённых заказов)
+    - Реклама учитывается по товарам (mp_ad_costs)
+    - Формула: Прибыль = Выручка − Удержания МП − Закупка×ratio − Реклама
     """
     supabase = get_supabase_client()
 
@@ -85,29 +89,46 @@ async def get_unit_economics(
         date_to = datetime.now().strftime("%Y-%m-%d")
 
     try:
+        # 1. Продукты пользователя
         products_result = supabase.table("mp_products").select("*").eq("user_id", current_user.id).execute()
         products = {p["id"]: p for p in products_result.data}
 
+        # 2. Продажи (mp_sales — аналитика, все заказы)
         sales_query = supabase.table("mp_sales").select("*").eq("user_id", current_user.id).gte("date", date_from).lte("date", date_to)
         if marketplace and marketplace != "all":
             sales_query = sales_query.eq("marketplace", marketplace)
         sales_result = sales_query.execute()
 
+        # 3. Удержания МП (mp_costs)
         costs_query = supabase.table("mp_costs").select("*").eq("user_id", current_user.id).gte("date", date_from).lte("date", date_to)
         if marketplace and marketplace != "all":
             costs_query = costs_query.eq("marketplace", marketplace)
         costs_result = costs_query.execute()
 
-        product_metrics = {}
+        # 4. Рекламные расходы по товарам (mp_ad_costs)
+        ad_query = supabase.table("mp_ad_costs").select("product_id, cost").eq("user_id", current_user.id).gte("date", date_from).lte("date", date_to)
+        if marketplace and marketplace != "all":
+            ad_query = ad_query.eq("marketplace", marketplace)
+        ad_result = ad_query.execute()
+
+        # Агрегация рекламы по product_id
+        ad_by_product: dict[str, float] = {}
+        unattributed_ad = 0.0
+        for ad in ad_result.data:
+            cost = float(ad.get("cost", 0) or 0)
+            pid = ad.get("product_id")
+            if pid:
+                ad_by_product[pid] = ad_by_product.get(pid, 0) + cost
+            else:
+                unattributed_ad += cost
+
+        # 5. Агрегация продаж и удержаний по товарам
+        product_metrics: dict[str, dict] = {}
 
         for sale in sales_result.data:
             product_id = sale["product_id"]
             if product_id not in product_metrics:
-                product_metrics[product_id] = {
-                    "sales": 0,
-                    "revenue": 0,
-                    "costs": 0
-                }
+                product_metrics[product_id] = {"sales": 0, "revenue": 0, "costs": 0}
             product_metrics[product_id]["sales"] += sale.get("sales_count", 0)
             product_metrics[product_id]["revenue"] += float(sale.get("revenue", 0))
 
@@ -117,6 +138,51 @@ async def get_unit_economics(
                 continue
             product_metrics[product_id]["costs"] += float(cost.get("total_costs", 0))
 
+        # 6. Costs-tree ratio (как на дашборде: финотчёт / аналитика)
+        total_mp_sales_revenue = sum(m["revenue"] for m in product_metrics.values())
+        costs_tree_revenue = 0.0
+        try:
+            mp_list = [marketplace] if marketplace and marketplace != "all" else ["ozon", "wb"]
+            for mp in mp_list:
+                ct_result = supabase.rpc(
+                    "get_costs_tree",
+                    {
+                        "p_date_from": date_from,
+                        "p_date_to": date_to,
+                        "p_marketplace": mp,
+                        "p_product_id": None,
+                        "p_include_children": False,
+                        "p_user_id": current_user.id,
+                    }
+                ).execute()
+                if ct_result.data:
+                    ct_data = ct_result.data
+                    if isinstance(ct_data, dict):
+                        for item in ct_data.get("tree", []):
+                            if item.get("name") == "Продажи":
+                                costs_tree_revenue += abs(float(item.get("amount", 0) or 0))
+                                break
+                    elif isinstance(ct_data, list) and len(ct_data) > 0:
+                        for item in ct_data[0].get("tree", []):
+                            if item.get("name") == "Продажи":
+                                costs_tree_revenue += abs(float(item.get("amount", 0) or 0))
+                                break
+        except Exception:
+            pass  # Если costs-tree недоступен — ratio=1 (без коррекции)
+
+        costs_tree_ratio = (
+            costs_tree_revenue / total_mp_sales_revenue
+            if total_mp_sales_revenue > 0 and 0 < costs_tree_revenue < total_mp_sales_revenue
+            else 1.0
+        )
+
+        # 7. Распределение неатрибутированной рекламы (без product_id) пропорционально выручке
+        if unattributed_ad > 0 and total_mp_sales_revenue > 0:
+            for pid, m in product_metrics.items():
+                share = m["revenue"] / total_mp_sales_revenue
+                ad_by_product[pid] = ad_by_product.get(pid, 0) + unattributed_ad * share
+
+        # 8. Формирование результата
         result = []
         for product_id, metrics in product_metrics.items():
             if product_id not in products:
@@ -127,8 +193,11 @@ async def get_unit_economics(
             revenue = metrics["revenue"]
             costs = metrics["costs"]
             purchase_price = float(product.get("purchase_price", 0))
+            raw_purchase = purchase_price * sales_count
+            adjusted_purchase = raw_purchase * costs_tree_ratio
+            ad_cost = ad_by_product.get(product_id, 0)
 
-            net_profit = revenue - costs - (purchase_price * sales_count)
+            net_profit = revenue - costs - adjusted_purchase - ad_cost
             unit_profit = round(net_profit / sales_count, 2) if sales_count > 0 else 0
 
             result.append({
@@ -142,7 +211,8 @@ async def get_unit_economics(
                     "sales_count": sales_count,
                     "revenue": round(revenue, 2),
                     "mp_costs": round(costs, 2),
-                    "purchase_costs": round(purchase_price * sales_count, 2),
+                    "purchase_costs": round(adjusted_purchase, 2),
+                    "ad_cost": round(ad_cost, 2),
                     "net_profit": round(net_profit, 2),
                     "unit_profit": unit_profit
                 }
@@ -150,10 +220,14 @@ async def get_unit_economics(
 
         result.sort(key=lambda x: x["metrics"]["net_profit"], reverse=True)
 
+        total_ad_cost = sum(p["metrics"]["ad_cost"] for p in result)
+
         return {
             "status": "success",
             "period": {"from": date_from, "to": date_to},
             "marketplace": marketplace or "all",
+            "costs_tree_ratio": round(costs_tree_ratio, 4),
+            "total_ad_cost": round(total_ad_cost, 2),
             "products": result
         }
 
