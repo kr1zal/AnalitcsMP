@@ -151,6 +151,7 @@ export interface ProductMetrics {
   mp_costs: number;
   purchase_costs: number;
   ad_cost: number;
+  drr: number;
   net_profit: number;
   unit_profit: number;
 }
@@ -174,6 +175,7 @@ export interface UnitEconomicsResponse {
   marketplace: Marketplace;
   costs_tree_ratio: number;
   total_ad_cost: number;
+  total_payout: number;
   products: UnitEconomicsItem[];
 }
 
@@ -304,6 +306,10 @@ export interface StockItem {
    * Может отсутствовать на старых версиях backend.
    */
   last_updated_at?: string | null;
+  /** Средние дневные продажи за 30 дней. */
+  avg_daily_sales?: number;
+  /** Прогноз: на сколько дней хватит остатков (total_quantity / avg_daily_sales). */
+  days_remaining?: number | null;
   warehouses: WarehouseStock[];
 }
 
@@ -457,6 +463,14 @@ export interface PlanDefinition {
 
 export interface PlansListResponse {
   plans: PlanDefinition[];
+}
+
+// ==================== ПРИБЫЛЬ PER MARKETPLACE ====================
+
+export interface MpProfitData {
+  profit: number;
+  purchase: number;
+  ad: number;
 }
 
 // ==================== ФИЛЬТРЫ ====================

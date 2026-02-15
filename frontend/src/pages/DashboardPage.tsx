@@ -35,7 +35,7 @@ import {
 } from '../hooks/useDashboard';
 import { useFiltersStore } from '../store/useFiltersStore';
 import { fillDailySeriesYmd, formatCurrency, getDateRangeFromPreset } from '../lib/utils';
-import type { CostsTreeResponse, Marketplace } from '../types';
+import type { CostsTreeResponse, Marketplace, MpProfitData } from '../types';
 
 // Lazy-load charts to keep initial bundle small (recharts is heavy).
 const SalesChart = lazy(() =>
@@ -48,11 +48,24 @@ const DrrChart = lazy(() =>
   import('../components/Dashboard/DrrChart').then((m) => ({ default: m.DrrChart }))
 );
 
+/** Выручка = tree "Продажи" + positive credits (СПП, возмещения и т.д.) */
 function getSalesTotalFromCostsTree(data?: CostsTreeResponse | null): number | null {
   const tree = data?.tree ?? [];
   const salesItem = tree.find((t) => t.name === 'Продажи');
   if (!salesItem) return null;
-  return salesItem.amount;
+  // Credits: положительные items кроме "Продажи" (WB: СПП, возмещения)
+  const credits = tree
+    .filter((t) => t.name !== 'Продажи' && t.amount > 0)
+    .reduce((acc, t) => acc + t.amount, 0);
+  return salesItem.amount + credits;
+}
+
+/** Только credits (положительные items кроме "Продажи") — для тултипа */
+function getCreditsFromCostsTree(data?: CostsTreeResponse | null): number {
+  const tree = data?.tree ?? [];
+  return tree
+    .filter((t) => t.name !== 'Продажи' && t.amount > 0)
+    .reduce((acc, t) => acc + t.amount, 0);
 }
 
 function getDeductionsAbsFromCostsTree(data?: CostsTreeResponse | null, marketplace?: Marketplace): number | null {
@@ -397,13 +410,23 @@ export const DashboardPage = () => {
     return undefined;
   })();
 
-  // Коэффициент коррекции: costs-tree (фин. отчёт) / mp_sales (аналитика).
-  // Ozon analytics API возвращает ВСЕ заказы, а финансовый отчёт — только проведённые.
-  // Применяем к закупке и к счётчику выкупов, чтобы всё было консистентно.
+  // Коэффициент коррекции: costs-tree ЧИСТЫЕ продажи / mp_sales (аналитика).
+  // Credits (СПП) НЕ входят в ratio — они не от продаж, а компенсация от МП.
+  // Ratio отражает долю проведённых заказов.
   const summaryRevenue = summary?.revenue ?? 0;
+  const pureSalesForRatio = (() => {
+    // Чистые "Продажи" без credits — для ratio
+    const getSales = (d?: CostsTreeResponse | null) => {
+      const salesItem = d?.tree?.find((t) => t.name === 'Продажи');
+      return salesItem?.amount ?? 0;
+    };
+    if (marketplace === 'ozon') return getSales(ozonCostsTreeData);
+    if (marketplace === 'wb') return getSales(wbCostsTreeData);
+    return getSales(ozonCostsTreeData) + getSales(wbCostsTreeData);
+  })();
   const costsTreeRatio =
-    summaryRevenue > 0 && revenueForTile < summaryRevenue
-      ? revenueForTile / summaryRevenue
+    summaryRevenue > 0 && pureSalesForRatio > 0 && pureSalesForRatio < summaryRevenue
+      ? pureSalesForRatio / summaryRevenue
       : 1;
 
   const adjustedPurchase = purchaseCostsForTile * costsTreeRatio;
@@ -422,6 +445,31 @@ export const DashboardPage = () => {
   })();
 
   const salesCountForTile = Math.round((summary?.sales ?? 0) * costsTreeRatio);
+
+  // ── Per-marketplace profit (IIFE, not useMemo — after early returns) ──
+  const ozonProfitData: MpProfitData | null = (() => {
+    if (!summary || !ozonCostsTreeData) return null;
+    const ozonPayout = ozonCostsTreeData.total_accrued ?? 0;
+    const ozonPureSales = ozonCostsTreeData.tree?.find((t) => t.name === 'Продажи')?.amount ?? 0;
+    const wbPS = wbCostsTreeData?.tree?.find((t) => t.name === 'Продажи')?.amount ?? 0;
+    const totalPS = ozonPureSales + wbPS;
+    const share = totalPS > 0 ? ozonPureSales / totalPS : 1;
+    const purchase = adjustedPurchase * share;
+    const ad = (summary.ad_cost ?? 0) * share;
+    return { profit: ozonPayout - purchase - ad, purchase, ad };
+  })();
+
+  const wbProfitData: MpProfitData | null = (() => {
+    if (!summary || !wbCostsTreeData) return null;
+    const wbPayout = wbCostsTreeData.total_accrued ?? 0;
+    const ozPS = ozonCostsTreeData?.tree?.find((t) => t.name === 'Продажи')?.amount ?? 0;
+    const wbPureSales = wbCostsTreeData.tree?.find((t) => t.name === 'Продажи')?.amount ?? 0;
+    const totalPS = ozPS + wbPureSales;
+    const share = totalPS > 0 ? wbPureSales / totalPS : 1;
+    const purchase = adjustedPurchase * share;
+    const ad = (summary.ad_cost ?? 0) * share;
+    return { profit: wbPayout - purchase - ad, purchase, ad };
+  })();
 
   // Количество колонок зависит от наличия карточек сравнения
   const gridCols = showPeriodComparison ? 'lg:grid-cols-8' : 'lg:grid-cols-6';
@@ -511,6 +559,9 @@ export const DashboardPage = () => {
             'там учтены все заказы, вкл. непроведённые.',
             marketplace === 'all'
               ? `OZON + WB = ${formatCurrency(getSalesTotalFromCostsTree(ozonCostsTreeData) ?? 0)} + ${formatCurrency(getSalesTotalFromCostsTree(wbCostsTreeData) ?? 0)}`
+              : undefined,
+            (marketplace === 'wb' || marketplace === 'all') && getCreditsFromCostsTree(wbCostsTreeData) > 0
+              ? `Вкл. СПП и возмещения WB: +${formatCurrency(getCreditsFromCostsTree(wbCostsTreeData))}`
               : undefined,
             costsTreeRatio < 1
               ? `Проведено ${(costsTreeRatio * 100).toFixed(0)}% от всех заказов`
@@ -636,6 +687,8 @@ export const DashboardPage = () => {
         ozonCostsTreeLoading={ozonCostsTreeLoading}
         wbCostsTree={wbCostsTreeData}
         wbCostsTreeLoading={wbCostsTreeLoading}
+        ozonProfit={ozonProfitData}
+        wbProfit={wbProfitData}
       />
 
       {/* 4. Графики с боковыми фильтрами */}

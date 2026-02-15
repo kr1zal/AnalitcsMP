@@ -3,7 +3,7 @@
  * Mobile: карточный вид с аккордеоном
  * Desktop: классическая таблица
  */
-import { ChevronDown, ChevronRight, Package } from 'lucide-react';
+import { ChevronDown, ChevronRight, Package, Clock } from 'lucide-react';
 import { Fragment, useMemo, useState } from 'react';
 import { LoadingSpinner } from '../Shared/LoadingSpinner';
 import { getMarketplaceName, cn } from '../../lib/utils';
@@ -32,6 +32,14 @@ export const StocksTable = ({ stocks, isLoading = false }: StocksTableProps) => 
     if (hours < 24) return `${hours} ч назад`;
     const days = Math.floor(hours / 24);
     return `${days} д назад`;
+  };
+
+  const getDaysLabel = (days: number | null | undefined): { text: string; color: string; bgColor: string } => {
+    if (days === null || days === undefined) return { text: '—', color: 'text-gray-400', bgColor: '' };
+    if (days <= 7) return { text: `${days} д`, color: 'text-red-700', bgColor: 'bg-red-50' };
+    if (days <= 14) return { text: `${days} д`, color: 'text-yellow-700', bgColor: 'bg-yellow-50' };
+    if (days <= 30) return { text: `${days} д`, color: 'text-blue-700', bgColor: 'bg-blue-50' };
+    return { text: `${days} д`, color: 'text-green-700', bgColor: 'bg-green-50' };
   };
 
   const getMpStockStatus = (quantity: number): { label: string; color: string; bgColor: string; rank: number } => {
@@ -222,10 +230,18 @@ export const StocksTable = ({ stocks, isLoading = false }: StocksTableProps) => 
                     </div>
                   </div>
 
-                  {/* Total */}
+                  {/* Forecast + Total */}
                   <div className="flex-shrink-0 text-right">
                     <p className="text-lg font-bold text-gray-900">{total}</p>
-                    <p className="text-[10px] text-gray-400">всего</p>
+                    {(() => {
+                      const d = getDaysLabel(stock.days_remaining);
+                      if (!stock.days_remaining && stock.days_remaining !== 0) return <p className="text-[10px] text-gray-400">всего</p>;
+                      return (
+                        <span className={cn('text-[10px] font-semibold px-1.5 py-0.5 rounded', d.color, d.bgColor)} title={stock.avg_daily_sales ? `~${stock.avg_daily_sales} шт/день` : ''}>
+                          ≈{d.text}
+                        </span>
+                      );
+                    })()}
                   </div>
                 </button>
 
@@ -311,6 +327,9 @@ export const StocksTable = ({ stocks, isLoading = false }: StocksTableProps) => 
               <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
                 Статус
               </th>
+              <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider" title="На сколько дней хватит запаса (avg продажи за 30д)">
+                <span className="inline-flex items-center gap-1"><Clock className="w-3 h-3" />Прогноз</span>
+              </th>
               <th className="px-6 py-3 w-12"></th>
             </tr>
           </thead>
@@ -361,6 +380,16 @@ export const StocksTable = ({ stocks, isLoading = false }: StocksTableProps) => 
                       </div>
                     </td>
                     <td className="px-6 py-4 text-center">
+                      {(() => {
+                        const d = getDaysLabel(stock.days_remaining);
+                        return (
+                          <span className={cn('text-xs font-semibold px-2 py-1 rounded-full', d.color, d.bgColor)} title={stock.avg_daily_sales ? `~${stock.avg_daily_sales} шт/день` : ''}>
+                            {d.text}
+                          </span>
+                        );
+                      })()}
+                    </td>
+                    <td className="px-6 py-4 text-center">
                       {isExpanded ? (
                         <ChevronDown className="w-4 h-4 text-gray-400" />
                       ) : (
@@ -371,7 +400,7 @@ export const StocksTable = ({ stocks, isLoading = false }: StocksTableProps) => 
 
                   {isExpanded && (
                     <tr className="bg-gray-50">
-                      <td colSpan={7} className="px-6 py-4">
+                      <td colSpan={8} className="px-6 py-4">
                         <div className="ml-8 space-y-3">
                           <p className="text-xs font-semibold text-gray-700 uppercase tracking-wide">
                             Детализация по складам:

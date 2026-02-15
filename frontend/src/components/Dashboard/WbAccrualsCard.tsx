@@ -3,9 +3,9 @@
  * Источник данных: /dashboard/costs-tree (marketplace=wb).
  */
 import { useMemo, useState } from 'react';
-import { AlertTriangle, ChevronDown, ChevronUp } from 'lucide-react';
+import { AlertTriangle, ChevronDown, ChevronUp, HelpCircle } from 'lucide-react';
 import { formatCurrency } from '../../lib/utils';
-import type { CostsTreeItem, CostsTreeResponse } from '../../types';
+import type { CostsTreeItem, CostsTreeResponse, MpProfitData } from '../../types';
 
 interface WbAccrualsCardProps {
   /** Если задано — детализация контролируется снаружи (синхронизация с OZON карточкой). */
@@ -14,6 +14,8 @@ interface WbAccrualsCardProps {
   /** Данные costs-tree передаются из родителя (DashboardPage). */
   costsTreeData?: CostsTreeResponse | null;
   isLoading?: boolean;
+  /** Прибыль по этому МП (рассчитывается в DashboardPage). */
+  profitData?: MpProfitData | null;
 }
 
 type ColorToken = 'sales' | 'reward' | 'logistics' | 'acquiring' | 'storage' | 'penalties' | 'other';
@@ -29,9 +31,8 @@ const COLORS: Record<ColorToken, { dot: string; bar: string }> = {
 };
 
 function formatWbAmount(amount: number): string {
+  // Без символа ₽ — экономит место на мобиле
   const abs = new Intl.NumberFormat('ru-RU', {
-    style: 'currency',
-    currency: 'RUB',
     minimumFractionDigits: 0,
     maximumFractionDigits: 0,
   }).format(Math.abs(amount));
@@ -62,6 +63,7 @@ export const WbAccrualsCard = ({
   onToggleDetails,
   costsTreeData,
   isLoading: isLoadingProp,
+  profitData,
 }: WbAccrualsCardProps) => {
   const [showDetailsLocal, setShowDetailsLocal] = useState(false);
   const controlled = typeof detailsOpen === 'boolean';
@@ -158,11 +160,19 @@ export const WbAccrualsCard = ({
         {/* Row 1: Sales + Total */}
         <div className="flex justify-between items-start gap-2">
           <div className="min-w-0 flex-1">
-            <div className="text-[10px] sm:text-xs font-semibold text-gray-500 mb-0.5">Продажи</div>
-            <div
-              className="text-lg sm:text-2xl font-bold tabular-nums text-gray-900"
-              title={`Продажи: ${formatExactSigned(computed.salesTotal)}${computed.creditsTotal > 0.01 ? ` + СПП: ${formatExactSigned(computed.creditsTotal)}` : ''}`}
-            >
+            <div className="flex items-center gap-1 mb-0.5">
+              <span className="text-[10px] sm:text-xs font-semibold text-gray-500">Продажи</span>
+              {computed.creditsTotal > 0.01 && (
+                <div className="group relative flex-shrink-0">
+                  <HelpCircle className="w-3 h-3 text-gray-400 cursor-help" />
+                  <div className="invisible group-hover:visible absolute z-50 top-5 -right-2 sm:left-0 sm:right-auto w-52 sm:w-56 p-2 sm:p-3 bg-gray-900 text-white text-[10px] sm:text-xs rounded-lg shadow-2xl leading-relaxed whitespace-pre-line">
+                    {`Сумма включает СПП\n(скидка постоянного покупателя)\n\nПродажи: ${formatWbAmount(computed.salesTotal)}\nСПП / возмещения: +${formatWbAmount(computed.creditsTotal)}\nИтого: ${formatWbAmount(computed.salesTotal + computed.creditsTotal)}`}
+                    <div className="absolute -top-1 right-3 sm:right-auto sm:left-2 w-2 h-2 bg-gray-900 rotate-45" />
+                  </div>
+                </div>
+              )}
+            </div>
+            <div className="text-lg sm:text-2xl font-bold tabular-nums text-gray-900">
               {formatWbAmount(computed.salesTotal + computed.creditsTotal)}
             </div>
           </div>
@@ -238,6 +248,32 @@ export const WbAccrualsCard = ({
             )}
           </div>
         </div>
+
+        {/* Row 3: Profit */}
+        {profitData && (
+          <div className="pt-2 border-t border-gray-100">
+            <div className="flex justify-between items-start">
+              <span className="text-[10px] sm:text-xs font-semibold text-gray-500">Прибыль</span>
+              <div className="text-right">
+                <div
+                  className={`text-sm sm:text-base font-bold tabular-nums ${profitData.profit >= 0 ? 'text-emerald-600' : 'text-red-600'}`}
+                  title={[
+                    `Прибыль = Начислено − Закупка − Реклама`,
+                    `= ${formatWbAmount(computed.totalAccrued)} − ${formatWbAmount(profitData.purchase)} − ${formatWbAmount(profitData.ad)}`,
+                    `= ${formatWbAmount(profitData.profit)}`,
+                  ].join('\n')}
+                >
+                  {formatWbAmount(profitData.profit)}
+                </div>
+                {computed.salesTotal !== 0 && (
+                  <div className="text-[9px] sm:text-[10px] text-gray-400">
+                    маржа {Math.abs(Math.round((profitData.profit / Math.abs(computed.salesTotal + computed.creditsTotal)) * 1000) / 10)}%
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Details: tree */}

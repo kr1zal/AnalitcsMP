@@ -26,7 +26,7 @@ import type { UnitEconomicsItem } from '../types';
 
 // ==================== TYPES ====================
 
-type SortField = 'name' | 'sales_count' | 'revenue' | 'purchase_costs' | 'mp_costs' | 'ad_cost' | 'net_profit' | 'unit_profit' | 'margin';
+type SortField = 'name' | 'sales_count' | 'revenue' | 'purchase_costs' | 'mp_costs' | 'ad_cost' | 'drr' | 'net_profit' | 'unit_profit' | 'margin';
 type SortDirection = 'asc' | 'desc';
 
 const ITEMS_PER_PAGE = 20;
@@ -262,39 +262,50 @@ export const UnitEconomicsPage = () => {
       )}
 
       {/* ③ Cost Structure Bar */}
-      {totals.revenue > 0 && (
+      {totals.revenue > 0 && (() => {
+        // Прибыль считается через payout distribution (costs-tree), поэтому
+        // mpCosts вычисляем как остаток, чтобы бар всегда давал 100%:
+        // revenue = purchase + mpCosts_implied + ads + profit
+        const purchasePct = Math.max(0, (totals.purchase / totals.revenue) * 100);
+        const adsPct = hasAds ? Math.max(0, (totals.adCost / totals.revenue) * 100) : 0;
+        const profitPct = (totals.profit / totals.revenue) * 100;
+        const absProfitPct = Math.abs(profitPct);
+        // MP costs = всё что осталось между выручкой, закупкой, рекламой и прибылью
+        const mpCostsPct = Math.max(0, 100 - purchasePct - adsPct - profitPct);
+        return (
         <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-3 sm:p-5 mb-4 sm:mb-6">
           <h3 className="text-sm sm:text-base font-semibold text-gray-900 mb-3">Структура затрат</h3>
 
           <div className="flex items-center gap-0.5 h-3 sm:h-4 rounded-full overflow-hidden bg-gray-100">
             <div
               className="h-full bg-amber-400 transition-all"
-              style={{ width: `${(totals.purchase / totals.revenue) * 100}%` }}
+              style={{ width: `${purchasePct}%` }}
             />
             <div
               className="h-full bg-purple-400 transition-all"
-              style={{ width: `${(totals.mpCosts / totals.revenue) * 100}%` }}
+              style={{ width: `${mpCostsPct}%` }}
             />
             {hasAds && (
               <div
                 className="h-full bg-blue-400 transition-all"
-                style={{ width: `${(totals.adCost / totals.revenue) * 100}%` }}
+                style={{ width: `${adsPct}%` }}
               />
             )}
             <div
               className={cn('h-full transition-all', totals.profit >= 0 ? 'bg-green-400' : 'bg-red-400')}
-              style={{ width: `${(Math.abs(totals.profit) / totals.revenue) * 100}%` }}
+              style={{ width: `${absProfitPct}%` }}
             />
           </div>
 
           <div className="flex justify-between mt-1.5 sm:mt-2 text-[10px] sm:text-xs text-gray-500">
-            <span>Закупка {formatPercent((totals.purchase / totals.revenue) * 100)}</span>
-            <span>Удержания МП {formatPercent((totals.mpCosts / totals.revenue) * 100)}</span>
-            {hasAds && <span>Реклама {formatPercent((totals.adCost / totals.revenue) * 100)}</span>}
-            <span>Прибыль {formatPercent((Math.abs(totals.profit) / totals.revenue) * 100)}</span>
+            <span>Закупка {formatPercent(purchasePct)}</span>
+            <span>Удержания МП {formatPercent(mpCostsPct)}</span>
+            {hasAds && <span>Реклама {formatPercent(adsPct)}</span>}
+            <span>Прибыль {formatPercent(absProfitPct)}</span>
           </div>
         </div>
-      )}
+        );
+      })()}
 
       {/* ④ Sortable Table */}
       <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
@@ -327,6 +338,7 @@ export const UnitEconomicsPage = () => {
                 <SortableHeader field="purchase_costs" label="Закупка" current={sortField} dir={sortDir} onSort={handleSort} />
                 <SortableHeader field="mp_costs" label="Удерж. МП" current={sortField} dir={sortDir} onSort={handleSort} />
                 {hasAds && <SortableHeader field="ad_cost" label="Реклама" current={sortField} dir={sortDir} onSort={handleSort} />}
+                {hasAds && <SortableHeader field="drr" label="ДРР" current={sortField} dir={sortDir} onSort={handleSort} />}
                 <SortableHeader field="net_profit" label="Прибыль" current={sortField} dir={sortDir} onSort={handleSort} />
                 <SortableHeader field="unit_profit" label="На ед." current={sortField} dir={sortDir} onSort={handleSort} />
                 <SortableHeader field="margin" label="Маржа" current={sortField} dir={sortDir} onSort={handleSort} />
@@ -335,7 +347,7 @@ export const UnitEconomicsPage = () => {
             <tbody className="divide-y divide-gray-100">
               {paginatedProducts.length === 0 ? (
                 <tr>
-                  <td colSpan={hasAds ? 9 : 8} className="px-4 py-8 text-center text-sm text-gray-400">
+                  <td colSpan={hasAds ? 10 : 8} className="px-4 py-8 text-center text-sm text-gray-400">
                     {search ? 'Ничего не найдено' : 'Нет данных за период'}
                   </td>
                 </tr>
@@ -355,6 +367,11 @@ export const UnitEconomicsPage = () => {
                       <td className="px-3 py-2.5 text-right text-sm tabular-nums text-purple-600">{formatCurrency(item.metrics.mp_costs)}</td>
                       {hasAds && (
                         <td className="px-3 py-2.5 text-right text-sm tabular-nums text-blue-600">{formatCurrency(item.metrics.ad_cost ?? 0)}</td>
+                      )}
+                      {hasAds && (
+                        <td className="px-3 py-2.5 text-right text-sm tabular-nums text-blue-600">
+                          {item.metrics.drr > 0 ? formatPercent(item.metrics.drr) : '—'}
+                        </td>
                       )}
                       <td className="px-3 py-2.5 text-right">
                         <span className={cn('text-sm font-semibold tabular-nums', positive ? 'text-green-600' : 'text-red-600')}>
@@ -390,6 +407,11 @@ export const UnitEconomicsPage = () => {
                   <td className="px-3 py-2.5 text-right text-sm tabular-nums text-purple-600">{formatCurrency(totals.mpCosts)}</td>
                   {hasAds && (
                     <td className="px-3 py-2.5 text-right text-sm tabular-nums text-blue-600">{formatCurrency(totals.adCost)}</td>
+                  )}
+                  {hasAds && (
+                    <td className="px-3 py-2.5 text-right text-sm tabular-nums text-blue-600">
+                      {totals.revenue > 0 && totals.adCost > 0 ? formatPercent((totals.adCost / totals.revenue) * 100) : '—'}
+                    </td>
                   )}
                   <td className="px-3 py-2.5 text-right text-sm tabular-nums">
                     <span className={totals.profit >= 0 ? 'text-green-600' : 'text-red-600'}>{formatCurrency(totals.profit)}</span>

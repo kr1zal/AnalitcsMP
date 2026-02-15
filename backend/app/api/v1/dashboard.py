@@ -76,10 +76,12 @@ async def get_unit_economics(
 ):
     """
     Unit-экономика по товарам.
-    Методология совпадает с дашбордом:
+    Методология ИДЕНТИЧНА дашборду:
+    - Payout (total_accrued) берётся из costs-tree и распределяется по товарам пропорционально выручке
     - Закупка корректируется по costsTreeRatio (доля проведённых заказов)
     - Реклама учитывается по товарам (mp_ad_costs)
-    - Формула: Прибыль = Выручка − Удержания МП − Закупка×ratio − Реклама
+    - Формула: Прибыль = PayoutShare − Закупка×ratio − Реклама
+    - Гарантия: SUM(profit) = Dashboard profit
     """
     supabase = get_supabase_client()
 
@@ -99,7 +101,7 @@ async def get_unit_economics(
             sales_query = sales_query.eq("marketplace", marketplace)
         sales_result = sales_query.execute()
 
-        # 3. Удержания МП (mp_costs)
+        # 3. Удержания МП (mp_costs) — для отображения в таблице
         costs_query = supabase.table("mp_costs").select("*").eq("user_id", current_user.id).gte("date", date_from).lte("date", date_to)
         if marketplace and marketplace != "all":
             costs_query = costs_query.eq("marketplace", marketplace)
@@ -138,9 +140,14 @@ async def get_unit_economics(
                 continue
             product_metrics[product_id]["costs"] += float(cost.get("total_costs", 0))
 
-        # 6. Costs-tree ratio (как на дашборде: финотчёт / аналитика)
+        # 6. Costs-tree: payout (total_accrued) + revenue ("Продажи") + credits (СПП и т.д.)
+        #    Используем payout для расчёта прибыли — точно как на дашборде.
+        #    Credits (WB: СПП, возмещения) включаем в displayed_revenue,
+        #    чтобы "Продажи" на дашборде и UE совпадали.
         total_mp_sales_revenue = sum(m["revenue"] for m in product_metrics.values())
-        costs_tree_revenue = 0.0
+        costs_tree_sales = 0.0  # Только tree item "Продажи" (для ratio)
+        costs_tree_credits = 0.0  # Положительные items кроме "Продажи" (СПП, возмещения)
+        total_payout = 0.0
         try:
             mp_list = [marketplace] if marketplace and marketplace != "all" else ["ozon", "wb"]
             for mp in mp_list:
@@ -157,24 +164,34 @@ async def get_unit_economics(
                 ).execute()
                 if ct_result.data:
                     ct_data = ct_result.data
+                    if isinstance(ct_data, list) and len(ct_data) > 0:
+                        ct_data = ct_data[0]
                     if isinstance(ct_data, dict):
+                        total_payout += float(ct_data.get("total_accrued", 0) or 0)
                         for item in ct_data.get("tree", []):
-                            if item.get("name") == "Продажи":
-                                costs_tree_revenue += abs(float(item.get("amount", 0) or 0))
-                                break
-                    elif isinstance(ct_data, list) and len(ct_data) > 0:
-                        for item in ct_data[0].get("tree", []):
-                            if item.get("name") == "Продажи":
-                                costs_tree_revenue += abs(float(item.get("amount", 0) or 0))
-                                break
+                            name = item.get("name", "")
+                            amount = float(item.get("amount", 0) or 0)
+                            if name == "Продажи":
+                                costs_tree_sales += abs(amount)
+                            elif amount > 0:
+                                # Положительные: СПП, возмещения и т.д.
+                                costs_tree_credits += amount
         except Exception:
-            pass  # Если costs-tree недоступен — ratio=1 (без коррекции)
+            pass  # Если costs-tree недоступен — fallback на mp_sales/mp_costs
 
+        # revenue с учётом credits (для отображения: "Продажи" вкл. СПП)
+        costs_tree_revenue = costs_tree_sales + costs_tree_credits
+
+        # Ratio: ЧИСТЫЕ продажи (без credits) / mp_sales revenue
+        # Credits (СПП) — не от продаж, ratio должен отражать долю проведённых заказов
         costs_tree_ratio = (
-            costs_tree_revenue / total_mp_sales_revenue
-            if total_mp_sales_revenue > 0 and 0 < costs_tree_revenue < total_mp_sales_revenue
+            costs_tree_sales / total_mp_sales_revenue
+            if total_mp_sales_revenue > 0 and 0 < costs_tree_sales < total_mp_sales_revenue
             else 1.0
         )
+
+        # Флаг: есть ли данные costs-tree для расчёта через payout
+        use_payout = total_payout != 0
 
         # 7. Распределение неатрибутированной рекламы (без product_id) пропорционально выручке
         if unattributed_ad > 0 and total_mp_sales_revenue > 0:
@@ -183,6 +200,14 @@ async def get_unit_economics(
                 ad_by_product[pid] = ad_by_product.get(pid, 0) + unattributed_ad * share
 
         # 8. Формирование результата
+        # Dashboard: Продажи = costs-tree "Продажи" + credits (СПП, возмещения)
+        # UE per product: распределяем пропорционально mp_sales revenue share.
+        #
+        # Формула (всегда 100%):
+        #   displayed_revenue = (costs_tree_sales + credits) × share
+        #   mp_deductions     = displayed_revenue − payout_share  (>=0 т.к. revenue включает credits)
+        #   profit            = payout_share − purchase − ads
+        #   → revenue = mp_deductions + purchase + ads + profit  ✓
         result = []
         for product_id, metrics in product_metrics.items():
             if product_id not in products:
@@ -190,15 +215,33 @@ async def get_unit_economics(
 
             product = products[product_id]
             sales_count = metrics["sales"]
-            revenue = metrics["revenue"]
-            costs = metrics["costs"]
+            mp_sales_revenue = metrics["revenue"]  # из mp_sales (аналитика)
+            costs = metrics["costs"]  # из mp_costs (fallback)
             purchase_price = float(product.get("purchase_price", 0))
             raw_purchase = purchase_price * sales_count
             adjusted_purchase = raw_purchase * costs_tree_ratio
             ad_cost = ad_by_product.get(product_id, 0)
 
-            net_profit = revenue - costs - adjusted_purchase - ad_cost
+            if use_payout and total_mp_sales_revenue > 0 and costs_tree_revenue > 0:
+                # Доля товара в общей выручке (по mp_sales)
+                share = mp_sales_revenue / total_mp_sales_revenue
+                # Выручка из costs-tree (как на Dashboard "Продажи")
+                displayed_revenue = costs_tree_revenue * share
+                # Начислено (payout) для этого товара
+                payout_share = total_payout * share
+                # Удержания МП = Выручка − Начислено (всегда >= 0 т.к. CT revenue > payout)
+                mp_costs_consistent = max(0, displayed_revenue - payout_share)
+                # Прибыль = Начислено − Закупка − Реклама
+                net_profit = payout_share - adjusted_purchase - ad_cost
+            else:
+                # Fallback: если costs-tree недоступен — mp_sales/mp_costs
+                displayed_revenue = mp_sales_revenue
+                mp_costs_consistent = costs
+                net_profit = mp_sales_revenue - costs - adjusted_purchase - ad_cost
+
             unit_profit = round(net_profit / sales_count, 2) if sales_count > 0 else 0
+
+            drr = round((ad_cost / displayed_revenue) * 100, 1) if displayed_revenue > 0 and ad_cost > 0 else 0
 
             result.append({
                 "product": {
@@ -209,10 +252,11 @@ async def get_unit_economics(
                 },
                 "metrics": {
                     "sales_count": sales_count,
-                    "revenue": round(revenue, 2),
-                    "mp_costs": round(costs, 2),
+                    "revenue": round(displayed_revenue, 2),
+                    "mp_costs": round(mp_costs_consistent, 2),
                     "purchase_costs": round(adjusted_purchase, 2),
                     "ad_cost": round(ad_cost, 2),
+                    "drr": drr,
                     "net_profit": round(net_profit, 2),
                     "unit_profit": unit_profit
                 }
@@ -228,6 +272,7 @@ async def get_unit_economics(
             "marketplace": marketplace or "all",
             "costs_tree_ratio": round(costs_tree_ratio, 4),
             "total_ad_cost": round(total_ad_cost, 2),
+            "total_payout": round(total_payout, 2),
             "products": result
         }
 
@@ -496,6 +541,20 @@ async def get_stocks(
 
         result = query.execute()
 
+        # Средние дневные продажи за 30 дней (для прогноза остатков)
+        date_30d_ago = (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d")
+        date_today = datetime.now().strftime("%Y-%m-%d")
+        sales_query = supabase.table("mp_sales").select("product_id, sales_count").eq("user_id", current_user.id).gte("date", date_30d_ago).lte("date", date_today)
+        if marketplace and marketplace != "all":
+            sales_query = sales_query.eq("marketplace", marketplace)
+        sales_result = sales_query.execute()
+
+        sales_by_product: dict[str, int] = {}
+        for sale in sales_result.data:
+            pid = sale.get("product_id")
+            if pid:
+                sales_by_product[pid] = sales_by_product.get(pid, 0) + sale.get("sales_count", 0)
+
         stocks_by_product: dict[str, dict] = {}
         for stock in result.data:
             product_data = stock.get("mp_products")
@@ -515,6 +574,8 @@ async def get_stocks(
                     "total_quantity": 0,
                     "last_updated_at": None,
                     "warehouses": [],
+                    "avg_daily_sales": 0,
+                    "days_remaining": None,
                 }
 
             warehouse_info = {
@@ -531,6 +592,17 @@ async def get_stocks(
                 cur = stocks_by_product[key].get("last_updated_at")
                 if not cur or str(upd) > str(cur):
                     stocks_by_product[key]["last_updated_at"] = upd
+
+        # Расчёт прогноза остатков
+        for key, s in stocks_by_product.items():
+            pid = s.get("product_id")
+            total_sales_30d = sales_by_product.get(pid, 0) if pid else 0
+            avg_daily = round(total_sales_30d / 30, 2) if total_sales_30d > 0 else 0
+            s["avg_daily_sales"] = avg_daily
+            if avg_daily > 0 and s["total_quantity"] > 0:
+                s["days_remaining"] = round(s["total_quantity"] / avg_daily)
+            else:
+                s["days_remaining"] = None
 
         return {
             "status": "success",

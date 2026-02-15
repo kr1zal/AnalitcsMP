@@ -5,13 +5,15 @@
 import { useState } from 'react';
 import { OzonAccrualsCard } from './OzonAccrualsCard';
 import { WbAccrualsCard } from './WbAccrualsCard';
-import type { CostsTreeResponse } from '../../types';
+import type { CostsTreeResponse, MpProfitData } from '../../types';
 
 interface MarketplaceBreakdownProps {
   ozonCostsTree?: CostsTreeResponse | null;
   ozonCostsTreeLoading?: boolean;
   wbCostsTree?: CostsTreeResponse | null;
   wbCostsTreeLoading?: boolean;
+  ozonProfit?: MpProfitData | null;
+  wbProfit?: MpProfitData | null;
 }
 
 export const MarketplaceBreakdown = ({
@@ -19,6 +21,8 @@ export const MarketplaceBreakdown = ({
   ozonCostsTreeLoading,
   wbCostsTree,
   wbCostsTreeLoading,
+  ozonProfit,
+  wbProfit,
 }: MarketplaceBreakdownProps) => {
   const [detailsOpen, setDetailsOpen] = useState(false);
   const toggleDetails = () => setDetailsOpen((v) => !v);
@@ -30,12 +34,14 @@ export const MarketplaceBreakdown = ({
         onToggleDetails={toggleDetails}
         costsTreeData={ozonCostsTree}
         isLoading={ozonCostsTreeLoading}
+        profitData={ozonProfit}
       />
       <WbAccrualsCard
         detailsOpen={detailsOpen}
         onToggleDetails={toggleDetails}
         costsTreeData={wbCostsTree}
         isLoading={wbCostsTreeLoading}
+        profitData={wbProfit}
       />
     </div>
   );
