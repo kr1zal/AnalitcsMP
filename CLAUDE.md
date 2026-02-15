@@ -23,7 +23,7 @@ Read and follow coding standards: .claude/rules/coding-standards.md
 - UE Profit Fix + P1 (ДРР, прогноз остатков)
 - СПП в Продажах (credits included)
 - Прибыль per OZON/WB в карточках MarketplaceBreakdown
-- Dashboard v2: ProfitWaterfall + ProfitChart + TopProductsChart
+- Dashboard v2: ProfitWaterfall + ProfitChart + TopProductsChart + ConversionChart
 
 ## Активные задачи
 - [ ] Hide Business tier, SEO index.html, admin ID→config
@@ -31,7 +31,7 @@ Read and follow coding standards: .claude/rules/coding-standards.md
 - [ ] План продаж (ручной ввод)
 - [ ] Улучшить PDF экспорт
 
-## Архитектурные решения (НЕ МЕНЯТЬ — 21 правило)
+## Архитектурные решения (НЕ МЕНЯТЬ — 26 правил)
 1. **Costs-tree:** отдельные параллельные запросы per marketplace (НЕ combined)
 2. **AccrualsCards:** данные через props из DashboardPage
 3. **DateRangePicker:** `captionLayout="label"` (НЕ dropdown)
@@ -56,6 +56,8 @@ Read and follow coding standards: .claude/rules/coding-standards.md
 22. **ProfitChart:** dual area (revenue+profit), profitMargin=netProfit/revenue, daily estimate. Заменяет AvgCheckChart
 23. **ProfitWaterfall:** div-based bars (НЕ Recharts). Пропорции от revenue. Скрывает нулевые строки
 24. **TopProductsChart:** top 5 + link "все N →" UE page. Масштабируется на 100+ SKU
+25. **ConversionChart:** `sales/orders × 100%`, lazy-loaded, sky-blue (#0ea5e9)
+26. **Dashboard layout (lg+):** 2x2 charts grid (Sales|Profit, DRR|Conversion) + analytics row (Waterfall|TopProducts)
 
 ## Формулы (КРИТИЧНО)
 ```
@@ -73,6 +75,7 @@ OZON Продажи = tree["Продажи"] (Выручка + Баллы + Па
 ProfitChart daily: profitMargin = netProfit / revenueForTile; dailyProfit = dailyRevenue × profitMargin
 Waterfall: revenue → −mpDeductions → −purchase → −ads = profit (margin%)
 TopProducts: sort by net_profit desc, show top 5, filter WB_ACCOUNT
+Conversion: sales / orders × 100% (выкуп %)
 ```
 
 ## Источники данных

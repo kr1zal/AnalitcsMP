@@ -86,6 +86,67 @@
 - HelpCircle тултипы на всех метриках (Продажи, Начислено, Прибыль)
 - Суммы без символа ₽ (мобильная оптимизация)
 
+## Dashboard v2: Визуализация прибыли — DEPLOYED (15.02.2026)
+
+Три новых компонента на главной странице, заменившие AvgCheckChart (средний чек — vanity metric).
+
+### 1. ProfitWaterfall (Структура прибыли)
+- **Файл:** `frontend/src/components/Dashboard/ProfitWaterfall.tsx`
+- Каскад: Продажи → −Удерж.МП → −Закупка → −Реклама = Прибыль
+- Div-based бары (НЕ Recharts) — пропорциональны к выручке
+- Маржа % в заголовке, красный цвет при убытке
+- Скрывает нулевые строки расходов
+- Расположение: между карточками плашек и MarketplaceBreakdown
+
+### 2. ProfitChart (Тренд прибыли)
+- **Файл:** `frontend/src/components/Dashboard/ProfitChart.tsx`
+- Dual AreaChart (Recharts): выручка (зелёная, фон) + прибыль (индиго, передний план)
+- Визуальный зазор между area = расходы
+- Прибыль = оценка по средней марже периода: `dailyProfit ≈ dailyRevenue × profitMargin`
+- `profitMargin = netProfit / revenue` (из DashboardPage)
+- Красный цвет при отрицательной марже
+- Lazy-loaded (Recharts зависимость)
+- Заменил AvgCheckChart в секции графиков
+
+### 3. TopProductsChart (Топ товаров по прибыли)
+- **Файл:** `frontend/src/components/Dashboard/TopProductsChart.tsx`
+- Горизонтальные бары: топ-5 товаров по net_profit
+- Масштабируется на 100+ SKU: всегда показывает только 5 лучших
+- Ссылка "все N →" на /unit-economics при >5 товаров
+- Предупреждение об убыточных: "X товаров убыточны · худший: Название −Сумма"
+- Фильтрует WB_ACCOUNT (системный продукт)
+- Расположение: перед StocksTable
+
+### Изменения в DashboardPage
+- UE данные (`useUnitEconomics`) загружаются всегда при наличии summaryData (для TopProductsChart)
+- Добавлен расчёт `profitMargin = netProfitForTile / revenueForTile`
+- AvgCheckChart lazy-import заменён на ProfitChart
+- Новый порядок: Cards → ProfitWaterfall → MarketplaceBreakdown → Charts (Sales, Profit, DRR) → TopProductsChart → StocksTable
+
+### 4. ConversionChart (Конверсия выкупа)
+- **Файл:** `frontend/src/components/Dashboard/ConversionChart.tsx`
+- AreaChart: `sales / orders × 100%` по дням
+- Голубой цвет (#0ea5e9 / #e0f2fe), lazy-loaded
+- Тултип: конверсия %, заказы шт, выкупы шт
+- Расположение: 4-я ячейка в 2x2 grid (рядом с ДРР)
+
+### Desktop layout (lg+)
+```
+[Карточки метрик]
+[OZON | WB]
+[Sidebar | Заказы    | Прибыль   ]
+[        | ДРР       | Конверсия ]
+[Структура прибыли | Топ товаров]
+[Остатки на складах]
+```
+
+### Архитектурные решения
+- **#22:** ProfitChart — lazy-loaded dual area (Recharts), margin estimation
+- **#23:** ProfitWaterfall — div-based (НЕ Recharts), lightweight
+- **#24:** TopProductsChart — top 5 + link, фильтрация WB_ACCOUNT
+- **#25:** ConversionChart — `sales/orders × 100%`, lazy-loaded, sky-blue
+- **#26:** Dashboard layout — 2x2 charts grid + analytics row (Waterfall|TopProducts)
+
 ---
 
 ## WB Методология расчётов — ФИНАЛ (аудит 15.02.2026)

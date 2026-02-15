@@ -38,7 +38,7 @@ export const TopProductsChart = ({ products, isLoading = false }: TopProductsCha
 
   if (isLoading) {
     return (
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-3 sm:p-4 mb-4 sm:mb-5 lg:mb-6">
+      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-3 sm:p-4">
         <div className="animate-pulse">
           <div className="h-4 bg-gray-200 rounded w-44 mb-3" />
           {[85, 68, 52, 38, 22].map((w, i) => (
@@ -68,7 +68,7 @@ export const TopProductsChart = ({ products, isLoading = false }: TopProductsCha
   };
 
   return (
-    <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-3 sm:p-4 mb-4 sm:mb-5 lg:mb-6">
+    <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-3 sm:p-4">
       <div className="flex items-baseline justify-between mb-2.5 sm:mb-3">
         <h3 className="text-xs sm:text-sm font-semibold text-gray-900">
           Топ товаров по прибыли

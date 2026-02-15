@@ -32,7 +32,7 @@ export const ProfitWaterfall = ({
 }: ProfitWaterfallProps) => {
   if (loading) {
     return (
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-3 sm:p-4 mb-4 sm:mb-5 lg:mb-6">
+      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-3 sm:p-4">
         <div className="animate-pulse">
           <div className="h-4 bg-gray-200 rounded w-36 mb-3" />
           {[100, 55, 28, 10, 30].map((w, i) => (
@@ -96,7 +96,7 @@ export const ProfitWaterfall = ({
   };
 
   return (
-    <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-3 sm:p-4 mb-4 sm:mb-5 lg:mb-6">
+    <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-3 sm:p-4">
       <div className="flex items-baseline justify-between mb-2.5 sm:mb-3">
         <h3 className="text-xs sm:text-sm font-semibold text-gray-900">Структура прибыли</h3>
         <span

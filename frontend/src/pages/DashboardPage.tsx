@@ -49,6 +49,9 @@ const ProfitChart = lazy(() =>
 const DrrChart = lazy(() =>
   import('../components/Dashboard/DrrChart').then((m) => ({ default: m.DrrChart }))
 );
+const ConversionChart = lazy(() =>
+  import('../components/Dashboard/ConversionChart').then((m) => ({ default: m.ConversionChart }))
+);
 
 /** Выручка = tree "Продажи" + positive credits (СПП, возмещения и т.д.) */
 function getSalesTotalFromCostsTree(data?: CostsTreeResponse | null): number | null {
@@ -691,16 +694,6 @@ export const DashboardPage = () => {
         )}
       </div>
 
-      {/* 2.5. Каскад прибыли */}
-      <ProfitWaterfall
-        revenue={revenueForTile}
-        mpDeductions={mpDeductionsForTile}
-        purchase={adjustedPurchase}
-        ads={adCostForTile}
-        profit={netProfitForTile}
-        loading={isSummaryLoading || isCostsTreeLoading}
-      />
-
       {/* 3. MarketplaceBreakdown (OZON / WB) */}
       <MarketplaceBreakdown
         ozonCostsTree={ozonCostsTreeData}
@@ -768,43 +761,53 @@ export const DashboardPage = () => {
           </div>
         </div>
 
-        {/* Графики */}
-        <div className="flex-1 min-w-0 space-y-4 lg:space-y-6">
+        {/* Графики — 2 колонки на lg+ */}
+        <div className="flex-1 min-w-0">
           <Suspense
             fallback={
-              <div className="space-y-6">
-                {[1, 2, 3].map((i) => (
-                  <div key={i} className="bg-white rounded-lg shadow-sm border border-gray-200 p-5">
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-2 sm:gap-3">
+                {[1, 2, 3, 4].map((i) => (
+                  <div key={i} className="bg-white rounded-lg shadow-sm border border-gray-200 p-3">
                     <div className="animate-pulse">
-                      <div className="h-5 bg-gray-200 rounded w-1/4 mb-6" />
-                      <div className="h-48 bg-gray-100 rounded" />
+                      <div className="h-4 bg-gray-200 rounded w-1/4 mb-2" />
+                      <div className={`bg-gray-100 rounded ${i <= 2 ? 'h-[100px] sm:h-[140px]' : 'h-[80px] sm:h-[100px]'}`} />
                     </div>
                   </div>
                 ))}
               </div>
             }
           >
-            {/* График заказов с табами */}
-            <SalesChart data={salesChartSeries as any} isLoading={!chartsEnabled || chartLoading} />
-
-            {/* График Прибыль (replaces AvgCheckChart) */}
-            <ProfitChart
-              data={salesChartSeries as any}
-              profitMargin={profitMargin}
-              isLoading={!chartsEnabled || chartLoading}
-            />
-
-            {/* График ДРР */}
-            <DrrChart data={adCostsSeriesFull as any} isLoading={!chartsEnabled || adCostsLoading} />
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-2 sm:gap-3">
+              {/* Ряд 1: Заказы + Прибыль */}
+              <SalesChart data={salesChartSeries as any} isLoading={!chartsEnabled || chartLoading} />
+              <ProfitChart
+                data={salesChartSeries as any}
+                profitMargin={profitMargin}
+                isLoading={!chartsEnabled || chartLoading}
+              />
+              {/* Ряд 2: ДРР + Конверсия */}
+              <DrrChart data={adCostsSeriesFull as any} isLoading={!chartsEnabled || adCostsLoading} />
+              <ConversionChart data={salesChartSeries as any} isLoading={!chartsEnabled || chartLoading} />
+            </div>
           </Suspense>
         </div>
       </div>
 
-      {/* 4.5. Топ товаров по прибыли */}
-      <TopProductsChart
-        products={unitEconomicsData?.products ?? []}
-        isLoading={ueLoading}
-      />
+      {/* 4.5. Аналитика: Структура прибыли + Топ товаров — рядом на lg+ */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-2 sm:gap-3 mb-4 sm:mb-5 lg:mb-6">
+        <ProfitWaterfall
+          revenue={revenueForTile}
+          mpDeductions={mpDeductionsForTile}
+          purchase={adjustedPurchase}
+          ads={adCostForTile}
+          profit={netProfitForTile}
+          loading={isSummaryLoading || isCostsTreeLoading}
+        />
+        <TopProductsChart
+          products={unitEconomicsData?.products ?? []}
+          isLoading={ueLoading}
+        />
+      </div>
 
       {/* 5. Таблица остатков */}
       <div className="mb-4 sm:mb-5 lg:mb-6">
