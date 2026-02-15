@@ -31,7 +31,7 @@ Read and follow coding standards: .claude/rules/coding-standards.md
 - [ ] Donut chart по категориям
 - [ ] Улучшить PDF экспорт
 
-## Архитектурные решения (НЕ МЕНЯТЬ — 19 правил)
+## Архитектурные решения (НЕ МЕНЯТЬ — 20 правил)
 1. **Costs-tree:** отдельные параллельные запросы per marketplace (НЕ combined)
 2. **AccrualsCards:** данные через props из DashboardPage
 3. **DateRangePicker:** `captionLayout="label"` (НЕ dropdown)
@@ -51,6 +51,7 @@ Read and follow coding standards: .claude/rules/coding-standards.md
 17. **Product Management:** 3-col, @dnd-kit, click modals (НЕ hover)
 18. **UE Profit:** `profit_i = total_payout × (revenue_i / Σrevenue) - purchase×ratio - ad×ratio`
 19. **СПП:** credits ВХОДЯТ в displayed_revenue. Ratio = ЧИСТЫЕ sales (без credits)
+20. **WB Методология:** ВЕРИФИЦИРОВАНА (аудит 15.02.2026). Двойного учёта СПП нет. Подробности → docs/phases-history.md
 
 ## Формулы (КРИТИЧНО)
 ```
@@ -60,6 +61,9 @@ displayed_revenue = costs_tree_sales + credits (СПП, возмещения)
 UE: profit_i = total_payout × (revenue_i / Σrevenue) - purchase_i×ratio - ad_i×ratio
 DRR = ad_cost / revenue × 100%
 Stock forecast: days_remaining = quantity / avg_daily_sales(30d)
+Per-MP profit: profit_mp = payout_mp - purchase×share - ad×share (share=pureSales_mp/totalPureSales)
+WB Начислено = total_accrued = SUM(all tree items) = Продажи + Credits + Удержания
+WB Продажи_display = pure_sales + credits (СПП/возмещения)
 ```
 
 ## Источники данных
