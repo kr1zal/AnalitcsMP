@@ -24,14 +24,14 @@ Read and follow coding standards: .claude/rules/coding-standards.md
 - СПП в Продажах (credits included)
 - Прибыль per OZON/WB в карточках MarketplaceBreakdown
 - Dashboard v2: ProfitWaterfall + ProfitChart + TopProductsChart + ConversionChart
+- План продаж: 3 уровня (total → per-MP → per-product), completion card, UE column
 
 ## Активные задачи
 - [ ] Hide Business tier, SEO index.html, admin ID→config
 - [ ] Возвраты + ДРР от заказов/выкупов
-- [ ] План продаж (ручной ввод)
 - [ ] Улучшить PDF экспорт
 
-## Архитектурные решения (НЕ МЕНЯТЬ — 26 правил)
+## Архитектурные решения (НЕ МЕНЯТЬ — 27 правил)
 1. **Costs-tree:** отдельные параллельные запросы per marketplace (НЕ combined)
 2. **AccrualsCards:** данные через props из DashboardPage
 3. **DateRangePicker:** `captionLayout="label"` (НЕ dropdown)
@@ -58,6 +58,7 @@ Read and follow coding standards: .claude/rules/coding-standards.md
 24. **TopProductsChart:** top 5 + link "все N →" UE page. Масштабируется на 100+ SKU
 25. **ConversionChart:** `sales/orders × 100%`, lazy-loaded, sky-blue (#0ea5e9)
 26. **Dashboard layout (lg+):** 2x2 charts grid (Sales|Profit, DRR|Conversion) + analytics row (Waterfall|TopProducts)
+27. **Sales Plan:** 3 уровня (total → per-MP → per-product). Приоритет completion: total > MP > product. Факт ТОЛЬКО за месяцы с планом (НЕ за весь date range дашборда). Сброс: `DELETE /sales-plan/reset`. `mp_sales_plan` (per-product) + `mp_sales_plan_summary` (total/MP)
 
 ## Формулы (КРИТИЧНО)
 ```
@@ -76,6 +77,7 @@ ProfitChart daily: profitMargin = netProfit / revenueForTile; dailyProfit = dail
 Waterfall: revenue → −mpDeductions → −purchase → −ads = profit (margin%)
 TopProducts: sort by net_profit desc, show top 5, filter WB_ACCOUNT
 Conversion: sales / orders × 100% (выкуп %)
+Plan completion: actual ONLY for months WITH a plan. Priority: total > MP-sum > product-sum. Reset: deletes both tables for month
 ```
 
 ## Источники данных

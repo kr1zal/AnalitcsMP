@@ -475,6 +475,52 @@ export interface MpProfitData {
   ad: number;
 }
 
+// ==================== ПЛАН ПРОДАЖ ====================
+
+export interface SalesPlanItem {
+  product_id: string;
+  product_name: string;
+  barcode: string;
+  plan_revenue: number;
+}
+
+export interface SalesPlanResponse {
+  status: 'success';
+  month: string; // "YYYY-MM"
+  plans: SalesPlanItem[];
+}
+
+export interface SalesPlanCompletionItem {
+  product_id: string;
+  product_name: string;
+  plan_revenue: number;
+  actual_revenue: number;
+  completion_percent: number;
+}
+
+export interface SalesPlanCompletionResponse {
+  status: 'success';
+  period: { from: string; to: string };
+  month_label: string;
+  plan_level: 'total' | 'marketplace' | 'product' | 'none';
+  total_plan: number;
+  total_actual: number;
+  completion_percent: number;
+  by_product: SalesPlanCompletionItem[];
+}
+
+export interface SalesPlanSummary {
+  total: number;
+  wb: number;
+  ozon: number;
+}
+
+export interface SalesPlanSummaryResponse {
+  status: 'success';
+  month: string;
+  summary: SalesPlanSummary;
+}
+
 // ==================== ФИЛЬТРЫ ====================
 
 export interface DashboardFilters {

@@ -24,6 +24,8 @@ import { MarketplaceBreakdown } from '../components/Dashboard/MarketplaceBreakdo
 import { StocksTable } from '../components/Dashboard/StocksTable';
 import { ProfitWaterfall } from '../components/Dashboard/ProfitWaterfall';
 import { TopProductsChart } from '../components/Dashboard/TopProductsChart';
+import { CostsDonutChart } from '../components/Dashboard/CostsDonutChart';
+import { PlanCompletionCard } from '../components/Dashboard/PlanCompletionCard';
 import { FilterPanel } from '../components/Shared/FilterPanel';
 import { LoadingSpinner } from '../components/Shared/LoadingSpinner';
 import {
@@ -37,6 +39,7 @@ import {
 } from '../hooks/useDashboard';
 import { useFiltersStore } from '../store/useFiltersStore';
 import { fillDailySeriesYmd, formatCurrency, getDateRangeFromPreset } from '../lib/utils';
+import { useSalesPlanCompletion } from '../hooks/useSalesPlan';
 import type { CostsTreeResponse, Marketplace, MpProfitData } from '../types';
 
 // Lazy-load charts to keep initial bundle small (recharts is heavy).
@@ -199,6 +202,9 @@ export const DashboardPage = () => {
   const { data: stocksData, isLoading: stocksLoading } = useStocks(marketplace, {
     enabled: stocksEnabled,
   });
+
+  // План продаж — completion
+  const { data: planCompletionData, isLoading: planCompletionLoading } = useSalesPlanCompletion(filters);
 
   // Товары для бокового фильтра (используем sidebarMarketplace)
   const { data: productsData } = useProducts(sidebarMarketplace);
@@ -694,6 +700,11 @@ export const DashboardPage = () => {
         )}
       </div>
 
+      {/* 2.5. План продаж (если задан) */}
+      <div className="mb-4 sm:mb-5 lg:mb-6">
+        <PlanCompletionCard data={planCompletionData} loading={planCompletionLoading} />
+      </div>
+
       {/* 3. MarketplaceBreakdown (OZON / WB) */}
       <MarketplaceBreakdown
         ozonCostsTree={ozonCostsTreeData}
@@ -793,8 +804,8 @@ export const DashboardPage = () => {
         </div>
       </div>
 
-      {/* 4.5. Аналитика: Структура прибыли + Топ товаров — рядом на lg+ */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-2 sm:gap-3 mb-4 sm:mb-5 lg:mb-6">
+      {/* 4.5. Аналитика: Структура прибыли + Расходы donut + Топ товаров */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-2 sm:gap-3 mb-4 sm:mb-5 lg:mb-6">
         <ProfitWaterfall
           revenue={revenueForTile}
           mpDeductions={mpDeductionsForTile}
@@ -802,6 +813,12 @@ export const DashboardPage = () => {
           ads={adCostForTile}
           profit={netProfitForTile}
           loading={isSummaryLoading || isCostsTreeLoading}
+        />
+        <CostsDonutChart
+          ozonTree={ozonCostsTreeData?.tree}
+          wbTree={wbCostsTreeData?.tree}
+          marketplace={marketplace}
+          loading={isCostsTreeLoading}
         />
         <TopProductsChart
           products={unitEconomicsData?.products ?? []}

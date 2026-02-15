@@ -4,6 +4,7 @@
  */
 import { useState, useMemo } from 'react';
 import { useUnitEconomics } from '../hooks/useDashboard';
+import { useSalesPlanCompletion } from '../hooks/useSalesPlan';
 import { useFiltersStore } from '../store/useFiltersStore';
 import { FilterPanel } from '../components/Shared/FilterPanel';
 import { FeatureGate } from '../components/Shared/FeatureGate';
@@ -26,7 +27,7 @@ import type { UnitEconomicsItem } from '../types';
 
 // ==================== TYPES ====================
 
-type SortField = 'name' | 'sales_count' | 'returns_count' | 'revenue' | 'purchase_costs' | 'mp_costs' | 'ad_cost' | 'drr' | 'net_profit' | 'unit_profit' | 'margin';
+type SortField = 'name' | 'sales_count' | 'returns_count' | 'return_rate' | 'revenue' | 'purchase_costs' | 'mp_costs' | 'ad_cost' | 'drr' | 'net_profit' | 'unit_profit' | 'margin' | 'plan_completion';
 type SortDirection = 'asc' | 'desc';
 
 const ITEMS_PER_PAGE = 20;
@@ -41,6 +42,17 @@ function getMargin(item: UnitEconomicsItem): number {
     : 0;
 }
 
+function getReturnRate(item: UnitEconomicsItem): number {
+  const total = item.metrics.sales_count + (item.metrics.returns_count ?? 0);
+  return total > 0 ? ((item.metrics.returns_count ?? 0) / total) * 100 : 0;
+}
+
+function getReturnRateColor(rate: number): string {
+  if (rate >= 15) return 'text-red-600';
+  if (rate >= 5) return 'text-amber-600';
+  return 'text-gray-500';
+}
+
 function getMarginColor(margin: number): string {
   if (margin >= 20) return 'text-green-600';
   if (margin >= 10) return 'text-yellow-600';
@@ -53,10 +65,15 @@ function getMarginBg(margin: number): string {
   return 'bg-red-50';
 }
 
+// planMap is passed from component scope for plan_completion sort
+let _planMap: Map<string, number> = new Map();
+
 function getSortValue(item: UnitEconomicsItem, field: SortField): number | string {
   switch (field) {
     case 'name': return item.product.name.toLowerCase();
     case 'margin': return getMargin(item);
+    case 'return_rate': return getReturnRate(item);
+    case 'plan_completion': return _planMap.get(item.product.id) ?? -1;
     default: return item.metrics[field as keyof typeof item.metrics] ?? 0;
   }
 }
@@ -74,6 +91,7 @@ export const UnitEconomicsPage = () => {
   };
 
   const { data: unitData, isLoading, error } = useUnitEconomics(filters);
+  const { data: planData } = useSalesPlanCompletion(filters);
 
   // State
   const [sortField, setSortField] = useState<SortField>('net_profit');
@@ -103,11 +121,26 @@ export const UnitEconomicsPage = () => {
   const hasReturns = totals.returns > 0;
   const costsTreeRatio = unitData?.costs_tree_ratio ?? 1;
 
+  // Plan completion map: product_id → completion_percent
+  const planMap = useMemo(() => {
+    const map = new Map<string, number>();
+    if (planData?.by_product) {
+      for (const p of planData.by_product) {
+        map.set(p.product_id, p.completion_percent);
+      }
+    }
+    return map;
+  }, [planData]);
+  const hasPlan = planMap.size > 0;
+
   const avgMargin = totals.revenue > 0 ? (totals.profit / totals.revenue) * 100 : 0;
   const avgUnitProfit = totals.sales > 0 ? totals.profit / totals.sales : 0;
 
   // Filtered + sorted
   const sortedProducts = useMemo(() => {
+    // Update module-level ref for plan_completion sort
+    _planMap = planMap;
+
     let filtered = unitProducts;
     if (search.trim()) {
       const q = search.toLowerCase();
@@ -126,7 +159,7 @@ export const UnitEconomicsPage = () => {
         : (va as number) - (vb as number);
       return sortDir === 'asc' ? cmp : -cmp;
     });
-  }, [unitProducts, search, sortField, sortDir]);
+  }, [unitProducts, search, sortField, sortDir, planMap]);
 
   // Pagination
   const totalPages = Math.max(1, Math.ceil(sortedProducts.length / ITEMS_PER_PAGE));
@@ -337,6 +370,7 @@ export const UnitEconomicsPage = () => {
                 <SortableHeader field="name" label="Товар" current={sortField} dir={sortDir} onSort={handleSort} align="left" />
                 <SortableHeader field="sales_count" label="Кол-во" current={sortField} dir={sortDir} onSort={handleSort} />
                 {hasReturns && <SortableHeader field="returns_count" label="Возвр." current={sortField} dir={sortDir} onSort={handleSort} />}
+                {hasReturns && <SortableHeader field="return_rate" label="% Возвр." current={sortField} dir={sortDir} onSort={handleSort} />}
                 <SortableHeader field="revenue" label="Продажи" current={sortField} dir={sortDir} onSort={handleSort} />
                 <SortableHeader field="purchase_costs" label="Закупка" current={sortField} dir={sortDir} onSort={handleSort} />
                 <SortableHeader field="mp_costs" label="Удерж. МП" current={sortField} dir={sortDir} onSort={handleSort} />
@@ -345,12 +379,13 @@ export const UnitEconomicsPage = () => {
                 <SortableHeader field="net_profit" label="Прибыль" current={sortField} dir={sortDir} onSort={handleSort} />
                 <SortableHeader field="unit_profit" label="На ед." current={sortField} dir={sortDir} onSort={handleSort} />
                 <SortableHeader field="margin" label="Маржа" current={sortField} dir={sortDir} onSort={handleSort} />
+                {hasPlan && <SortableHeader field="plan_completion" label="План" current={sortField} dir={sortDir} onSort={handleSort} />}
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
               {paginatedProducts.length === 0 ? (
                 <tr>
-                  <td colSpan={(hasAds ? 10 : 8) + (hasReturns ? 1 : 0)} className="px-4 py-8 text-center text-sm text-gray-400">
+                  <td colSpan={(hasAds ? 10 : 8) + (hasReturns ? 2 : 0) + (hasPlan ? 1 : 0)} className="px-4 py-8 text-center text-sm text-gray-400">
                     {search ? 'Ничего не найдено' : 'Нет данных за период'}
                   </td>
                 </tr>
@@ -370,6 +405,14 @@ export const UnitEconomicsPage = () => {
                           {item.metrics.returns_count > 0 ? item.metrics.returns_count : '—'}
                         </td>
                       )}
+                      {hasReturns && (() => {
+                        const rate = getReturnRate(item);
+                        return (
+                          <td className={cn('px-3 py-2.5 text-right text-sm tabular-nums', getReturnRateColor(rate))}>
+                            {item.metrics.returns_count > 0 ? formatPercent(rate) : '—'}
+                          </td>
+                        );
+                      })()}
                       <td className="px-3 py-2.5 text-right text-sm tabular-nums font-medium">{formatCurrency(item.metrics.revenue)}</td>
                       <td className="px-3 py-2.5 text-right text-sm tabular-nums text-amber-600">{formatCurrency(item.metrics.purchase_costs)}</td>
                       <td className="px-3 py-2.5 text-right text-sm tabular-nums text-purple-600">{formatCurrency(item.metrics.mp_costs)}</td>
@@ -396,6 +439,18 @@ export const UnitEconomicsPage = () => {
                           {formatPercent(margin)}
                         </span>
                       </td>
+                      {hasPlan && (() => {
+                        const pct = planMap.get(item.product.id);
+                        if (pct === undefined) return <td className="px-3 py-2.5 text-right text-xs text-gray-300">—</td>;
+                        const pColor = pct >= 100 ? 'text-emerald-600 bg-emerald-50' : pct >= 70 ? 'text-indigo-600 bg-indigo-50' : 'text-amber-600 bg-amber-50';
+                        return (
+                          <td className="px-3 py-2.5 text-right">
+                            <span className={cn('text-xs font-medium px-1.5 py-0.5 rounded tabular-nums', pColor)}>
+                              {pct}%
+                            </span>
+                          </td>
+                        );
+                      })()}
                     </tr>
                   );
                 })
@@ -413,6 +468,15 @@ export const UnitEconomicsPage = () => {
                   {hasReturns && (
                     <td className="px-3 py-2.5 text-right text-sm tabular-nums text-red-500">{totals.returns}</td>
                   )}
+                  {hasReturns && (() => {
+                    const totalDelivered = totals.sales + totals.returns;
+                    const totalRate = totalDelivered > 0 ? (totals.returns / totalDelivered) * 100 : 0;
+                    return (
+                      <td className={cn('px-3 py-2.5 text-right text-sm tabular-nums', getReturnRateColor(totalRate))}>
+                        {formatPercent(totalRate)}
+                      </td>
+                    );
+                  })()}
                   <td className="px-3 py-2.5 text-right text-sm tabular-nums">{formatCurrency(totals.revenue)}</td>
                   <td className="px-3 py-2.5 text-right text-sm tabular-nums text-amber-600">{formatCurrency(totals.purchase)}</td>
                   <td className="px-3 py-2.5 text-right text-sm tabular-nums text-purple-600">{formatCurrency(totals.mpCosts)}</td>
@@ -437,6 +501,17 @@ export const UnitEconomicsPage = () => {
                       {formatPercent(avgMargin)}
                     </span>
                   </td>
+                  {hasPlan && (() => {
+                    const pct = planData?.completion_percent ?? 0;
+                    const pColor = pct >= 100 ? 'text-emerald-600 bg-emerald-50' : pct >= 70 ? 'text-indigo-600 bg-indigo-50' : 'text-amber-600 bg-amber-50';
+                    return (
+                      <td className="px-3 py-2.5 text-right">
+                        <span className={cn('text-xs font-medium px-1.5 py-0.5 rounded tabular-nums', pColor)}>
+                          {pct}%
+                        </span>
+                      </td>
+                    );
+                  })()}
                 </tr>
               </tfoot>
             )}
@@ -482,10 +557,19 @@ export const UnitEconomicsPage = () => {
                     </div>
                   </div>
                   {item.metrics.returns_count > 0 && (
-                    <div className="text-[10px] text-red-500 mt-0.5">
-                      возвр. {item.metrics.returns_count}
+                    <div className={cn('text-[10px] mt-0.5', getReturnRateColor(getReturnRate(item)))}>
+                      возвр. {item.metrics.returns_count} ({formatPercent(getReturnRate(item))})
                     </div>
                   )}
+                  {hasPlan && planMap.has(item.product.id) && (() => {
+                    const pct = planMap.get(item.product.id)!;
+                    const pColor = pct >= 100 ? 'text-emerald-600 bg-emerald-50' : pct >= 70 ? 'text-indigo-600 bg-indigo-50' : 'text-amber-600 bg-amber-50';
+                    return (
+                      <span className={cn('text-[10px] font-medium px-1 py-0.5 rounded mt-0.5 inline-block', pColor)}>
+                        план {pct}%
+                      </span>
+                    );
+                  })()}
                 </div>
               );
             })

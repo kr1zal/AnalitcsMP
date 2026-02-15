@@ -470,4 +470,38 @@ export const accountApi = {
   },
 };
 
+// ==================== ПЛАН ПРОДАЖ ====================
+
+export const salesPlanApi = {
+  getPlans: async (month: string, marketplace: string) => {
+    const { data } = await api.get('/sales-plan', { params: { month, marketplace } });
+    return data;
+  },
+
+  upsertPlans: async (body: { month: string; marketplace: string; items: { product_id: string; plan_revenue: number }[] }) => {
+    const { data } = await api.put('/sales-plan', body);
+    return data;
+  },
+
+  getCompletion: async (params?: { date_from?: string; date_to?: string; marketplace?: string }) => {
+    const { data } = await api.get('/sales-plan/completion', { params });
+    return data;
+  },
+
+  getSummary: async (month: string) => {
+    const { data } = await api.get('/sales-plan/summary', { params: { month } });
+    return data;
+  },
+
+  upsertSummary: async (body: { month: string; level: string; plan_revenue: number }) => {
+    const { data } = await api.put('/sales-plan/summary', body);
+    return data;
+  },
+
+  reset: async (month: string) => {
+    const { data } = await api.delete('/sales-plan/reset', { params: { month } });
+    return data;
+  },
+};
+
 export default api;

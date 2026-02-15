@@ -8,6 +8,7 @@ import { useTokensStatus, useValidateTokens, useSaveTokens, useSaveAndSync } fro
 import { syncApi, accountApi } from '../services/api';
 import { SubscriptionCard } from '../components/Settings/SubscriptionCard';
 import { ProductManagement } from '../components/Settings/ProductManagement';
+import { SalesPlanEditor } from '../components/Settings/SalesPlanEditor';
 
 // ─── Подсказки где взять токены ───
 
@@ -473,6 +474,11 @@ export function SettingsPage() {
       {/* Товары */}
       <div id="products" className="bg-white rounded-xl shadow-sm border border-gray-200 p-5 mb-4">
         <ProductManagement />
+      </div>
+
+      {/* План продаж */}
+      <div id="sales-plan" className="bg-white rounded-xl shadow-sm border border-gray-200 p-5 mb-4">
+        <SalesPlanEditor />
       </div>
 
       {/* WB */}

@@ -2,6 +2,27 @@
 
 > Полная история выполненных задач. Для текущего статуса см. [CLAUDE.md](CLAUDE.md).
 
+## 16.02.2026 — Sales Plan: 3-level + reset + completion bugfix
+
+**Plan Editor (3 levels):**
+- Общий план на месяц (total) — единый input
+- По маркетплейсам (WB / Ozon) — grid 2 columns
+- По товарам (collapsible, tabs WB/Ozon) — per-product inputs
+- Приоритет completion: total > per-MP > per-product
+- Кнопка сброса "Сбросить план" с подтверждением
+
+**Bug Fix — completion actual:**
+- Было: факт считался за все месяцы в date range дашборда (даже без плана)
+- Стало: факт ТОЛЬКО за месяцы, в которых есть план
+- Пример: план на февраль, дашборд 30д (янв-фев) → факт только за февраль
+
+**Backend:**
+- `GET/PUT /sales-plan/summary` — summary-level plans
+- `DELETE /sales-plan/reset` — сброс всех планов за месяц
+- Helpers: `_plan_months_range()`, `_make_label()`
+
+**Migrations:** 016 (`mp_sales_plan_summary` table + RLS)
+
 ## 14.02.2026 — Landing Page: cleanup + mobile DataFlow + pricing
 
 **Cleanup:**
