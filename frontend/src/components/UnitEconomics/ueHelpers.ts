@@ -17,7 +17,7 @@ export type ProductFilter = 'all' | 'profitable' | 'loss' | 'abc_a' | 'abc_b' | 
 
 export interface AlertItem {
   key: string;
-  icon: 'loss' | 'margin_low' | 'drr_high';
+  icon: 'loss' | 'margin_low' | 'drr_high' | 'trap' | 'potential';
   tooltip: string;
   color: string;
 }
@@ -124,7 +124,7 @@ export const ABC_STYLES: Record<AbcGrade, string> = {
 
 // ==================== SMART ALERTS ====================
 
-export function getAlerts(item: UnitEconomicsItem): AlertItem[] {
+export function getAlerts(item: UnitEconomicsItem, planCompletion?: number): AlertItem[] {
   const alerts: AlertItem[] = [];
   const margin = getMargin(item);
 
@@ -151,6 +151,26 @@ export function getAlerts(item: UnitEconomicsItem): AlertItem[] {
       tooltip: `ДРР ${item.metrics.drr.toFixed(1)}% — выше 15%`,
       color: 'text-orange-500',
     });
+  }
+
+  // Plan-aware alerts
+  if (planCompletion !== undefined) {
+    if (planCompletion >= 70 && item.metrics.net_profit < 0) {
+      alerts.push({
+        key: 'trap',
+        icon: 'trap',
+        tooltip: `Ловушка: план ${Math.round(planCompletion)}% при убытке`,
+        color: 'text-orange-600',
+      });
+    }
+    if (planCompletion < 50 && margin > 20) {
+      alerts.push({
+        key: 'potential',
+        icon: 'potential',
+        tooltip: `Потенциал: маржа ${margin.toFixed(1)}%, но план ${Math.round(planCompletion)}%`,
+        color: 'text-blue-500',
+      });
+    }
   }
 
   return alerts;

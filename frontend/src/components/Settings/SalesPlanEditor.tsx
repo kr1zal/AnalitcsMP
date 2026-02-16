@@ -5,8 +5,8 @@
  * 3. По товарам per marketplace (tabs WB / Ozon)
  * Приоритет для completion card: total → per-MP → per-product
  */
-import { useState, useMemo, useRef, useCallback } from 'react';
-import { ChevronLeft, ChevronRight, ChevronDown, Target, Loader2, Check, RotateCcw } from 'lucide-react';
+import { useState, useMemo, useCallback } from 'react';
+import { ChevronLeft, ChevronRight, ChevronDown, Target, RotateCcw, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import {
   useSalesPlan,
@@ -16,6 +16,7 @@ import {
   useResetSalesPlan,
 } from '../../hooks/useSalesPlan';
 import { formatCurrency } from '../../lib/utils';
+import { SaveInput } from '../Shared/SaveInput';
 
 const MONTHS_RU = [
   '', 'Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь',
@@ -38,69 +39,6 @@ function shiftMonth(month: string, delta: number): string {
 function monthLabel(month: string): string {
   const [y, m] = month.split('-').map(Number);
   return `${MONTHS_RU[m]} ${y}`;
-}
-
-// ============ Inline Save Input ============
-
-interface SaveInputProps {
-  value: number;
-  onSave: (value: number) => Promise<void>;
-  placeholder?: string;
-  className?: string;
-}
-
-function SaveInput({ value, onSave, placeholder = '0', className = '' }: SaveInputProps) {
-  const [localValue, setLocalValue] = useState(value > 0 ? String(value) : '');
-  const [saving, setSaving] = useState(false);
-  const [saved, setSaved] = useState(false);
-  const timeoutRef = useRef<ReturnType<typeof setTimeout>>(undefined);
-
-  // Sync with server value when it changes
-  const prevValue = useRef(value);
-  if (prevValue.current !== value && !saving) {
-    prevValue.current = value;
-    setLocalValue(value > 0 ? String(value) : '');
-  }
-
-  const handleBlur = async () => {
-    const newValue = parseFloat(localValue) || 0;
-    if (newValue === value) return;
-
-    setSaving(true);
-    try {
-      await onSave(newValue);
-      setSaved(true);
-      if (timeoutRef.current) clearTimeout(timeoutRef.current);
-      timeoutRef.current = setTimeout(() => setSaved(false), 2000);
-    } catch {
-      toast.error('Ошибка сохранения');
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  return (
-    <div className={`relative ${className}`}>
-      <input
-        type="number"
-        min="0"
-        step="1000"
-        value={localValue}
-        onChange={(e) => setLocalValue(e.target.value)}
-        onBlur={handleBlur}
-        onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
-        placeholder={placeholder}
-        className="w-full px-3 py-1.5 pr-8 text-sm text-right border border-gray-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-400 focus:border-indigo-400 tabular-nums"
-        disabled={saving}
-      />
-      {saving && (
-        <Loader2 className="absolute right-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-indigo-400 animate-spin" />
-      )}
-      {saved && !saving && (
-        <Check className="absolute right-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-green-500" />
-      )}
-    </div>
-  );
 }
 
 // ============ Main Component ============

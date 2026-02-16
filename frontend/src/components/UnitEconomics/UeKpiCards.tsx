@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { formatCurrency, formatPercent, cn } from '../../lib/utils';
 import type { UeTotals } from './ueHelpers';
+import type { SalesPlanCompletionResponse } from '../../types';
 
 interface UeKpiCardsProps {
   totals: UeTotals;
@@ -21,6 +22,7 @@ interface UeKpiCardsProps {
   profitableCount: number;
   hasAds: boolean;
   hasReturns: boolean;
+  planData?: SalesPlanCompletionResponse;
 }
 
 type CardColor = 'blue' | 'green' | 'red' | 'yellow' | 'indigo' | 'purple' | 'muted';
@@ -60,7 +62,7 @@ function KpiCard({
   );
 }
 
-export function UeKpiCards({ totals, productCount, profitableCount, hasAds, hasReturns }: UeKpiCardsProps) {
+export function UeKpiCards({ totals, productCount, profitableCount, hasAds, hasReturns, planData }: UeKpiCardsProps) {
   const avgMargin = totals.revenue > 0 ? (totals.profit / totals.revenue) * 100 : 0;
   const avgUnitProfit = totals.sales > 0 ? totals.profit / totals.sales : 0;
 
@@ -113,6 +115,20 @@ export function UeKpiCards({ totals, productCount, profitableCount, hasAds, hasR
         sub={`${totals.returns} шт из ${totalDelivered}`}
         icon={<RotateCcw className="w-3.5 h-3.5" />}
         color="muted"
+      />,
+    );
+  }
+
+  if (planData && planData.total_plan > 0) {
+    const pct = planData.completion_percent;
+    row2Cards.push(
+      <KpiCard
+        key="plan"
+        label="План"
+        value={`${Math.round(pct)}%`}
+        sub={planData.month_label ?? 'текущий месяц'}
+        icon={<Target className="w-3.5 h-3.5" />}
+        color={pct >= 100 ? 'green' : pct >= 70 ? 'indigo' : 'yellow'}
       />,
     );
   }

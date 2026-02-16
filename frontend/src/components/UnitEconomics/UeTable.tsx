@@ -14,6 +14,8 @@ import {
   AlertTriangle,
   TrendingDown,
   Megaphone,
+  ShieldAlert,
+  Sparkles,
 } from 'lucide-react';
 import { formatCurrency, formatPercent, cn } from '../../lib/utils';
 import { UeExpandedRow } from './UeExpandedRow';
@@ -41,12 +43,20 @@ import {
   computeTotals,
 } from './ueHelpers';
 import type { UnitEconomicsItem, Marketplace } from '../../types';
+import type { PlanPaceData, MatrixQuadrant } from './uePlanHelpers';
+import { getPaceStatusLabel, getPaceStatusColor, getCompletionColor } from './uePlanHelpers';
 
 // ==================== TYPES ====================
 
 interface MpBreakdownEntry {
   wb?: UnitEconomicsItem;
   ozon?: UnitEconomicsItem;
+}
+
+interface MpPlanEntry {
+  plan_revenue: number;
+  actual_revenue: number;
+  completion_percent: number;
 }
 
 interface UeTableProps {
@@ -59,6 +69,14 @@ interface UeTableProps {
   hasReturns: boolean;
   hasPlan: boolean;
   totalProfit: number;
+  planPaceMap: Map<string, PlanPaceData>;
+  matrixFilter: MatrixQuadrant | null;
+  matrixProductIds: Set<string> | null;
+  onMatrixClear: () => void;
+  planMonth: string;
+  onPlanSave: (mp: string, productId: string, value: number) => Promise<void>;
+  wbPlanMap: Map<string, MpPlanEntry>;
+  ozonPlanMap: Map<string, MpPlanEntry>;
 }
 
 // ==================== SUBCOMPONENTS ====================
@@ -73,10 +91,12 @@ function AbcBadge({ grade }: { grade: AbcGrade }) {
 
 function AlertIcons({ alerts }: { alerts: AlertItem[] }) {
   if (!alerts.length) return null;
-  const ICONS = {
+  const ICONS: Record<string, typeof AlertTriangle> = {
     loss: AlertTriangle,
     margin_low: TrendingDown,
     drr_high: Megaphone,
+    trap: ShieldAlert,
+    potential: Sparkles,
   };
   return (
     <div className="flex items-center gap-0.5">
@@ -133,6 +153,8 @@ function ContributionBar({ pct }: { pct: number }) {
 export function UeTable({
   products, abcMap, planMap, mpBreakdown, marketplace,
   hasAds, hasReturns: _hasReturns, hasPlan, totalProfit,
+  planPaceMap, matrixFilter, matrixProductIds, onMatrixClear,
+  planMonth: _planMonth, onPlanSave: _onPlanSave, wbPlanMap, ozonPlanMap,
 }: UeTableProps) {
   // State
   const [search, setSearch] = useState('');
@@ -156,6 +178,11 @@ export function UeTable({
   const processed = useMemo(() => {
     let result = products;
 
+    // Matrix filter (pre-filter from BCG quadrant click)
+    if (matrixProductIds) {
+      result = result.filter((p) => matrixProductIds.has(p.product.id));
+    }
+
     // Search
     if (search.trim()) {
       const q = search.toLowerCase();
@@ -178,7 +205,7 @@ export function UeTable({
     });
 
     return sorted;
-  }, [products, search, filter, sortField, sortDir, abcMap, planMap, totalProfit]);
+  }, [products, search, filter, sortField, sortDir, abcMap, planMap, totalProfit, matrixProductIds]);
 
   // Totals from ALL products (not filtered/paged)
   const allTotals = useMemo(() => computeTotals(products), [products]);
@@ -189,7 +216,7 @@ export function UeTable({
   const paged = processed.slice((safePage - 1) * itemsPerPage, safePage * itemsPerPage);
 
   // Reset on changes
-  useEffect(() => { setPage(1); }, [search, filter, sortField, sortDir]);
+  useEffect(() => { setPage(1); }, [search, filter, sortField, sortDir, matrixFilter]);
   useEffect(() => { setExpandedRows(new Set()); }, [page]);
 
   // Handlers
@@ -264,6 +291,20 @@ export function UeTable({
           </div>
         </div>
 
+        {/* Matrix filter banner */}
+        {matrixFilter && (
+          <div className="flex items-center gap-2 mt-2 mb-1 px-2.5 py-1.5 bg-indigo-50 border border-indigo-200 rounded-md">
+            <span className="text-xs text-indigo-700">
+              Фильтр: <span className="font-semibold">
+                {matrixFilter === 'stars' ? '★ Звёзды' : matrixFilter === 'traps' ? '⚠ Ловушки' : matrixFilter === 'potential' ? '↗ Потенциал' : '↓ Проблемы'}
+              </span>
+            </span>
+            <button onClick={onMatrixClear} className="ml-auto p-0.5 text-indigo-400 hover:text-indigo-600 transition-colors">
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        )}
+
         {/* Filter tabs */}
         <div className="flex flex-wrap gap-1 mt-2">
           {FILTER_TABS.map((tab) => {
@@ -321,7 +362,7 @@ export function UeTable({
                 const positive = item.metrics.net_profit >= 0;
                 const isExpanded = expandedRows.has(item.product.id);
                 const abc = abcMap.get(item.product.id) ?? 'C';
-                const alerts = getAlerts(item);
+                const alerts = getAlerts(item, planMap.get(item.product.id));
                 const contribution = getContribution(item, totalProfit);
                 const returns = item.metrics.returns_count ?? 0;
 
@@ -386,10 +427,20 @@ export function UeTable({
                       {hasPlan && (() => {
                         const pct = planMap.get(item.product.id);
                         if (pct === undefined) return <td className="px-2 py-2.5 text-right text-xs text-gray-300">—</td>;
-                        const pColor = pct >= 100 ? 'text-emerald-600 bg-emerald-50' : pct >= 70 ? 'text-indigo-600 bg-indigo-50' : 'text-amber-600 bg-amber-50';
+                        const pace = planPaceMap.get(item.product.id);
                         return (
                           <td className="px-2 py-2.5 text-right">
-                            <span className={cn('text-xs font-medium px-1.5 py-0.5 rounded tabular-nums', pColor)}>{pct}%</span>
+                            <div
+                              className="flex flex-col items-end gap-0.5"
+                              title={pace ? `Прогноз: ~${Math.round(pace.forecastPct)}% · Темп: ${Math.round(pace.dailyPace).toLocaleString('ru-RU')}₽/день${pace.gap > 0 ? ` · Нужно: ${Math.round(pace.requiredDaily).toLocaleString('ru-RU')}₽/день` : ''}` : undefined}
+                            >
+                              <span className={cn('text-xs font-medium px-1.5 py-0.5 rounded tabular-nums', getCompletionColor(pct))}>{Math.round(pct)}%</span>
+                              {pace && (
+                                <span className={cn('text-[10px] tabular-nums', getPaceStatusColor(pace.status))}>
+                                  {getPaceStatusLabel(pace.status)}
+                                </span>
+                              )}
+                            </div>
                           </td>
                         );
                       })()}
@@ -401,6 +452,8 @@ export function UeTable({
                             wbMetrics={mpBreakdown.get(item.product.id)?.wb}
                             ozonMetrics={mpBreakdown.get(item.product.id)?.ozon}
                             marketplace={marketplace}
+                            wbPlan={wbPlanMap.get(item.product.id)}
+                            ozonPlan={ozonPlanMap.get(item.product.id)}
                           />
                         </td>
                       </tr>
@@ -442,10 +495,9 @@ export function UeTable({
                 <td className="px-1 py-2.5" />
                 {hasPlan && (() => {
                   const pct = planMap.size > 0 ? Math.round([...planMap.values()].reduce((a, b) => a + b, 0) / planMap.size) : 0;
-                  const pColor = pct >= 100 ? 'text-emerald-600 bg-emerald-50' : pct >= 70 ? 'text-indigo-600 bg-indigo-50' : 'text-amber-600 bg-amber-50';
                   return (
                     <td className="px-2 py-2.5 text-right">
-                      <span className={cn('text-xs font-medium px-1.5 py-0.5 rounded tabular-nums', pColor)}>{pct}%</span>
+                      <span className={cn('text-xs font-medium px-1.5 py-0.5 rounded tabular-nums', getCompletionColor(pct))}>{pct}%</span>
                     </td>
                   );
                 })()}
@@ -467,7 +519,7 @@ export function UeTable({
             const positive = item.metrics.net_profit >= 0;
             const abc = abcMap.get(item.product.id) ?? 'C';
             const isExpanded = expandedRows.has(item.product.id);
-            const alerts = getAlerts(item);
+            const alerts = getAlerts(item, planMap.get(item.product.id));
 
             return (
               <div key={item.product.id}>
@@ -482,6 +534,15 @@ export function UeTable({
                       {item.product.name}
                     </div>
                     {alerts.length > 0 && <AlertIcons alerts={alerts} />}
+                    {hasPlan && (() => {
+                      const pct = planMap.get(item.product.id);
+                      if (pct === undefined) return null;
+                      return (
+                        <span className={cn('text-[10px] font-medium px-1 py-0.5 rounded tabular-nums flex-shrink-0', getCompletionColor(pct))}>
+                          {Math.round(pct)}%
+                        </span>
+                      );
+                    })()}
                     <span className={cn('text-xs font-medium px-1.5 py-0.5 rounded flex-shrink-0', getMarginColor(margin), getMarginBg(margin))}>
                       {formatPercent(margin)}
                     </span>
@@ -528,6 +589,8 @@ export function UeTable({
                       wbMetrics={mpBreakdown.get(item.product.id)?.wb}
                       ozonMetrics={mpBreakdown.get(item.product.id)?.ozon}
                       marketplace={marketplace}
+                      wbPlan={wbPlanMap.get(item.product.id)}
+                      ozonPlan={ozonPlanMap.get(item.product.id)}
                     />
                   </div>
                 )}

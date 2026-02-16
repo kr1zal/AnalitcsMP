@@ -2,15 +2,24 @@
  * Unit-экономика — Enterprise Page
  *
  * Оркестратор: загрузка данных + передача в subcomponents.
- * - 2 ряда KPI (8 карточек: Revenue, Profit, Margin, Unit Profit + ROI, ROAS, Returns, Products)
+ * - Plan Summary Panel (editing, progress, forecast)
+ * - 2 ряда KPI (8 карточек + Plan KPI)
+ * - BCG Plan-Profit Matrix (2×2)
  * - TOP/BOTTOM bars с ABC-классификацией
  * - Стековый бар структуры затрат с легендой
  * - Enterprise таблица: search, filter tabs, sort, pagination, expandable MP breakdown
- * - Killer-фичи: ABC-классификация, Mini Waterfall, Smart Alerts
+ * - Killer-фичи: ABC, Mini Waterfall, Smart Alerts, Pace/Forecast, Inline Plan Edit
  */
-import { useMemo } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import { useUnitEconomics, useProducts } from '../hooks/useDashboard';
-import { useSalesPlanCompletion } from '../hooks/useSalesPlan';
+import {
+  useSalesPlanCompletion,
+  useSalesPlanSummary,
+  useSalesPlan,
+  useUpsertSalesPlan,
+  useUpsertSummaryPlan,
+  useResetSalesPlan,
+} from '../hooks/useSalesPlan';
 import { useFiltersStore } from '../store/useFiltersStore';
 import { FilterPanel } from '../components/Shared/FilterPanel';
 import { FeatureGate } from '../components/Shared/FeatureGate';
@@ -20,16 +29,15 @@ import { UeKpiCards } from '../components/UnitEconomics/UeKpiCards';
 import { UeProfitBars } from '../components/UnitEconomics/UeProfitBars';
 import { UeCostStructure } from '../components/UnitEconomics/UeCostStructure';
 import { UeTable } from '../components/UnitEconomics/UeTable';
+import { UePlanPanel } from '../components/UnitEconomics/UePlanPanel';
+import { UePlanMatrix } from '../components/UnitEconomics/UePlanMatrix';
 import { classifyABC, computeTotals } from '../components/UnitEconomics/ueHelpers';
+import { buildPlanPaceMap, classifyMatrix, extractPlanMonth } from '../components/UnitEconomics/uePlanHelpers';
+import type { MatrixQuadrant } from '../components/UnitEconomics/uePlanHelpers';
 import type { UnitEconomicsItem, Product } from '../types';
 
 // ==================== MP BREAKDOWN MATCHING ====================
 
-/**
- * Матчинг WB↔Ozon продуктов по product_group_id.
- * Один физический товар может иметь разные UUIDs на WB и Ozon,
- * но они объединены через product_group_id.
- */
 function buildMpBreakdown(
   allProducts: UnitEconomicsItem[],
   wbProducts: UnitEconomicsItem[] | undefined,
@@ -38,7 +46,6 @@ function buildMpBreakdown(
 ): Map<string, { wb?: UnitEconomicsItem; ozon?: UnitEconomicsItem }> {
   const map = new Map<string, { wb?: UnitEconomicsItem; ozon?: UnitEconomicsItem }>();
 
-  // Build group → { wb_id, ozon_id } mapping
   const groupMap = new Map<string, { wb?: string; ozon?: string }>();
   for (const p of productsList) {
     if (p.product_group_id) {
@@ -49,19 +56,15 @@ function buildMpBreakdown(
     }
   }
 
-  // Index WB/Ozon data by product_id for O(1) lookup
   const wbById = new Map(wbProducts?.map((p) => [p.product.id, p]) ?? []);
   const ozonById = new Map(ozonProducts?.map((p) => [p.product.id, p]) ?? []);
 
   for (const item of allProducts) {
     const pid = item.product.id;
     const product = productsList.find((p) => p.id === pid);
-
-    // Direct match
     let wb = wbById.get(pid);
     let ozon = ozonById.get(pid);
 
-    // Group match (linked across MPs)
     if (product?.product_group_id) {
       const group = groupMap.get(product.product_group_id);
       if (group) {
@@ -69,10 +72,8 @@ function buildMpBreakdown(
         if (!ozon && group.ozon) ozon = ozonById.get(group.ozon);
       }
     }
-
     map.set(pid, { wb, ozon });
   }
-
   return map;
 }
 
@@ -87,6 +88,8 @@ export const UnitEconomicsPage = () => {
     date_to: dateRange.to,
     marketplace,
   };
+
+  // ==================== DATA FETCHING ====================
 
   // Main UE data
   const { data: unitData, isLoading, error } = useUnitEconomics(filters);
@@ -107,20 +110,33 @@ export const UnitEconomicsPage = () => {
   // Plan completion
   const { data: planData } = useSalesPlanCompletion(filters);
 
+  // Plan month (derived from completion data or current month)
+  const planMonth = extractPlanMonth(planData);
+
+  // Plan summary (for panel editing)
+  const { data: summaryData } = useSalesPlanSummary(planMonth);
+
+  // Per-MP plan data (for expanded row plan progress)
+  const { data: wbPlanData } = useSalesPlan(planMonth, 'wb');
+  const { data: ozonPlanData } = useSalesPlan(planMonth, 'ozon');
+
+  // Mutations
+  const upsertPlanMut = useUpsertSalesPlan();
+  const upsertSummaryMut = useUpsertSummaryPlan();
+  const resetPlanMut = useResetSalesPlan();
+
   // ==================== DERIVED DATA ====================
 
   const unitProducts = unitData?.products ?? [];
   const productsList = productsData?.products ?? [];
 
-  // Totals
   const totals = useMemo(() => computeTotals(unitProducts), [unitProducts]);
   const hasAds = totals.adCost > 0;
   const hasReturns = totals.returns > 0;
 
-  // ABC classification
   const abcMap = useMemo(() => classifyABC(unitProducts), [unitProducts]);
 
-  // Plan map
+  // Plan completion map
   const planMap = useMemo(() => {
     const map = new Map<string, number>();
     if (planData?.by_product) {
@@ -132,19 +148,85 @@ export const UnitEconomicsPage = () => {
   }, [planData]);
   const hasPlan = planMap.size > 0;
 
-  // Profitable count
+  // Plan pace map (forecast per product)
+  const planPaceMap = useMemo(() => buildPlanPaceMap(planData), [planData]);
+
+  // BCG Matrix classification
+  const [matrixFilter, setMatrixFilter] = useState<MatrixQuadrant | null>(null);
+
+  const matrixData = useMemo(
+    () => classifyMatrix(unitProducts, planMap),
+    [unitProducts, planMap],
+  );
+
+  const matrixProductIds = useMemo(() => {
+    if (!matrixFilter) return null;
+    const q = matrixData.quadrants.find((q) => q.quadrant === matrixFilter);
+    return q ? q.productIds : null;
+  }, [matrixFilter, matrixData]);
+
+  // Per-MP plan maps (for expanded row progress bars)
+  const wbPlanMap = useMemo(() => {
+    const map = new Map<string, { plan_revenue: number; actual_revenue: number; completion_percent: number }>();
+    if (wbPlanData?.plans && planData?.by_product) {
+      const planByProduct = new Map(wbPlanData.plans.map((p) => [p.product_id, p.plan_revenue]));
+      for (const bp of planData.by_product) {
+        const plan = planByProduct.get(bp.product_id);
+        if (plan && plan > 0) {
+          map.set(bp.product_id, {
+            plan_revenue: plan,
+            actual_revenue: bp.actual_revenue,
+            completion_percent: (bp.actual_revenue / plan) * 100,
+          });
+        }
+      }
+    }
+    return map;
+  }, [wbPlanData, planData]);
+
+  const ozonPlanMap = useMemo(() => {
+    const map = new Map<string, { plan_revenue: number; actual_revenue: number; completion_percent: number }>();
+    if (ozonPlanData?.plans && planData?.by_product) {
+      const planByProduct = new Map(ozonPlanData.plans.map((p) => [p.product_id, p.plan_revenue]));
+      for (const bp of planData.by_product) {
+        const plan = planByProduct.get(bp.product_id);
+        if (plan && plan > 0) {
+          map.set(bp.product_id, {
+            plan_revenue: plan,
+            actual_revenue: bp.actual_revenue,
+            completion_percent: (bp.actual_revenue / plan) * 100,
+          });
+        }
+      }
+    }
+    return map;
+  }, [ozonPlanData, planData]);
+
   const profitableCount = useMemo(
     () => unitProducts.filter((p) => p.metrics.net_profit > 0).length,
     [unitProducts],
   );
 
-  // MP breakdown matching
   const mpBreakdown = useMemo(
     () => buildMpBreakdown(unitProducts, wbData?.products, ozonData?.products, productsList),
     [unitProducts, wbData, ozonData, productsList],
   );
 
   const costsTreeRatio = unitData?.costs_tree_ratio ?? 1;
+
+  // ==================== HANDLERS ====================
+
+  const handlePlanSave = useCallback(async (mp: string, productId: string, value: number) => {
+    await upsertPlanMut.mutateAsync({
+      month: planMonth,
+      marketplace: mp,
+      items: [{ product_id: productId, plan_revenue: value }],
+    });
+  }, [upsertPlanMut, planMonth]);
+
+  const handleMatrixClick = useCallback((q: MatrixQuadrant | null) => {
+    setMatrixFilter((prev) => (prev === q ? null : q));
+  }, []);
 
   // ==================== LOADING / ERROR ====================
 
@@ -183,7 +265,18 @@ export const UnitEconomicsPage = () => {
         {/* Filters */}
         <FilterPanel />
 
-        {/* 1. KPI Cards (2 rows) */}
+        {/* Plan Summary Panel */}
+        <div className="mt-4 sm:mt-6">
+          <UePlanPanel
+            planData={planData}
+            summaryData={summaryData}
+            summaryMut={upsertSummaryMut}
+            resetMut={resetPlanMut}
+            month={planMonth}
+          />
+        </div>
+
+        {/* KPI Cards (2 rows) */}
         <div className="mt-4 sm:mt-6 mb-4 sm:mb-6">
           <UeKpiCards
             totals={totals}
@@ -191,22 +284,34 @@ export const UnitEconomicsPage = () => {
             profitableCount={profitableCount}
             hasAds={hasAds}
             hasReturns={hasReturns}
+            planData={planData}
           />
         </div>
 
-        {/* 2. TOP/BOTTOM Bars */}
+        {/* Plan-Profit Matrix */}
+        {hasPlan && unitProducts.length > 0 && (
+          <div className="mb-4 sm:mb-6">
+            <UePlanMatrix
+              quadrants={matrixData.quadrants}
+              activeQuadrant={matrixFilter}
+              onQuadrantClick={handleMatrixClick}
+            />
+          </div>
+        )}
+
+        {/* TOP/BOTTOM Bars */}
         {unitProducts.length > 0 && (
           <div className="mb-4 sm:mb-6">
             <UeProfitBars products={unitProducts} abcMap={abcMap} />
           </div>
         )}
 
-        {/* 3. Cost Structure */}
+        {/* Cost Structure */}
         <div className="mb-4 sm:mb-6">
           <UeCostStructure totals={totals} hasAds={hasAds} />
         </div>
 
-        {/* 4. Enterprise Table */}
+        {/* Enterprise Table */}
         <UeTable
           products={unitProducts}
           abcMap={abcMap}
@@ -217,6 +322,14 @@ export const UnitEconomicsPage = () => {
           hasReturns={hasReturns}
           hasPlan={hasPlan}
           totalProfit={totals.profit}
+          planPaceMap={planPaceMap}
+          matrixFilter={matrixFilter}
+          matrixProductIds={matrixProductIds}
+          onMatrixClear={() => setMatrixFilter(null)}
+          planMonth={planMonth}
+          onPlanSave={handlePlanSave}
+          wbPlanMap={wbPlanMap}
+          ozonPlanMap={ozonPlanMap}
         />
       </div>
     </FeatureGate>

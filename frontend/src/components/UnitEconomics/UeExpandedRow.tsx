@@ -5,13 +5,23 @@
 import { Lightbulb } from 'lucide-react';
 import { formatCurrency, formatPercent, cn } from '../../lib/utils';
 import { UeMiniWaterfall } from './UeMiniWaterfall';
+import { getCompletionBarColor } from './uePlanHelpers';
 import type { UnitEconomicsItem, Marketplace } from '../../types';
+
+interface MpPlanEntry {
+  plan_revenue: number;
+  actual_revenue: number;
+  completion_percent: number;
+}
 
 interface UeExpandedRowProps {
   wbMetrics: UnitEconomicsItem | undefined;
   ozonMetrics: UnitEconomicsItem | undefined;
   /** Текущий глобальный фильтр МП */
   marketplace: Marketplace;
+  /** Per-MP plan data */
+  wbPlan?: MpPlanEntry;
+  ozonPlan?: MpPlanEntry;
 }
 
 const MP_STYLES = {
@@ -19,7 +29,7 @@ const MP_STYLES = {
   ozon: { color: '#005BFF', label: 'OZON', border: 'border-blue-200', bg: 'bg-blue-50/30', dot: 'bg-blue-500' },
 };
 
-function MpCard({ metrics, mp }: { metrics: UnitEconomicsItem; mp: 'wb' | 'ozon' }) {
+function MpCard({ metrics, mp, plan }: { metrics: UnitEconomicsItem; mp: 'wb' | 'ozon'; plan?: MpPlanEntry }) {
   const style = MP_STYLES[mp];
   const m = metrics.metrics;
   const margin = m.revenue > 0 ? (m.net_profit / m.revenue) * 100 : 0;
@@ -36,6 +46,26 @@ function MpCard({ metrics, mp }: { metrics: UnitEconomicsItem; mp: 'wb' | 'ozon'
         </span>
         <span className="text-[10px] text-gray-400 ml-auto">{m.sales_count} шт</span>
       </div>
+
+      {/* Plan progress bar */}
+      {plan && plan.plan_revenue > 0 && (
+        <div className="mb-3">
+          <div className="flex items-center justify-between text-[10px] mb-1">
+            <span className="text-gray-500">
+              План: <span className="font-medium tabular-nums">{Math.round(plan.completion_percent)}%</span>
+            </span>
+            <span className="text-gray-400 tabular-nums">
+              {formatCurrency(plan.actual_revenue)} из {formatCurrency(plan.plan_revenue)}
+            </span>
+          </div>
+          <div className="h-1.5 bg-gray-200/60 rounded-full overflow-hidden">
+            <div
+              className={cn('h-full rounded-full transition-all', getCompletionBarColor(plan.completion_percent))}
+              style={{ width: `${Math.min(100, plan.completion_percent)}%` }}
+            />
+          </div>
+        </div>
+      )}
 
       {/* Mini Waterfall */}
       <UeMiniWaterfall
@@ -108,7 +138,7 @@ function buildInsights(wb: UnitEconomicsItem | undefined, ozon: UnitEconomicsIte
   return insights;
 }
 
-export function UeExpandedRow({ wbMetrics, ozonMetrics, marketplace }: UeExpandedRowProps) {
+export function UeExpandedRow({ wbMetrics, ozonMetrics, marketplace, wbPlan, ozonPlan }: UeExpandedRowProps) {
   // Если фильтр = конкретный МП, показываем только его
   const showWb = marketplace === 'all' || marketplace === 'wb';
   const showOzon = marketplace === 'all' || marketplace === 'ozon';
@@ -130,8 +160,8 @@ export function UeExpandedRow({ wbMetrics, ozonMetrics, marketplace }: UeExpande
   return (
     <div className="py-2">
       <div className={cn('grid gap-2 sm:gap-3', isSingleMp ? 'grid-cols-1 max-w-md' : 'grid-cols-1 sm:grid-cols-2')}>
-        {hasWb && wbMetrics && <MpCard metrics={wbMetrics} mp="wb" />}
-        {hasOzon && ozonMetrics && <MpCard metrics={ozonMetrics} mp="ozon" />}
+        {hasWb && wbMetrics && <MpCard metrics={wbMetrics} mp="wb" plan={wbPlan} />}
+        {hasOzon && ozonMetrics && <MpCard metrics={ozonMetrics} mp="ozon" plan={ozonPlan} />}
       </div>
 
       {/* Auto-insights (desktop only, comparison mode) */}
