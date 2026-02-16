@@ -26,7 +26,8 @@ import {
   HelpCircle,
   X,
 } from 'lucide-react';
-import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { cn, getMarketplaceName } from '../../lib/utils';
 import { useIsMobile } from '../../hooks/useMediaQuery';
 import { LoadingSpinner } from '../Shared/LoadingSpinner';
@@ -115,29 +116,90 @@ const STATUS_LEGEND_TOOLTIP =
   'Низкий — пополнить (< 100 шт)\n' +
   'OK — достаточно (≥ 100 шт)';
 
-/** Компактный тултип по паттерну SummaryCard (group-hover + tap-focus) */
-const Tip = ({ text, align = 'left', wide }: { text: string; align?: 'left' | 'right'; wide?: boolean }) => (
-  <span className="group/tip relative inline-flex flex-shrink-0 ml-0.5 align-middle">
-    <HelpCircle
-      className="w-3 h-3 text-gray-400 cursor-help peer outline-none focus:text-gray-600"
-      tabIndex={0}
-      role="button"
-      aria-label="Подсказка"
-    />
+/** Портальный тултип — рендерится через createPortal в body, не обрезается overflow */
+const Tip = ({ text, align = 'left', wide }: { text: string; align?: 'left' | 'right'; wide?: boolean }) => {
+  const triggerRef = useRef<HTMLSpanElement>(null);
+  const tooltipRef = useRef<HTMLDivElement>(null);
+  const isTouchRef = useRef(false);
+  const [isOpen, setIsOpen] = useState(false);
+
+  // Position tooltip relative to trigger
+  useEffect(() => {
+    if (!isOpen || !triggerRef.current || !tooltipRef.current) return;
+    const tr = triggerRef.current.getBoundingClientRect();
+    const tt = tooltipRef.current;
+    const rect = tt.getBoundingClientRect();
+    const pad = 8;
+
+    let top = tr.bottom + 6;
+    const flipped = top + rect.height > window.innerHeight - pad;
+    if (flipped) top = Math.max(pad, tr.top - rect.height - 6);
+
+    let left = align === 'right' ? tr.right - rect.width : tr.left;
+    left = Math.max(pad, Math.min(left, window.innerWidth - rect.width - pad));
+
+    Object.assign(tt.style, { top: `${top}px`, left: `${left}px`, visibility: 'visible' });
+
+    const arrow = tt.querySelector<HTMLElement>('[data-arrow]');
+    if (arrow) {
+      const al = tr.left + tr.width / 2 - left;
+      arrow.style.left = `${Math.max(8, Math.min(al, rect.width - 8))}px`;
+      if (flipped) {
+        arrow.style.top = 'auto';
+        arrow.style.bottom = '-4px';
+      } else {
+        arrow.style.top = '-4px';
+        arrow.style.bottom = 'auto';
+      }
+    }
+  }, [isOpen, align]);
+
+  // Close on scroll / resize / outside tap
+  useEffect(() => {
+    if (!isOpen) return;
+    const close = () => setIsOpen(false);
+    window.addEventListener('scroll', close, true);
+    window.addEventListener('resize', close);
+    const onDown = (e: Event) => {
+      if (triggerRef.current && !triggerRef.current.contains(e.target as Node)) close();
+    };
+    document.addEventListener('pointerdown', onDown);
+    return () => {
+      window.removeEventListener('scroll', close, true);
+      window.removeEventListener('resize', close);
+      document.removeEventListener('pointerdown', onDown);
+    };
+  }, [isOpen]);
+
+  return (
     <span
-      className={cn(
-        'invisible group-hover/tip:visible peer-focus:visible absolute z-50 top-full mt-1.5 p-2 sm:p-2.5',
-        'bg-gray-900 text-white text-[10px] sm:text-xs rounded-lg shadow-2xl',
-        'leading-relaxed whitespace-pre-line pointer-events-none',
-        wide ? 'w-52 sm:w-72' : 'w-40 sm:w-56',
-        align === 'right' ? 'right-0' : 'left-0',
-      )}
+      ref={triggerRef}
+      className="inline-flex flex-shrink-0 ml-0.5 align-middle"
+      onTouchStart={() => { isTouchRef.current = true; }}
+      onMouseEnter={() => { if (!isTouchRef.current) setIsOpen(true); }}
+      onMouseLeave={() => { if (!isTouchRef.current) setIsOpen(false); }}
+      onClick={(e) => { e.stopPropagation(); if (isTouchRef.current) setIsOpen((v) => !v); }}
     >
-      {text}
-      <span className={cn('absolute -top-1 w-2 h-2 bg-gray-900 rotate-45', align === 'right' ? 'right-2' : 'left-2')} />
+      <HelpCircle className="w-3 h-3 text-gray-400 cursor-help" />
+      {isOpen &&
+        createPortal(
+          <div
+            ref={tooltipRef}
+            className={cn(
+              'fixed z-[9999] p-2 sm:p-2.5 bg-gray-900 text-white text-[10px] sm:text-xs',
+              'rounded-lg shadow-2xl leading-relaxed whitespace-pre-line pointer-events-none',
+              wide ? 'w-44 sm:w-72' : 'w-44 sm:w-56',
+            )}
+            style={{ visibility: 'hidden' }}
+          >
+            {text}
+            <span data-arrow className="absolute w-2 h-2 bg-gray-900 rotate-45" />
+          </div>,
+          document.body,
+        )}
     </span>
-  </span>
-);
+  );
+};
 
 function computeTotals(stock: StockItem): StockTotals {
   const wbTotal = (stock.warehouses || [])
@@ -560,7 +622,7 @@ export const StocksTable = ({ stocks, isLoading = false }: StocksTableProps) => 
   // =============================================
   if (isMobile) {
     return (
-      <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+      <div className="bg-white rounded-xl shadow-sm border border-gray-100">
         {/* ─── Header ─── */}
         <div className="px-3 pt-3 pb-2 space-y-2">
           {/* Title row */}
@@ -618,7 +680,7 @@ export const StocksTable = ({ stocks, isLoading = false }: StocksTableProps) => 
                   >
                     {f.mobileLabel}
                   </button>
-                  {f.tooltip && <Tip text={f.tooltip} align={f.key === 'low' ? 'right' : 'left'} />}
+                  {f.tooltip && <Tip text={f.tooltip} align={f.key === 'oos_wb' ? 'left' : 'right'} />}
                 </span>
               ))}
             </div>
@@ -759,7 +821,7 @@ export const StocksTable = ({ stocks, isLoading = false }: StocksTableProps) => 
   // DESKTOP RENDER
   // =============================================
   return (
-    <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+    <div className="bg-white rounded-xl shadow-sm border border-gray-100">
       {/* ─── Header ─── */}
       <div className="px-5 pt-4 pb-3">
         <div className="flex items-center justify-between mb-3">
@@ -815,7 +877,7 @@ export const StocksTable = ({ stocks, isLoading = false }: StocksTableProps) => 
                 >
                   {f.label}
                 </button>
-                {f.tooltip && <Tip text={f.tooltip} />}
+                {f.tooltip && <Tip text={f.tooltip} align={f.key === 'oos_wb' ? 'left' : 'right'} />}
               </span>
             ))}
             <span className="text-xs text-gray-400 ml-1 tabular-nums">
