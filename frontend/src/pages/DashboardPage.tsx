@@ -26,6 +26,7 @@ import { ProfitWaterfall } from '../components/Dashboard/ProfitWaterfall';
 import { TopProductsChart } from '../components/Dashboard/TopProductsChart';
 import { CostsDonutChart } from '../components/Dashboard/CostsDonutChart';
 import { StockForecastChart } from '../components/Dashboard/StockForecastChart';
+import { StockHistoryChart } from '../components/Dashboard/StockHistoryChart';
 import { PlanCompletionCard } from '../components/Dashboard/PlanCompletionCard';
 import { FilterPanel } from '../components/Shared/FilterPanel';
 import { LoadingSpinner } from '../components/Shared/LoadingSpinner';
@@ -196,6 +197,9 @@ export const DashboardPage = () => {
   const { data: stocksData, isLoading: stocksLoading } = useStocks(marketplace, {
     enabled: stocksEnabled,
   });
+
+  // dateTo для графика остатков: всегда сегодня МСК (снимки пишутся в реальном времени)
+  const stockHistoryDateTo = new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Moscow' });
 
   // План продаж — completion
   const { data: planCompletionData, isLoading: planCompletionLoading } = useSalesPlanCompletion(filters);
@@ -917,6 +921,15 @@ export const DashboardPage = () => {
         <StockForecastChart
           stocks={stocksData?.stocks ?? []}
           isLoading={stocksLoading}
+        />
+      </div>
+
+      {/* 4.6. Динамика остатков */}
+      <div className="mb-4 sm:mb-5 lg:mb-6">
+        <StockHistoryChart
+          dateFrom={dateRange.from}
+          dateTo={stockHistoryDateTo}
+          enabled={stocksEnabled}
         />
       </div>
 

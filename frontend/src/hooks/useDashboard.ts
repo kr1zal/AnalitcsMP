@@ -132,3 +132,18 @@ export const useProducts = (marketplace?: Marketplace, opts?: QueryOpts) => {
     enabled: opts?.enabled ?? true,
   });
 };
+
+/**
+ * Hook для получения истории остатков (для графика динамики)
+ */
+export const useStockHistory = (
+  params?: { date_from?: string; date_to?: string; marketplace?: string; product_id?: string },
+  opts?: QueryOpts
+) => {
+  return useQuery({
+    queryKey: ['dashboard', 'stock-history', params],
+    queryFn: () => dashboardApi.getStockHistory(params),
+    staleTime: 1000 * 60 * 10, // 10 minutes (stocks change infrequently)
+    enabled: opts?.enabled ?? true,
+  });
+};

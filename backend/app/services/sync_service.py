@@ -862,6 +862,7 @@ class SyncService:
                 records_count += 1
 
             self._log_sync("wb", "stocks", "success", records_count, started_at=started_at)
+            self._save_stock_snapshot("wb")
             return {"status": "success", "records": records_count}
 
         except Exception as e:
@@ -869,6 +870,44 @@ class SyncService:
             logger.error(f"Ошибка синхронизации остатков WB: {error_msg}")
             self._log_sync("wb", "stocks", "error", 0, error_msg, started_at)
             return {"status": "error", "message": error_msg}
+
+    def _save_stock_snapshot(self, marketplace: str) -> None:
+        """Save daily snapshot of current stock quantities per product for history chart."""
+        if not self.user_id:
+            return
+        try:
+            today = datetime.now().strftime("%Y-%m-%d")
+            # Get current stocks for this marketplace
+            result = self.supabase.table("mp_stocks") \
+                .select("product_id, quantity") \
+                .eq("user_id", self.user_id) \
+                .eq("marketplace", marketplace) \
+                .execute()
+
+            # Aggregate by product_id (sum across warehouses)
+            totals: dict[str, int] = {}
+            for row in result.data:
+                pid = row.get("product_id")
+                if pid:
+                    totals[pid] = totals.get(pid, 0) + (row.get("quantity") or 0)
+
+            # Upsert daily snapshots
+            for pid, qty in totals.items():
+                self.supabase.table("mp_stock_snapshots").upsert(
+                    {
+                        "user_id": self.user_id,
+                        "product_id": pid,
+                        "marketplace": marketplace,
+                        "date": today,
+                        "total_quantity": qty,
+                    },
+                    on_conflict="user_id,product_id,marketplace,date",
+                ).execute()
+
+            logger.info(f"Stock snapshot saved: {marketplace}, {len(totals)} products")
+        except Exception as e:
+            # Don't fail the sync if snapshot fails
+            logger.warning(f"Failed to save stock snapshot ({marketplace}): {e}")
 
     async def diagnose_stocks_wb(self, days_back: int = 365) -> dict:
         """
@@ -1143,6 +1182,7 @@ class SyncService:
                         records_count += 1
 
                     self._log_sync("ozon", "stocks", "success", records_count, started_at=started_at)
+                    self._save_stock_snapshot("ozon")
                     return {"status": "success", "records": records_count, "source": "v2/analytics/stock_on_warehouses"}
                 except Exception as e:
                     logger.warning(f"Ozon analytics stock_on_warehouses failed: {e}")
@@ -1190,6 +1230,7 @@ class SyncService:
                 logger.warning(f"Ozon stocks: items=0. Tried filters: {tried!r}")
 
             self._log_sync("ozon", "stocks", "success", records_count, started_at=started_at)
+            self._save_stock_snapshot("ozon")
             return {"status": "success", "records": records_count}
 
         except Exception as e:

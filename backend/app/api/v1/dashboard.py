@@ -617,6 +617,114 @@ async def get_stocks(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get("/dashboard/stock-history")
+async def get_stock_history(
+    current_user: CurrentUser = Depends(get_current_user),
+    date_from: Optional[str] = Query(None, description="Дата начала (YYYY-MM-DD)"),
+    date_to: Optional[str] = Query(None, description="Дата окончания (YYYY-MM-DD)"),
+    marketplace: Optional[str] = Query(None, description="Фильтр по МП: wb, ozon, all"),
+    product_id: Optional[str] = Query(None, description="UUID товара (опционально)"),
+):
+    """
+    История остатков по дням (из mp_stock_snapshots).
+    Возвращает дневные снимки для графика динамики остатков.
+    """
+    supabase = get_supabase_client()
+
+    try:
+        # Default: last 30 days
+        if not date_from:
+            date_from = (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d")
+        if not date_to:
+            date_to = datetime.now().strftime("%Y-%m-%d")
+
+        query = (
+            supabase.table("mp_stock_snapshots")
+            .select("product_id, marketplace, date, total_quantity, mp_products(name, barcode)")
+            .eq("user_id", current_user.id)
+            .gte("date", date_from)
+            .lte("date", date_to)
+            .order("date", desc=False)
+        )
+
+        if marketplace and marketplace != "all":
+            query = query.eq("marketplace", marketplace)
+
+        if product_id:
+            query = query.eq("product_id", product_id)
+
+        result = query.execute()
+
+        # Aggregate: per date per product, sum across marketplaces (if all)
+        # Result shape: { dates: string[], products: { id, name, barcode }[], series: { product_id: string, data: number[] }[], totals: number[] }
+        dates_set: set[str] = set()
+        products_map: dict[str, dict] = {}
+        # raw[product_id][date] = total_quantity
+        raw: dict[str, dict[str, int]] = {}
+
+        for row in result.data:
+            pid = row.get("product_id")
+            date = row.get("date")
+            qty = row.get("total_quantity", 0)
+            product_data = row.get("mp_products")
+
+            if not pid or not date:
+                continue
+
+            # Filter WB_ACCOUNT system product
+            if product_data and product_data.get("barcode") == "WB_ACCOUNT":
+                continue
+
+            dates_set.add(date)
+
+            if pid not in products_map and product_data:
+                products_map[pid] = {
+                    "id": pid,
+                    "name": product_data.get("name", "Unknown"),
+                    "barcode": product_data.get("barcode", ""),
+                }
+
+            if pid not in raw:
+                raw[pid] = {}
+            # Sum across marketplaces for same date (when marketplace=all)
+            raw[pid][date] = raw[pid].get(date, 0) + qty
+
+        dates = sorted(dates_set)
+
+        # Build series
+        series = []
+        for pid, daily in raw.items():
+            product_info = products_map.get(pid, {"id": pid, "name": "Unknown", "barcode": ""})
+            data = [daily.get(d, 0) for d in dates]
+            series.append({
+                "product_id": pid,
+                "product_name": product_info["name"],
+                "barcode": product_info["barcode"],
+                "data": data,
+            })
+
+        # Sort series: lowest last value first (most critical)
+        series.sort(key=lambda s: s["data"][-1] if s["data"] else 0)
+
+        # Totals per date (sum across all products)
+        totals = []
+        for d in dates:
+            total = sum(daily.get(d, 0) for daily in raw.values())
+            totals.append(total)
+
+        return {
+            "status": "success",
+            "period": {"from": date_from, "to": date_to},
+            "dates": dates,
+            "products": list(products_map.values()),
+            "series": series,
+            "totals": totals,
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get("/dashboard/order-funnel")
 async def get_order_funnel(
     current_user: CurrentUser = Depends(get_current_user),

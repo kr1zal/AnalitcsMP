@@ -694,3 +694,21 @@ export interface OrdersFilters extends DashboardFilters {
   sort_by?: string;
   sort_dir?: 'asc' | 'desc';
 }
+
+// ==================== ИСТОРИЯ ОСТАТКОВ ====================
+
+export interface StockHistorySeriesItem {
+  product_id: string;
+  product_name: string;
+  barcode: string;
+  data: number[];
+}
+
+export interface StockHistoryResponse {
+  status: 'success';
+  period: { from: string; to: string };
+  dates: string[];
+  products: { id: string; name: string; barcode: string }[];
+  series: StockHistorySeriesItem[];
+  totals: number[];
+}

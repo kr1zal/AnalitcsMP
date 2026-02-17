@@ -27,6 +27,7 @@ import type {
   OrdersListResponse,
   OrderDetailResponse,
   OrdersFilters,
+  StockHistoryResponse,
 } from '../types';
 
 // Создаём axios instance с базовыми настройками
@@ -220,6 +221,13 @@ export const dashboardApi = {
     const { data } = await api.get<StocksResponse>('/dashboard/stocks', {
       params: { marketplace },
       timeout: timeout ?? 30000,
+    });
+    return data;
+  },
+
+  getStockHistory: async (params?: { date_from?: string; date_to?: string; marketplace?: string; product_id?: string }) => {
+    const { data } = await api.get<StockHistoryResponse>('/dashboard/stock-history', {
+      params,
     });
     return data;
   },
