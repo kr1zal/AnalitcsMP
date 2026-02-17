@@ -56,7 +56,7 @@ async def export_pdf(
         )
 
 
-async def generate_pdf(url: str, timeout: int = 60000) -> bytes:
+async def generate_pdf(url: str, timeout: int = 90000) -> bytes:
     """
     Генерация PDF из URL через Playwright.
     """
@@ -83,7 +83,7 @@ async def generate_pdf(url: str, timeout: int = 60000) -> bytes:
             try:
                 await page.wait_for_selector(
                     '[data-pdf-ready="true"]',
-                    timeout=30000
+                    timeout=45000
                 )
             except Exception:
                 await asyncio.sleep(3)

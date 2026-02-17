@@ -59,6 +59,7 @@ Read and follow coding standards: .claude/rules/coding-standards.md
 25. **ConversionChart:** `sales/orders × 100%`, lazy-loaded, sky-blue (#0ea5e9)
 26. **Dashboard layout (lg+):** 2x2 charts grid (Sales|Profit, DRR|Conversion) + analytics row (Waterfall|TopProducts)
 27. **Sales Plan:** 3 уровня (total → per-MP → per-product). Приоритет completion: total > MP > product. Факт ТОЛЬКО за месяцы с планом (НЕ за весь date range дашборда). Сброс: `DELETE /sales-plan/reset`. `mp_sales_plan` (per-product) + `mp_sales_plan_summary` (total/MP)
+28. **Dashboard Cards:** grid 4×2 (`grid-cols-2 lg:grid-cols-4`). Enterprise SummaryCard с accent-иконками, secondaryValue, ChangeBadge. Row1: Заказы|Выкупы|Себестоимость|Чист.прибыль. Row2: Удержания|Реклама+ДРР|К перечисл.|Δ/Рентабельность. ДРР merged в Реклама (НЕ отдельная карточка). Period comparison через ChangeBadge (НЕ отдельные карточки)
 
 ## Формулы (КРИТИЧНО)
 ```

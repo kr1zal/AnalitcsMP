@@ -886,3 +886,35 @@ html, body {
     opacity: 0.05;
   }
 }
+
+/* ========================================
+   PDF Print Styles
+   ======================================== */
+
+.page-break-after {
+  page-break-after: always;
+  break-after: page;
+}
+
+@media print {
+  @page {
+    size: A4 landscape;
+    margin: 10mm;
+  }
+
+  html, body {
+    background: white !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  .page-break-after {
+    page-break-after: always;
+    break-after: page;
+  }
+
+  /* Hide scrollbars */
+  ::-webkit-scrollbar {
+    display: none;
+  }
+}
