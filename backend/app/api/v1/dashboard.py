@@ -350,7 +350,8 @@ async def get_ad_costs(
     sub: UserSubscription = Depends(require_feature("ads_page")),
     date_from: Optional[str] = Query(None),
     date_to: Optional[str] = Query(None),
-    marketplace: Optional[str] = Query(None)
+    marketplace: Optional[str] = Query(None),
+    include_prev_period: bool = Query(False),
 ):
     """
     Рекламные расходы и ДРР за период (по дням)
@@ -425,7 +426,7 @@ async def get_ad_costs(
         total_revenue = sum(revenue_by_date.values())
         total_drr = round(total_ad_cost / total_revenue * 100, 2) if total_revenue > 0 else 0
 
-        return {
+        response = {
             "status": "success",
             "period": {"from": date_from, "to": date_to},
             "marketplace": marketplace or "all",
@@ -438,6 +439,146 @@ async def get_ad_costs(
                 "orders": total_orders
             },
             "data": chart_data
+        }
+
+        # Previous period comparison
+        if include_prev_period:
+            date_from_dt = datetime.strptime(date_from, "%Y-%m-%d")
+            date_to_dt = datetime.strptime(date_to, "%Y-%m-%d")
+            period_length = (date_to_dt - date_from_dt).days + 1
+            prev_from = (date_from_dt - timedelta(days=period_length)).strftime("%Y-%m-%d")
+            prev_to = (date_from_dt - timedelta(days=1)).strftime("%Y-%m-%d")
+
+            prev_ads_query = supabase.table("mp_ad_costs").select("cost,impressions,clicks,orders_count").eq("user_id", current_user.id).gte("date", prev_from).lte("date", prev_to)
+            if marketplace and marketplace != "all":
+                prev_ads_query = prev_ads_query.eq("marketplace", marketplace)
+            prev_ads_result = prev_ads_query.execute()
+
+            prev_sales_query = supabase.table("mp_sales").select("revenue").eq("user_id", current_user.id).gte("date", prev_from).lte("date", prev_to)
+            if marketplace and marketplace != "all":
+                prev_sales_query = prev_sales_query.eq("marketplace", marketplace)
+            prev_sales_result = prev_sales_query.execute()
+
+            prev_ad_cost = sum(float(ad.get("cost", 0)) for ad in prev_ads_result.data)
+            prev_impressions = sum(ad.get("impressions", 0) for ad in prev_ads_result.data)
+            prev_clicks = sum(ad.get("clicks", 0) for ad in prev_ads_result.data)
+            prev_orders = sum(ad.get("orders_count", 0) for ad in prev_ads_result.data)
+            prev_revenue = sum(float(s.get("revenue", 0)) for s in prev_sales_result.data)
+            prev_drr = round(prev_ad_cost / prev_revenue * 100, 2) if prev_revenue > 0 else 0
+
+            response["previous_totals"] = {
+                "ad_cost": round(prev_ad_cost, 2),
+                "revenue": round(prev_revenue, 2),
+                "drr": prev_drr,
+                "impressions": prev_impressions,
+                "clicks": prev_clicks,
+                "orders": prev_orders
+            }
+
+        return response
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/dashboard/ad-campaigns")
+async def get_ad_campaigns(
+    current_user: CurrentUser = Depends(get_current_user),
+    sub: UserSubscription = Depends(require_feature("ads_page")),
+    date_from: Optional[str] = Query(None),
+    date_to: Optional[str] = Query(None),
+    marketplace: Optional[str] = Query(None),
+):
+    """
+    Рекламные кампании с агрегированными метриками за период
+    """
+    supabase = get_supabase_client()
+
+    if not date_from:
+        date_from = (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d")
+    if not date_to:
+        date_to = datetime.now().strftime("%Y-%m-%d")
+
+    try:
+        # Получаем рекламные данные за период
+        ads_query = supabase.table("mp_ad_costs").select("*").eq("user_id", current_user.id).gte("date", date_from).lte("date", date_to)
+        if marketplace and marketplace != "all":
+            ads_query = ads_query.eq("marketplace", marketplace)
+        ads_result = ads_query.execute()
+
+        # Получаем общую выручку для расчёта ДРР
+        sales_query = supabase.table("mp_sales").select("revenue").eq("user_id", current_user.id).gte("date", date_from).lte("date", date_to)
+        if marketplace and marketplace != "all":
+            sales_query = sales_query.eq("marketplace", marketplace)
+        sales_result = sales_query.execute()
+        total_revenue = sum(float(s.get("revenue", 0)) for s in sales_result.data)
+
+        # Агрегация по campaign_id + marketplace + campaign_name
+        campaigns_map: dict = {}
+        for ad in ads_result.data:
+            key = (ad.get("campaign_id", ""), ad.get("marketplace", ""))
+            if key not in campaigns_map:
+                campaigns_map[key] = {
+                    "campaign_id": ad.get("campaign_id", ""),
+                    "campaign_name": ad.get("campaign_name") or ad.get("campaign_id", ""),
+                    "marketplace": ad.get("marketplace", ""),
+                    "product_id": ad.get("product_id"),
+                    "cost": 0,
+                    "impressions": 0,
+                    "clicks": 0,
+                    "orders": 0,
+                }
+            campaigns_map[key]["cost"] += float(ad.get("cost", 0))
+            campaigns_map[key]["impressions"] += ad.get("impressions", 0)
+            campaigns_map[key]["clicks"] += ad.get("clicks", 0)
+            campaigns_map[key]["orders"] += ad.get("orders_count", 0)
+            # Берём product_id из первой строки где он есть
+            if not campaigns_map[key]["product_id"] and ad.get("product_id"):
+                campaigns_map[key]["product_id"] = ad.get("product_id")
+
+        # Получаем имена товаров
+        product_ids = list(set(
+            c["product_id"] for c in campaigns_map.values() if c.get("product_id")
+        ))
+        product_names: dict = {}
+        if product_ids:
+            products_result = supabase.table("mp_products").select("id,name").eq("user_id", current_user.id).in_("id", product_ids).execute()
+            for p in products_result.data:
+                product_names[p["id"]] = p.get("name", "")
+
+        # Формируем результат
+        campaigns = []
+        for camp in campaigns_map.values():
+            cost = round(camp["cost"], 2)
+            impressions = camp["impressions"]
+            clicks = camp["clicks"]
+            orders = camp["orders"]
+            ctr = round(clicks / impressions * 100, 2) if impressions > 0 else 0
+            cpc = round(cost / clicks, 2) if clicks > 0 else 0
+            drr = round(cost / total_revenue * 100, 2) if total_revenue > 0 else 0
+
+            campaigns.append({
+                "campaign_id": camp["campaign_id"],
+                "campaign_name": camp["campaign_name"],
+                "marketplace": camp["marketplace"],
+                "product_name": product_names.get(camp.get("product_id"), None),
+                "cost": cost,
+                "impressions": impressions,
+                "clicks": clicks,
+                "orders": orders,
+                "ctr": ctr,
+                "cpc": cpc,
+                "drr": drr,
+            })
+
+        # Сортировка по cost desc
+        campaigns.sort(key=lambda x: x["cost"], reverse=True)
+
+        return {
+            "status": "success",
+            "period": {"from": date_from, "to": date_to},
+            "campaigns": campaigns,
+            "total_campaigns": len(campaigns),
         }
 
     except Exception as e:

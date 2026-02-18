@@ -16,6 +16,7 @@ import type {
   ManualSyncResponse,
   DashboardFilters,
   AdCostsResponse,
+  AdCampaignsResponse,
   CostsTreeResponse,
   CostsTreeCombinedResponse,
   TokensStatus,
@@ -239,6 +240,14 @@ export const dashboardApi = {
     const { data } = await api.get<AdCostsResponse>('/dashboard/ad-costs', {
       params: filters,
       timeout: timeout ?? 30000,
+    });
+    return data;
+  },
+
+  getAdCampaigns: async (filters?: DashboardFilters) => {
+    const { data } = await api.get<AdCampaignsResponse>('/dashboard/ad-campaigns', {
+      params: filters,
+      timeout: 30000,
     });
     return data;
   },

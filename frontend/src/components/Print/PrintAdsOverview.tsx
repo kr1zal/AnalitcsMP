@@ -1,5 +1,5 @@
 /**
- * Реклама: обзор — 6 KPI + SVG DRR chart (area)
+ * Реклама: enterprise обзор — 4×2 KPI + DRR chart (compact, fits with campaign table on 1 page)
  */
 import { COLORS, CHART_WIDTH, DRR_THRESHOLDS } from './print-constants';
 import { PrintSvgAreaChart } from './PrintSvgAreaChart';
@@ -25,68 +25,34 @@ export function PrintAdsOverview({ totals, data }: PrintAdsOverviewProps) {
     value: d.drr,
   }));
 
-  // Ad spend chart data
-  const adSpendData = data.map((d) => ({
-    label: formatDate(d.date).slice(0, 5),
-    value: d.ad_cost,
-  }));
-
   const xTickInterval = Math.max(1, Math.floor(data.length / 15));
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-4">
       <h2 className="text-xl font-bold text-gray-900">Рекламные кампании</h2>
 
-      {/* KPI Grid */}
-      <div className="grid grid-cols-6 gap-3">
+      {/* 4×2 KPI Grid */}
+      <div className="grid grid-cols-4 gap-2">
         <KpiBox label="Расход" value={formatCurrency(totals.ad_cost)} color={COLORS.red} />
         <KpiBox label="ДРР" value={formatPercent(totals.drr)} color={drrColor} />
-        <KpiBox label="Показы" value={formatNumber(totals.impressions)} />
+        <KpiBox label="Показы" value={formatNumber(totals.impressions)} sub={`CTR ${formatPercent(ctr)}`} />
+        <KpiBox label="Заказы" value={formatNumber(totals.orders)} />
         <KpiBox label="Клики" value={formatNumber(totals.clicks)} />
-        <KpiBox label="CTR" value={formatPercent(ctr)} />
-        <KpiBox label="Заказы от рекл." value={formatNumber(totals.orders)} />
+        <KpiBox label="CPC" value={formatCurrency(cpc)} sub="стоимость клика" />
+        <KpiBox label="CPO" value={formatCurrency(cpo)} sub="стоимость заказа" />
+        <KpiBox label="ROAS" value={`×${roas.toFixed(2)}`} color={roas >= 3 ? COLORS.emerald : roas >= 1 ? COLORS.amber : COLORS.red} />
       </div>
 
-      {/* Additional metrics */}
-      <div className="grid grid-cols-3 gap-3">
-        <div className="rounded-xl border border-gray-200 p-3 bg-gradient-to-br from-gray-50 to-white">
-          <div className="text-xs text-gray-500">CPC (стоимость клика)</div>
-          <div className="text-lg font-bold text-gray-900 mt-0.5">{formatCurrency(cpc)}</div>
-        </div>
-        <div className="rounded-xl border border-gray-200 p-3 bg-gradient-to-br from-gray-50 to-white">
-          <div className="text-xs text-gray-500">CPO (стоимость заказа)</div>
-          <div className="text-lg font-bold text-gray-900 mt-0.5">{formatCurrency(cpo)}</div>
-        </div>
-        <div className="rounded-xl border border-gray-200 p-3 bg-gradient-to-br from-gray-50 to-white">
-          <div className="text-xs text-gray-500">ROAS</div>
-          <div className="text-lg font-bold text-gray-900 mt-0.5">×{roas.toFixed(2)}</div>
-        </div>
-      </div>
-
-      {/* DRR Chart */}
-      <div className="rounded-xl border border-gray-200 p-4 bg-white">
-        <div className="text-sm font-semibold text-gray-700 mb-2">ДРР по дням</div>
+      {/* DRR Chart (compact) */}
+      <div className="rounded-xl border border-gray-200 p-3 bg-white">
+        <div className="text-sm font-semibold text-gray-700 mb-1.5">ДРР по дням</div>
         <PrintSvgAreaChart
           data={drrChartData}
           width={CHART_WIDTH}
-          height={160}
+          height={120}
           color={COLORS.amber}
           fillColor={COLORS.amberFill}
           yFormatter={(v) => formatPercent(v)}
-          xTickInterval={xTickInterval}
-        />
-      </div>
-
-      {/* Ad Spend Chart */}
-      <div className="rounded-xl border border-gray-200 p-4 bg-white">
-        <div className="text-sm font-semibold text-gray-700 mb-2">Расход по дням</div>
-        <PrintSvgAreaChart
-          data={adSpendData}
-          width={CHART_WIDTH}
-          height={160}
-          color={COLORS.red}
-          fillColor={COLORS.redFill}
-          yFormatter={(v) => formatCurrency(v)}
           xTickInterval={xTickInterval}
         />
       </div>
@@ -94,11 +60,12 @@ export function PrintAdsOverview({ totals, data }: PrintAdsOverviewProps) {
   );
 }
 
-function KpiBox({ label, value, color }: { label: string; value: string; color?: string }) {
+function KpiBox({ label, value, color, sub }: { label: string; value: string; color?: string; sub?: string }) {
   return (
-    <div className="rounded-xl border border-gray-200 p-3 bg-gradient-to-br from-gray-50 to-white">
-      <div className="text-xs text-gray-500">{label}</div>
-      <div className="text-lg font-bold mt-0.5" style={{ color: color ?? COLORS.gray900 }}>{value}</div>
+    <div className="rounded-lg border border-gray-200 p-2.5 bg-gradient-to-br from-gray-50 to-white">
+      <div className="text-[10px] text-gray-500 leading-tight">{label}</div>
+      <div className="text-base font-bold mt-0.5 leading-tight" style={{ color: color ?? COLORS.gray900 }}>{value}</div>
+      {sub && <div className="text-[9px] text-gray-400 mt-0.5">{sub}</div>}
     </div>
   );
 }

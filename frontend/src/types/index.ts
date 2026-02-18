@@ -227,6 +227,14 @@ export interface AdCostsResponse {
     clicks: number;
     orders: number;
   };
+  previous_totals?: {
+    ad_cost: number;
+    revenue: number;
+    drr: number;
+    impressions: number;
+    clicks: number;
+    orders: number;
+  };
   data: AdCostsChartDataPoint[];
 }
 
@@ -533,6 +541,8 @@ export interface DashboardFilters {
    * Остальные эндпоинты этот параметр игнорируют.
    */
   include_children?: boolean;
+  /** Для /dashboard/ad-costs: вернуть previous_totals за предыдущий период */
+  include_prev_period?: boolean;
 }
 
 export type DateRangePreset = '7d' | '30d' | '90d' | 'custom';
@@ -580,6 +590,29 @@ export interface AdPerformanceResponse {
     ozon: number;
   };
   campaigns: AdCost[];
+}
+
+// ==================== РЕКЛАМА: КАМПАНИИ ====================
+
+export interface AdCampaignItem {
+  campaign_id: string;
+  campaign_name: string;
+  marketplace: Marketplace;
+  product_name: string | null;
+  cost: number;
+  impressions: number;
+  clicks: number;
+  orders: number;
+  ctr: number;
+  cpc: number;
+  drr: number;
+}
+
+export interface AdCampaignsResponse {
+  status: 'success';
+  period: { from: string; to: string };
+  campaigns: AdCampaignItem[];
+  total_campaigns: number;
 }
 
 // ==================== МОНИТОР ЗАКАЗОВ ====================

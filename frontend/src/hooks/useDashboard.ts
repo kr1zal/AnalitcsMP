@@ -92,6 +92,18 @@ export const useAdCosts = (filters?: DashboardFilters, opts?: QueryOpts) => {
 };
 
 /**
+ * Hook для получения данных по рекламным кампаниям
+ */
+export const useAdCampaigns = (filters?: DashboardFilters, opts?: QueryOpts) => {
+  return useQuery({
+    queryKey: ['dashboard', 'ad-campaigns', filters],
+    queryFn: () => dashboardApi.getAdCampaigns(filters),
+    staleTime: 1000 * 60 * 5, // 5 minutes
+    enabled: opts?.enabled ?? true,
+  });
+};
+
+/**
  * Hook для получения дерева удержаний (tree-view)
  */
 export const useCostsTree = (filters?: DashboardFilters, opts?: QueryOpts) => {

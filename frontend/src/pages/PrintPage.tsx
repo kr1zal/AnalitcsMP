@@ -12,7 +12,7 @@
  * 6. UE обзор (ABC, top 5, убыточные)
  * 7..N UE таблица (пагинация по 12)
  * N+1 Остатки
- * N+2 Реклама обзор
+ * N+2 Реклама обзор + кампании (1 страница)
  * N+3..M Реклама таблица (пагинация по 20)
  */
 import { useSearchParams } from 'react-router-dom';
@@ -36,6 +36,7 @@ import { PrintUeOverview } from '../components/Print/PrintUeOverview';
 import { PrintUeTable } from '../components/Print/PrintUeTable';
 import { PrintStocksTable } from '../components/Print/PrintStocksTable';
 import { PrintAdsOverview } from '../components/Print/PrintAdsOverview';
+import { PrintAdsCampaignTable } from '../components/Print/PrintAdsCampaignTable';
 import { PrintAdsTable } from '../components/Print/PrintAdsTable';
 
 import type {
@@ -142,6 +143,12 @@ export function PrintPage() {
     enabled,
   });
 
+  const { data: adCampaigns, isLoading: l7b } = useQuery({
+    queryKey: ['print-ad-campaigns', dateFrom, dateTo, marketplace],
+    queryFn: () => dashboardApi.getAdCampaigns({ date_from: dateFrom, date_to: dateTo, marketplace }),
+    enabled,
+  });
+
   // Plan completion
   const { data: planCompletion, isLoading: l8 } = useQuery({
     queryKey: ['print-plan', dateFrom, dateTo, marketplace],
@@ -149,7 +156,7 @@ export function PrintPage() {
     enabled,
   });
 
-  const isLoading = l1 || l2 || l3 || l4 || l5 || l6 || l7 || l8;
+  const isLoading = l1 || l2 || l3 || l4 || l5 || l6 || l7 || l7b || l8;
 
   // ==================== LOADING STATE ====================
 
@@ -316,10 +323,15 @@ export function PrintPage() {
         </PrintPageShell>
       ))}
 
-      {/* Ads Overview */}
+      {/* Ads Overview + Campaign Table (single page) */}
       {hasAds && adCosts?.totals && (
         <PrintPageShell page={++pageNum} totalPages={totalPages}>
           <PrintAdsOverview totals={adCosts.totals} data={filledAdData} />
+          {(adCampaigns?.campaigns?.length ?? 0) > 0 && (
+            <div className="mt-4">
+              <PrintAdsCampaignTable campaigns={adCampaigns!.campaigns} />
+            </div>
+          )}
         </PrintPageShell>
       )}
 
