@@ -29,6 +29,11 @@ import type {
   OrderDetailResponse,
   OrdersFilters,
   StockHistoryResponse,
+  SalesPlanResponse,
+  SalesPlanCompletionResponse,
+  SalesPlanSummaryResponse,
+  PreviousPlanResponse,
+  PlanSuggestResponse,
 } from '../types';
 
 // Создаём axios instance с базовыми настройками
@@ -490,33 +495,43 @@ export const accountApi = {
 // ==================== ПЛАН ПРОДАЖ ====================
 
 export const salesPlanApi = {
-  getPlans: async (month: string, marketplace: string) => {
-    const { data } = await api.get('/sales-plan', { params: { month, marketplace } });
+  getPlans: async (month: string, marketplace: string): Promise<SalesPlanResponse> => {
+    const { data } = await api.get<SalesPlanResponse>('/sales-plan', { params: { month, marketplace } });
     return data;
   },
 
   upsertPlans: async (body: { month: string; marketplace: string; items: { product_id: string; plan_revenue: number }[] }) => {
-    const { data } = await api.put('/sales-plan', body);
+    const { data } = await api.put<{ status: string; updated: number }>('/sales-plan', body);
     return data;
   },
 
-  getCompletion: async (params?: { date_from?: string; date_to?: string; marketplace?: string }) => {
-    const { data } = await api.get('/sales-plan/completion', { params });
+  getCompletion: async (params?: { date_from?: string; date_to?: string; marketplace?: string }): Promise<SalesPlanCompletionResponse> => {
+    const { data } = await api.get<SalesPlanCompletionResponse>('/sales-plan/completion', { params });
     return data;
   },
 
-  getSummary: async (month: string) => {
-    const { data } = await api.get('/sales-plan/summary', { params: { month } });
+  getSummary: async (month: string): Promise<SalesPlanSummaryResponse> => {
+    const { data } = await api.get<SalesPlanSummaryResponse>('/sales-plan/summary', { params: { month } });
     return data;
   },
 
   upsertSummary: async (body: { month: string; level: string; plan_revenue: number }) => {
-    const { data } = await api.put('/sales-plan/summary', body);
+    const { data } = await api.put<{ status: string }>('/sales-plan/summary', body);
     return data;
   },
 
   reset: async (month: string) => {
-    const { data } = await api.delete('/sales-plan/reset', { params: { month } });
+    const { data } = await api.delete<{ status: string }>('/sales-plan/reset', { params: { month } });
+    return data;
+  },
+
+  getPrevious: async (month: string): Promise<PreviousPlanResponse> => {
+    const { data } = await api.get<PreviousPlanResponse>('/sales-plan/previous', { params: { month } });
+    return data;
+  },
+
+  getSuggest: async (month: string): Promise<PlanSuggestResponse> => {
+    const { data } = await api.get<PlanSuggestResponse>('/sales-plan/suggest', { params: { month } });
     return data;
   },
 };

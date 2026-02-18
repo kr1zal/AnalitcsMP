@@ -325,7 +325,41 @@ profit_ozon = ozon_total_accrued - adjustedPurchase × share - ad × share
 - Hash-ссылки: `#subscription` → `?tab=billing`, `#products` → `?tab=products`
 
 ### Архитектурное решение #29
-Settings — unified `/settings?tab=` (НЕ отдельные /sync, /settings, аккаунт-блок). 4 таба с URL state. SyncingOverlay как full-screen фаза. ARIA accessibility.
+Settings — unified `/settings?tab=` (НЕ отдельные /sync, /settings, аккаунт-блок). 5 табов с URL state. SyncingOverlay как full-screen фаза. ARIA accessibility.
+
+## Sales Plan Enterprise v2 — DONE (18.02.2026)
+
+3 enterprise-фичи для плана продаж:
+
+### 1. PlanCompletionCard v2
+- **Темп**: pace_daily (₽/д), required_pace (сколько нужно для выполнения)
+- **Прогноз**: forecast_revenue, forecast_percent (линейная экстраполяция)
+- **Дни**: days_elapsed / days_remaining / days_total
+- **Кликабельность**: "Настроить →" → `/settings?tab=plan`
+- **Цвета**: green ≥100% forecast, indigo ≥80%, amber <80%
+- **Backend**: `_calc_pace_forecast()` в completion endpoint — все 4 return блока
+- **Frontend**: `PlanCompletionCard.tsx` — полная переработка с formatCompact (K/M)
+
+### 2. Stock Alert в плане
+- **StockPlanAlerts.tsx** — self-contained компонент на основе useStocks()
+- **Логика**: daysToMonthEnd vs days_remaining каждого товара
+- **Severity**: critical (≤7д & < monthEnd), warning (< monthEnd), ok
+- **UI**: красные/жёлтые предупреждения + зелёная OK-строка
+- **Фильтрация**: WB_ACCOUNT system product исключён
+- **Синхронизация**: month state поднят в PlanTab, передаётся в оба дочерних компонента
+
+### 3. Copy Plan + Auto-suggest
+- **Копирование**: кнопка "Из {prev_month}" — копирует summary + per-product планы
+- **Backend**: `GET /sales-plan/previous` — планы за пред. месяц (summary + products)
+- **Backend**: `GET /sales-plan/suggest` — avg revenue за 3 мес. × 1.1 (10% рост)
+- **WB_ACCOUNT**: фильтруется в suggest endpoint
+- **SuggestHint**: кликабельная подсказка "Ср. за 3 мес: X₽" под каждым SaveInput
+- **Уровни подсказок**: total, per-MP (wb/ozon), per-product per-MP
+- **Frontend hooks**: `usePreviousPlan`, `usePlanSuggest` (staleTime: 10min)
+- **Type safety**: salesPlanApi с generic типами (SalesPlanResponse, etc.)
+
+### Архитектурное решение #30
+Plan completion pace/forecast: `_calc_pace_forecast()` helper. forecast = actual + pace × days_remaining. Используется во всех 4 return-блоках completion endpoint.
 
 ---
 

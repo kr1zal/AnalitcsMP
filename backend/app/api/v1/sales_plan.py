@@ -4,8 +4,9 @@
 - summary-level: total / per-marketplace (без детализации)
 3 уровня: total → по МП → по товарам
 """
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date as date_type
 from calendar import monthrange
+from dateutil.relativedelta import relativedelta
 
 from fastapi import APIRouter, HTTPException, Depends, Query
 from pydantic import BaseModel, Field
@@ -338,6 +339,7 @@ async def get_sales_plan_completion(
             "total_actual": round(total_actual, 2),
             "completion_percent": total_completion,
             "by_product": [],
+            **_calc_pace_forecast(plan_months, total_actual, total_plan),
         }
 
     # Priority 2: per-MP summary plans
@@ -377,6 +379,7 @@ async def get_sales_plan_completion(
             "total_actual": round(total_actual, 2),
             "completion_percent": total_completion,
             "by_product": [],
+            **_calc_pace_forecast(plan_months, total_actual, mp_plan),
         }
 
     # Priority 3: per-product plans
@@ -409,6 +412,9 @@ async def get_sales_plan_completion(
             "total_actual": 0,
             "completion_percent": 0,
             "by_product": [],
+            "pace_daily": 0, "required_pace": 0,
+            "forecast_revenue": 0, "forecast_percent": 0,
+            "days_elapsed": 0, "days_remaining": 0, "days_total": 0,
         }
 
     # Actual revenue — only for months that have product plans
@@ -468,6 +474,7 @@ async def get_sales_plan_completion(
         "total_actual": round(total_actual, 2),
         "completion_percent": total_completion,
         "by_product": by_product,
+        **_calc_pace_forecast(plan_months_sorted, total_actual, total_plan),
     }
 
 
@@ -502,3 +509,210 @@ async def _get_total_actual(supabase, user_id: str, date_from: str, date_to: str
         query = query.eq("marketplace", marketplace)
     result = query.execute()
     return sum(float(r.get("revenue", 0)) for r in result.data)
+
+
+def _calc_pace_forecast(plan_months: list[str], total_actual: float, total_plan: float) -> dict:
+    """Calculate pace, forecast and day metrics for plan completion."""
+    if not plan_months or total_plan <= 0:
+        return {
+            "pace_daily": 0, "required_pace": 0,
+            "forecast_revenue": 0, "forecast_percent": 0,
+            "days_elapsed": 0, "days_remaining": 0, "days_total": 0,
+        }
+
+    today = date_type.today()
+    first_day = datetime.strptime(plan_months[0], "%Y-%m-%d").date()
+    last_month = plan_months[-1]
+    parts = last_month.split("-")
+    _, last_d = monthrange(int(parts[0]), int(parts[1]))
+    last_day = date_type(int(parts[0]), int(parts[1]), last_d)
+
+    # Total days in all plan months
+    days_total = 0
+    for m in plan_months:
+        mp = m.split("-")
+        _, md = monthrange(int(mp[0]), int(mp[1]))
+        days_total += md
+
+    days_elapsed = max(0, (min(today, last_day) - first_day).days + 1)
+    days_remaining = max(0, (last_day - today).days) if today <= last_day else 0
+
+    pace_daily = round(total_actual / days_elapsed, 2) if days_elapsed > 0 else 0
+    required_pace = round((total_plan - total_actual) / days_remaining, 2) if days_remaining > 0 else 0
+    forecast_revenue = round(total_actual + pace_daily * days_remaining, 2)
+    forecast_percent = round((forecast_revenue / total_plan) * 100, 1) if total_plan > 0 else 0
+
+    return {
+        "pace_daily": pace_daily,
+        "required_pace": required_pace,
+        "forecast_revenue": forecast_revenue,
+        "forecast_percent": forecast_percent,
+        "days_elapsed": days_elapsed,
+        "days_remaining": days_remaining,
+        "days_total": days_total,
+    }
+
+
+# ==================== PREVIOUS & SUGGEST ====================
+
+@router.get("/sales-plan/previous")
+async def get_previous_plan(
+    current_user: CurrentUser = Depends(get_current_user),
+    month: Optional[str] = Query(None, description="YYYY-MM"),
+):
+    """Get plans from the previous month (for copy feature)."""
+    supabase = get_supabase_client()
+
+    if not month:
+        month = datetime.now().strftime("%Y-%m")
+
+    month_date = normalize_month(month)
+    prev = datetime.strptime(month_date, "%Y-%m-%d") - relativedelta(months=1)
+    prev_month = prev.strftime("%Y-%m-%d")
+
+    # Summary plans
+    summary_result = supabase.table("mp_sales_plan_summary") \
+        .select("level, plan_revenue") \
+        .eq("user_id", current_user.id) \
+        .eq("month", prev_month) \
+        .execute()
+
+    summary = {"total": 0, "wb": 0, "ozon": 0}
+    for row in summary_result.data:
+        if row["level"] in summary:
+            summary[row["level"]] = float(row["plan_revenue"])
+
+    # Per-product plans
+    plans_result = supabase.table("mp_sales_plan") \
+        .select("product_id, plan_revenue, marketplace") \
+        .eq("user_id", current_user.id) \
+        .eq("month", prev_month) \
+        .execute()
+
+    plans = [
+        {"product_id": p["product_id"], "plan_revenue": float(p["plan_revenue"]), "marketplace": p["marketplace"]}
+        for p in plans_result.data if float(p["plan_revenue"]) > 0
+    ]
+
+    has_previous = summary["total"] > 0 or summary["wb"] > 0 or summary["ozon"] > 0 or len(plans) > 0
+
+    return {
+        "status": "success",
+        "has_previous": has_previous,
+        "prev_month": prev.strftime("%Y-%m"),
+        "summary": summary,
+        "plans": plans,
+    }
+
+
+@router.get("/sales-plan/suggest")
+async def get_plan_suggest(
+    current_user: CurrentUser = Depends(get_current_user),
+    month: Optional[str] = Query(None, description="YYYY-MM"),
+):
+    """Suggest plan based on average revenue of last 3 completed months."""
+    supabase = get_supabase_client()
+
+    if not month:
+        month = datetime.now().strftime("%Y-%m")
+
+    month_date = normalize_month(month)
+    target = datetime.strptime(month_date, "%Y-%m-%d")
+
+    # Last 3 completed months before target
+    months_ranges = []
+    for i in range(1, 4):
+        m = target - relativedelta(months=i)
+        m_start = m.strftime("%Y-%m-%d")
+        _, last_d = monthrange(m.year, m.month)
+        m_end = f"{m.year:04d}-{m.month:02d}-{last_d:02d}"
+        months_ranges.append((m_start, m_end, m.strftime("%Y-%m")))
+
+    if not months_ranges:
+        return {"status": "success", "has_data": False}
+
+    # Query all sales in the 3-month window
+    window_start = months_ranges[-1][0]
+    window_end = months_ranges[0][1]
+
+    sales_result = supabase.table("mp_sales") \
+        .select("product_id, marketplace, revenue, date") \
+        .eq("user_id", current_user.id) \
+        .gte("date", window_start) \
+        .lte("date", window_end) \
+        .execute()
+
+    if not sales_result.data:
+        return {"status": "success", "has_data": False}
+
+    # Aggregate by month
+    monthly_totals: dict[str, float] = {}
+    mp_monthly: dict[str, dict[str, float]] = {"wb": {}, "ozon": {}}
+    product_monthly: dict[str, dict[str, float]] = {}  # key: product_id:mp → {month: revenue}
+
+    for s in sales_result.data:
+        rev = float(s.get("revenue", 0))
+        sale_month = s["date"][:7]  # YYYY-MM
+        mp = s.get("marketplace", "")
+
+        monthly_totals[sale_month] = monthly_totals.get(sale_month, 0) + rev
+
+        if mp in mp_monthly:
+            mp_monthly[mp][sale_month] = mp_monthly[mp].get(sale_month, 0) + rev
+
+        pkey = f"{s['product_id']}:{mp}"
+        if pkey not in product_monthly:
+            product_monthly[pkey] = {}
+        product_monthly[pkey][sale_month] = product_monthly[pkey].get(sale_month, 0) + rev
+
+    months_with_data = len(monthly_totals)
+    if months_with_data == 0:
+        return {"status": "success", "has_data": False}
+
+    growth = 1.1  # 10% growth suggestion
+
+    avg_monthly = round(sum(monthly_totals.values()) / months_with_data, 2)
+
+    by_mp = {}
+    for mp in ("wb", "ozon"):
+        vals = mp_monthly.get(mp, {})
+        if vals:
+            avg = round(sum(vals.values()) / months_with_data, 2)
+            by_mp[mp] = {"avg": avg, "suggested": round(avg * growth, 2)}
+
+    # Product names (filter out WB_ACCOUNT system product)
+    all_product_ids = list({k.split(":")[0] for k in product_monthly})
+    products_result = supabase.table("mp_products") \
+        .select("id, name, barcode") \
+        .eq("user_id", current_user.id) \
+        .in_("id", all_product_ids) \
+        .execute()
+    system_pids = {p["id"] for p in products_result.data if p.get("barcode") == "WB_ACCOUNT"}
+    names_map = {p["id"]: p["name"] for p in products_result.data if p["id"] not in system_pids}
+
+    by_product = []
+    for pkey, months_data in product_monthly.items():
+        pid, mp = pkey.split(":", 1)
+        if pid in system_pids:
+            continue
+        avg = round(sum(months_data.values()) / months_with_data, 2)
+        by_product.append({
+            "product_id": pid,
+            "product_name": names_map.get(pid, "Unknown"),
+            "marketplace": mp,
+            "avg_revenue": avg,
+            "suggested_revenue": round(avg * growth, 2),
+        })
+
+    by_product.sort(key=lambda x: x["suggested_revenue"], reverse=True)
+
+    return {
+        "status": "success",
+        "has_data": True,
+        "months_analyzed": months_with_data,
+        "avg_monthly": avg_monthly,
+        "suggested_revenue": round(avg_monthly * growth, 2),
+        "growth_percent": 10,
+        "by_marketplace": by_mp,
+        "by_product": by_product,
+    }

@@ -27,6 +27,7 @@ Read and follow coding standards: .claude/rules/coding-standards.md
 - План продаж: 3 уровня (total → per-MP → per-product), completion card, UE column
 - Enterprise Settings: unified `/settings` с 5 табами (Подключения, Товары, План продаж, Тариф, Профиль)
 - Sales Plan Audit: 6 багфиксов (completion inflation, per-MP actual, weighted avg, FeatureGate, SaveInput, warnings)
+- Sales Plan Enterprise v2: PlanCompletionCard v2 (темп/прогноз/дни), Stock Alert, Copy Plan + Auto-suggest
 
 ## Активные задачи
 - [x] Hide Business tier, SEO index.html, admin ID→config — CLOSED
@@ -65,6 +66,7 @@ Read and follow coding standards: .claude/rules/coding-standards.md
 28. **Dashboard Cards:** grid 4×2 (`grid-cols-2 lg:grid-cols-4`). Enterprise SummaryCard с accent-иконками, secondaryValue, ChangeBadge. Row1: Заказы|Выкупы|Себестоимость|Чист.прибыль. Row2: Удержания|Реклама+ДРР|К перечисл.|Δ/Рентабельность. ДРР merged в Реклама (НЕ отдельная карточка). Period comparison через ChangeBadge (НЕ отдельные карточки)
 29. **Enterprise Settings:** unified `/settings?tab=` (НЕ отдельные /sync, /settings, аккаунт-блок). 5 табов: Подключения|Товары|**План продаж**|Тариф|Профиль. URL state через `useSearchParams`. Desktop: vertical sidebar (md+). Mobile: horizontal scroll pills. SyncingOverlay как full-screen фаза (idle→syncing→done). `/sync` → redirect `/settings?tab=connections`. ARIA: tablist/tab/tabpanel
 30. **Sales Plan completion:** actual только по МП с планами (`active_mps`). Per-MP actual из wbData/ozonData (НЕ planData.by_product). Footer = взвешенное completion (НЕ простое среднее). SaveInput: skip server sync при focus. Warnings при Σ(МП)>total
+31. **Sales Plan v2:** PlanCompletionCard v2 (pace/forecast/days + кликабельность). StockPlanAlerts (self-contained, useStocks). Copy plan + Auto-suggest (avg×1.1). Month state поднят в PlanTab (НЕ дублировать getCurrentMonth). WB_ACCOUNT фильтруется в suggest endpoint. salesPlanApi с generic типами
 
 ## Формулы (КРИТИЧНО)
 ```
@@ -84,6 +86,9 @@ Waterfall: revenue → −mpDeductions → −purchase → −ads = profit (marg
 TopProducts: sort by net_profit desc, show top 5, filter WB_ACCOUNT
 Conversion: sales / orders × 100% (выкуп %)
 Plan completion: actual ONLY for months WITH a plan. Priority: total > MP-sum > product-sum. Reset: deletes both tables for month
+Pace: pace_daily = actual / days_elapsed; required_pace = (plan - actual) / days_remaining
+Forecast: forecast_revenue = actual + pace_daily × days_remaining; forecast_percent = forecast / plan × 100
+Suggest: avg_monthly = Σrevenue(3 months) / N; suggested = avg × 1.1
 ```
 
 ## Источники данных

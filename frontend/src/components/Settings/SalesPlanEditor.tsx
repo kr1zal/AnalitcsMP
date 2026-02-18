@@ -6,7 +6,7 @@
  * Приоритет для completion card: total → per-MP → per-product
  */
 import { useState, useMemo, useCallback } from 'react';
-import { ChevronLeft, ChevronRight, ChevronDown, Target, RotateCcw, Loader2, AlertTriangle } from 'lucide-react';
+import { ChevronLeft, ChevronRight, ChevronDown, Target, RotateCcw, Loader2, AlertTriangle, Copy, Sparkles } from 'lucide-react';
 import { toast } from 'sonner';
 import {
   useSalesPlan,
@@ -14,6 +14,8 @@ import {
   useSalesPlanSummary,
   useUpsertSummaryPlan,
   useResetSalesPlan,
+  usePreviousPlan,
+  usePlanSuggest,
 } from '../../hooks/useSalesPlan';
 import { formatCurrency } from '../../lib/utils';
 import { SaveInput } from '../Shared/SaveInput';
@@ -41,10 +43,33 @@ function monthLabel(month: string): string {
   return `${MONTHS_RU[m]} ${y}`;
 }
 
+// ============ Suggest Hint ============
+
+function SuggestHint({ avg, onApply }: { avg: number; onApply: () => void }) {
+  if (avg <= 0) return null;
+  return (
+    <button
+      type="button"
+      onClick={onApply}
+      className="flex items-center gap-1 text-[10px] text-indigo-500 hover:text-indigo-700 transition-colors mt-0.5"
+    >
+      <Sparkles className="w-3 h-3" />
+      Ср. за 3 мес: {formatCurrency(avg)}
+    </button>
+  );
+}
+
 // ============ Main Component ============
 
-export function SalesPlanEditor() {
-  const [month, setMonth] = useState(getCurrentMonth);
+interface SalesPlanEditorProps {
+  month?: string;
+  onMonthChange?: (month: string) => void;
+}
+
+export function SalesPlanEditor({ month: controlledMonth, onMonthChange }: SalesPlanEditorProps = {}) {
+  const [internalMonth, setInternalMonth] = useState(getCurrentMonth);
+  const month = controlledMonth ?? internalMonth;
+  const setMonth = onMonthChange ?? setInternalMonth;
   const [showProducts, setShowProducts] = useState(false);
   const [productTab, setProductTab] = useState<MpTab>('wb');
   const [confirmReset, setConfirmReset] = useState(false);
@@ -60,6 +85,11 @@ export function SalesPlanEditor() {
   const upsertProductMut = useUpsertSalesPlan();
   const resetMut = useResetSalesPlan();
 
+  // Previous month + suggest data
+  const { data: prevData } = usePreviousPlan(month);
+  const { data: suggestData } = usePlanSuggest(month);
+  const [copying, setCopying] = useState(false);
+
   const activeProductData = productTab === 'wb' ? wbData : ozonData;
   const activeProductLoading = productTab === 'wb' ? wbLoading : ozonLoading;
   const productPlans = activeProductData?.plans ?? [];
@@ -68,6 +98,18 @@ export function SalesPlanEditor() {
   const productTabTotal = useMemo(() => {
     return productPlans.reduce((sum, p) => sum + p.plan_revenue, 0);
   }, [productPlans]);
+
+  // Product suggest map: product_id → avg_revenue
+  const productSuggestMap = useMemo(() => {
+    const map = new Map<string, number>();
+    if (!suggestData?.by_product) return map;
+    for (const p of suggestData.by_product) {
+      if (p.marketplace === productTab) {
+        map.set(p.product_id, p.avg_revenue);
+      }
+    }
+    return map;
+  }, [suggestData, productTab]);
 
   // Consistency warnings between plan levels
   const warnings = useMemo(() => {
@@ -112,6 +154,43 @@ export function SalesPlanEditor() {
     }
   };
 
+  // Copy from previous month
+  const handleCopy = useCallback(async () => {
+    if (!prevData?.has_previous) return;
+    if (!window.confirm(`Скопировать план из ${prevData.prev_month}? Текущие значения будут перезаписаны.`)) return;
+
+    setCopying(true);
+    try {
+      const { summary: prev } = prevData;
+      // Copy summary levels
+      const levels = [
+        { level: 'total', value: prev.total },
+        { level: 'wb', value: prev.wb },
+        { level: 'ozon', value: prev.ozon },
+      ].filter(l => l.value > 0);
+
+      for (const l of levels) {
+        await summaryMut.mutateAsync({ month, level: l.level, plan_revenue: l.value });
+      }
+
+      // Copy per-product plans by marketplace
+      const byMp: Record<string, { product_id: string; plan_revenue: number }[]> = {};
+      for (const p of prevData.plans) {
+        if (!byMp[p.marketplace]) byMp[p.marketplace] = [];
+        byMp[p.marketplace].push({ product_id: p.product_id, plan_revenue: p.plan_revenue });
+      }
+      for (const [mp, items] of Object.entries(byMp)) {
+        await upsertProductMut.mutateAsync({ month, marketplace: mp, items });
+      }
+
+      toast.success(`План скопирован из ${prevData.prev_month}`);
+    } catch {
+      toast.error('Ошибка копирования');
+    } finally {
+      setCopying(false);
+    }
+  }, [prevData, month, summaryMut, upsertProductMut]);
+
   // Save per-product plan
   const saveProduct = useCallback(
     (productId: string) => async (value: number) => {
@@ -135,7 +214,7 @@ export function SalesPlanEditor() {
       {/* Month navigation */}
       <div className="flex items-center justify-center gap-3 mb-5">
         <button
-          onClick={() => setMonth((m) => shiftMonth(m, -1))}
+          onClick={() => setMonth(shiftMonth(month, -1))}
           className="p-1.5 rounded-lg hover:bg-gray-100 transition-colors"
         >
           <ChevronLeft className="w-4 h-4 text-gray-600" />
@@ -144,7 +223,7 @@ export function SalesPlanEditor() {
           {monthLabel(month)}
         </span>
         <button
-          onClick={() => setMonth((m) => shiftMonth(m, 1))}
+          onClick={() => setMonth(shiftMonth(month, 1))}
           className="p-1.5 rounded-lg hover:bg-gray-100 transition-colors"
         >
           <ChevronRight className="w-4 h-4 text-gray-600" />
@@ -168,6 +247,9 @@ export function SalesPlanEditor() {
               placeholder="Общий план ₽"
               className="w-full"
             />
+            {suggestData?.has_data && suggestData.avg_monthly && (
+              <SuggestHint avg={suggestData.avg_monthly} onApply={() => saveSummary('total')(Math.round(suggestData.suggested_revenue ?? 0))} />
+            )}
           </div>
 
           {/* Level 2: Per-marketplace */}
@@ -184,6 +266,9 @@ export function SalesPlanEditor() {
                   placeholder="WB ₽"
                   className="w-full"
                 />
+                {suggestData?.by_marketplace?.wb && (
+                  <SuggestHint avg={suggestData.by_marketplace.wb.avg} onApply={() => saveSummary('wb')(Math.round(suggestData.by_marketplace!.wb.suggested))} />
+                )}
               </div>
               <div>
                 <div className="text-[10px] text-gray-400 mb-1">Ozon</div>
@@ -193,6 +278,9 @@ export function SalesPlanEditor() {
                   placeholder="Ozon ₽"
                   className="w-full"
                 />
+                {suggestData?.by_marketplace?.ozon && (
+                  <SuggestHint avg={suggestData.by_marketplace.ozon.avg} onApply={() => saveSummary('ozon')(Math.round(suggestData.by_marketplace!.ozon.suggested))} />
+                )}
               </div>
             </div>
             {(summary.wb > 0 || summary.ozon > 0) && (
@@ -241,19 +329,29 @@ export function SalesPlanEditor() {
                   </p>
                 ) : (
                   <div className="space-y-2">
-                    {productPlans.map((plan) => (
-                      <div key={plan.product_id} className="flex items-center gap-3">
-                        <div className="flex-1 min-w-0">
-                          <div className="text-sm text-gray-800 truncate">{plan.product_name}</div>
-                          <div className="text-[10px] text-gray-400">{plan.barcode}</div>
+                    {productPlans.map((plan) => {
+                      const suggestAvg = productSuggestMap.get(plan.product_id) ?? 0;
+                      return (
+                        <div key={plan.product_id}>
+                          <div className="flex items-center gap-3">
+                            <div className="flex-1 min-w-0">
+                              <div className="text-sm text-gray-800 truncate">{plan.product_name}</div>
+                              <div className="text-[10px] text-gray-400">{plan.barcode}</div>
+                            </div>
+                            <SaveInput
+                              value={plan.plan_revenue}
+                              onSave={saveProduct(plan.product_id)}
+                              className="w-32 flex-shrink-0"
+                            />
+                          </div>
+                          {suggestAvg > 0 && (
+                            <div className="flex justify-end">
+                              <SuggestHint avg={suggestAvg} onApply={() => saveProduct(plan.product_id)(Math.round(suggestAvg * 1.1))} />
+                            </div>
+                          )}
                         </div>
-                        <SaveInput
-                          value={plan.plan_revenue}
-                          onSave={saveProduct(plan.product_id)}
-                          className="w-32 flex-shrink-0"
-                        />
-                      </div>
-                    ))}
+                      );
+                    })}
 
                     {/* Tab total */}
                     <div className="flex items-center justify-between pt-2 border-t border-gray-100">
@@ -272,18 +370,32 @@ export function SalesPlanEditor() {
         </div>
       )}
 
-      {/* Reset button */}
-      {hasAnyPlan && !summaryLoading && (
-        <div className="mt-4 pt-3 border-t border-gray-100">
-          {!confirmReset ? (
+      {/* Actions: copy + reset */}
+      {!summaryLoading && (
+        <div className="mt-4 pt-3 border-t border-gray-100 flex items-center gap-3 flex-wrap">
+          {/* Copy from previous */}
+          {prevData?.has_previous && (
+            <button
+              onClick={handleCopy}
+              disabled={copying}
+              className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-indigo-600 transition-colors disabled:opacity-50"
+            >
+              {copying ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Copy className="w-3.5 h-3.5" />}
+              Из {prevData.prev_month}
+            </button>
+          )}
+
+          {/* Reset */}
+          {hasAnyPlan && !confirmReset && (
             <button
               onClick={() => setConfirmReset(true)}
               className="flex items-center gap-1.5 text-xs text-gray-400 hover:text-red-500 transition-colors"
             >
               <RotateCcw className="w-3.5 h-3.5" />
-              Сбросить план
+              Сбросить
             </button>
-          ) : (
+          )}
+          {hasAnyPlan && confirmReset && (
             <div className="flex items-center gap-2">
               <span className="text-xs text-red-600">Сбросить все планы на {monthLabel(month)}?</span>
               <button

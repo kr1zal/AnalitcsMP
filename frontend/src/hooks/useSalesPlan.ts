@@ -4,6 +4,8 @@ import type {
   SalesPlanResponse,
   SalesPlanCompletionResponse,
   SalesPlanSummaryResponse,
+  PreviousPlanResponse,
+  PlanSuggestResponse,
   DashboardFilters,
 } from '../types';
 
@@ -59,6 +61,24 @@ export const useResetSalesPlan = () => {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['sales-plan'] });
     },
+  });
+};
+
+/** Fetch previous month's plans (for copy feature) */
+export const usePreviousPlan = (month: string) => {
+  return useQuery<PreviousPlanResponse>({
+    queryKey: ['sales-plan', 'previous', month],
+    queryFn: () => salesPlanApi.getPrevious(month),
+    staleTime: 1000 * 60 * 10,
+  });
+};
+
+/** Fetch plan suggestions based on last 3 months average */
+export const usePlanSuggest = (month: string) => {
+  return useQuery<PlanSuggestResponse>({
+    queryKey: ['sales-plan', 'suggest', month],
+    queryFn: () => salesPlanApi.getSuggest(month),
+    staleTime: 1000 * 60 * 10,
   });
 };
 

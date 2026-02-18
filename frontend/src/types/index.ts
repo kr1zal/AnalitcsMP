@@ -515,6 +515,41 @@ export interface SalesPlanCompletionResponse {
   total_actual: number;
   completion_percent: number;
   by_product: SalesPlanCompletionItem[];
+  /** Pace/forecast fields (v2) */
+  pace_daily?: number;
+  required_pace?: number;
+  forecast_revenue?: number;
+  forecast_percent?: number;
+  days_elapsed?: number;
+  days_remaining?: number;
+  days_total?: number;
+}
+
+export interface PreviousPlanResponse {
+  status: 'success';
+  has_previous: boolean;
+  prev_month: string;
+  summary: { total: number; wb: number; ozon: number };
+  plans: { product_id: string; plan_revenue: number; marketplace: string }[];
+}
+
+export interface SuggestProductItem {
+  product_id: string;
+  product_name: string;
+  marketplace: string;
+  avg_revenue: number;
+  suggested_revenue: number;
+}
+
+export interface PlanSuggestResponse {
+  status: 'success';
+  has_data: boolean;
+  months_analyzed?: number;
+  avg_monthly?: number;
+  suggested_revenue?: number;
+  growth_percent?: number;
+  by_marketplace?: Record<string, { avg: number; suggested: number }>;
+  by_product?: SuggestProductItem[];
 }
 
 export interface SalesPlanSummary {
