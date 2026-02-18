@@ -273,6 +273,42 @@ profit_ozon = ozon_total_accrued - adjustedPurchase × share - ad × share
 4. costsTreeRatio использует чистые "Продажи" (у OZON = displayed, т.к. нет credits)
 5. Прибыль считается от `total_accrued` (пейаут), НЕ от "Продажи"
 
+## Enterprise Settings — DEPLOYED (18.02.2026)
+
+Объединение трёх элементов (SyncPage, SettingsPage-монолит, аккаунт-блок) в единую enterprise `/settings` с табами.
+
+### Архитектура
+- **Паттерн:** SellerBoard/Stripe unified settings — вертикальный sidebar (md+) / горизонтальные pills (mobile)
+- **URL state:** `?tab=connections|products|billing|profile` через `useSearchParams`
+- **ARIA:** `role="tablist/tab/tabpanel"`, `aria-selected`, `aria-controls`
+- **SyncingOverlay:** full-screen фазовый overlay (idle → syncing → done) с логарифмическим прогресс-баром
+
+### 4 таба
+| Таб | Компонент | Содержимое |
+|-----|-----------|-----------|
+| **Подключения** | `ConnectionsTab.tsx` (~350 строк) | API-токены (WB, Ozon×2) + статус синхронизации + ручной sync + логи |
+| **Товары** | `ProductsTab.tsx` | ProductManagement + SalesPlanEditor |
+| **Тариф** | `BillingTab.tsx` | SubscriptionCard + обработка `?payment=success/fail` |
+| **Профиль** | `ProfileTab.tsx` | Email + logout + удаление аккаунта (double-confirm) |
+
+### Переиспользуемые компоненты
+- `SecretInput.tsx` — password input с show/hide toggle
+- `StatusBadge.tsx` — green "Подключен" / gray "Не указан"
+- `SettingsTabs.tsx` — tab navigation (desktop sidebar + mobile pills)
+- `SyncingOverlay.tsx` — full-screen sync overlay с фазовой машиной
+
+### Изменения в роутинге
+- `SettingsPage.tsx`: 722 строк → 110 строк (tab controller)
+- `SyncPage.tsx`: УДАЛЁН (содержимое → ConnectionsTab)
+- Route `/sync` → redirect `/settings?tab=connections`
+- Layout: убран пункт "Синхронизация" из навигации (6→5 items)
+- Hash-ссылки: `#subscription` → `?tab=billing`, `#products` → `?tab=products`
+
+### Архитектурное решение #29
+Settings — unified `/settings?tab=` (НЕ отдельные /sync, /settings, аккаунт-блок). 4 таба с URL state. SyncingOverlay как full-screen фаза. ARIA accessibility.
+
+---
+
 ## Исправленные баги
 - Плашки "Пред.пер." не показывают данные (commit 1aa095f)
 - `secret_key = "change-me-in-production"` в config.py (удалён)

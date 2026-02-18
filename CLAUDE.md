@@ -25,14 +25,15 @@ Read and follow coding standards: .claude/rules/coding-standards.md
 - Прибыль per OZON/WB в карточках MarketplaceBreakdown
 - Dashboard v2: ProfitWaterfall + ProfitChart + TopProductsChart + ConversionChart
 - План продаж: 3 уровня (total → per-MP → per-product), completion card, UE column
+- Enterprise Settings: unified `/settings` с табами (Подключения, Товары, Тариф, Профиль)
 
 ## Активные задачи
 - [x] Hide Business tier, SEO index.html, admin ID→config — CLOSED
 - [x] Возвраты + ДРР от заказов/выкупов — CLOSED
+- [x] Enterprise Settings: объединение Синхронизация + Настройки + Аккаунт — DONE (18.02.2026)
 - [ ] Улучшить PDF экспорт
-- [ ] Enterprise Settings: объединение Синхронизация + Настройки + Аккаунт
 
-## Архитектурные решения (НЕ МЕНЯТЬ — 27 правил)
+## Архитектурные решения (НЕ МЕНЯТЬ — 29 правил)
 1. **Costs-tree:** отдельные параллельные запросы per marketplace (НЕ combined)
 2. **AccrualsCards:** данные через props из DashboardPage
 3. **DateRangePicker:** `captionLayout="label"` (НЕ dropdown)
@@ -61,6 +62,7 @@ Read and follow coding standards: .claude/rules/coding-standards.md
 26. **Dashboard layout (lg+):** 2x2 charts grid (Sales|Profit, DRR|Conversion) + analytics row (Waterfall|TopProducts)
 27. **Sales Plan:** 3 уровня (total → per-MP → per-product). Приоритет completion: total > MP > product. Факт ТОЛЬКО за месяцы с планом (НЕ за весь date range дашборда). Сброс: `DELETE /sales-plan/reset`. `mp_sales_plan` (per-product) + `mp_sales_plan_summary` (total/MP)
 28. **Dashboard Cards:** grid 4×2 (`grid-cols-2 lg:grid-cols-4`). Enterprise SummaryCard с accent-иконками, secondaryValue, ChangeBadge. Row1: Заказы|Выкупы|Себестоимость|Чист.прибыль. Row2: Удержания|Реклама+ДРР|К перечисл.|Δ/Рентабельность. ДРР merged в Реклама (НЕ отдельная карточка). Period comparison через ChangeBadge (НЕ отдельные карточки)
+29. **Enterprise Settings:** unified `/settings?tab=` (НЕ отдельные /sync, /settings, аккаунт-блок). 4 таба: Подключения|Товары|Тариф|Профиль. URL state через `useSearchParams`. Desktop: vertical sidebar (md+). Mobile: horizontal scroll pills. SyncingOverlay как full-screen фаза (idle→syncing→done). `/sync` → redirect `/settings?tab=connections`. ARIA: tablist/tab/tabpanel
 
 ## Формулы (КРИТИЧНО)
 ```
