@@ -153,7 +153,7 @@ export const CostsDonutChart = ({ ozonTree, wbTree, marketplace, loading = false
       <div className="flex items-center gap-2 sm:gap-3">
         {/* Donut */}
         <div className="flex-shrink-0" style={{ width: 110, height: 110 }}>
-          <ResponsiveContainer width="100%" height="100%">
+          <ResponsiveContainer width="100%" height={110}>
             <PieChart>
               <Pie
                 data={entries}

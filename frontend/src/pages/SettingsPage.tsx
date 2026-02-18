@@ -1,7 +1,6 @@
 /**
  * SettingsPage — unified tab controller.
- * Tabs: Подключения | Товары | Тариф | Профиль
- * ~80 lines instead of 722-line monolith.
+ * Tabs: Подключения | Товары | План продаж | Тариф | Профиль
  */
 import { useState, useEffect, useCallback } from 'react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
@@ -9,12 +8,13 @@ import { syncApi } from '../services/api';
 import { SettingsTabs } from '../components/Settings/SettingsTabs';
 import { ConnectionsTab } from '../components/Settings/ConnectionsTab';
 import { ProductsTab } from '../components/Settings/ProductsTab';
+import { PlanTab } from '../components/Settings/PlanTab';
 import { BillingTab } from '../components/Settings/BillingTab';
 import { ProfileTab } from '../components/Settings/ProfileTab';
 import { SyncingOverlay } from '../components/Settings/SyncingOverlay';
 import type { SettingsTabId } from '../components/Settings/SettingsTabs';
 
-const VALID_TABS: SettingsTabId[] = ['connections', 'products', 'billing', 'profile'];
+const VALID_TABS: SettingsTabId[] = ['connections', 'products', 'plan', 'billing', 'profile'];
 
 export function SettingsPage() {
   const navigate = useNavigate();
@@ -99,6 +99,7 @@ export function SettingsPage() {
               <ConnectionsTab isOnboarding={isOnboarding} onStartSync={handleStartSync} />
             )}
             {activeTab === 'products' && <ProductsTab />}
+            {activeTab === 'plan' && <PlanTab />}
             {activeTab === 'billing' && <BillingTab />}
             {activeTab === 'profile' && <ProfileTab />}
           </div>

@@ -166,41 +166,42 @@ export const UnitEconomicsPage = () => {
   }, [matrixFilter, matrixData]);
 
   // Per-MP plan maps (for expanded row progress bars)
+  // FIX: Use per-MP UE data for actual revenue (not planData.by_product which is all-MP)
   const wbPlanMap = useMemo(() => {
     const map = new Map<string, { plan_revenue: number; actual_revenue: number; completion_percent: number }>();
-    if (wbPlanData?.plans && planData?.by_product) {
-      const planByProduct = new Map(wbPlanData.plans.map((p) => [p.product_id, p.plan_revenue]));
-      for (const bp of planData.by_product) {
-        const plan = planByProduct.get(bp.product_id);
-        if (plan && plan > 0) {
-          map.set(bp.product_id, {
-            plan_revenue: plan,
-            actual_revenue: bp.actual_revenue,
-            completion_percent: (bp.actual_revenue / plan) * 100,
-          });
-        }
+    if (!wbPlanData?.plans) return map;
+    const actualProducts = wbData?.products ?? (marketplace === 'wb' ? unitProducts : []);
+    const actualMap = new Map(actualProducts.map((p) => [p.product.id, p.metrics.revenue]));
+    for (const plan of wbPlanData.plans) {
+      if (plan.plan_revenue > 0) {
+        const actual = actualMap.get(plan.product_id) ?? 0;
+        map.set(plan.product_id, {
+          plan_revenue: plan.plan_revenue,
+          actual_revenue: actual,
+          completion_percent: (actual / plan.plan_revenue) * 100,
+        });
       }
     }
     return map;
-  }, [wbPlanData, planData]);
+  }, [wbPlanData, wbData, marketplace, unitProducts]);
 
   const ozonPlanMap = useMemo(() => {
     const map = new Map<string, { plan_revenue: number; actual_revenue: number; completion_percent: number }>();
-    if (ozonPlanData?.plans && planData?.by_product) {
-      const planByProduct = new Map(ozonPlanData.plans.map((p) => [p.product_id, p.plan_revenue]));
-      for (const bp of planData.by_product) {
-        const plan = planByProduct.get(bp.product_id);
-        if (plan && plan > 0) {
-          map.set(bp.product_id, {
-            plan_revenue: plan,
-            actual_revenue: bp.actual_revenue,
-            completion_percent: (bp.actual_revenue / plan) * 100,
-          });
-        }
+    if (!ozonPlanData?.plans) return map;
+    const actualProducts = ozonData?.products ?? (marketplace === 'ozon' ? unitProducts : []);
+    const actualMap = new Map(actualProducts.map((p) => [p.product.id, p.metrics.revenue]));
+    for (const plan of ozonPlanData.plans) {
+      if (plan.plan_revenue > 0) {
+        const actual = actualMap.get(plan.product_id) ?? 0;
+        map.set(plan.product_id, {
+          plan_revenue: plan.plan_revenue,
+          actual_revenue: actual,
+          completion_percent: (actual / plan.plan_revenue) * 100,
+        });
       }
     }
     return map;
-  }, [ozonPlanData, planData]);
+  }, [ozonPlanData, ozonData, marketplace, unitProducts]);
 
   const profitableCount = useMemo(
     () => unitProducts.filter((p) => p.metrics.net_profit > 0).length,
@@ -322,6 +323,7 @@ export const UnitEconomicsPage = () => {
           hasReturns={hasReturns}
           hasPlan={hasPlan}
           totalProfit={totals.profit}
+          totalPlanCompletion={planData?.completion_percent ?? 0}
           planPaceMap={planPaceMap}
           matrixFilter={matrixFilter}
           matrixProductIds={matrixProductIds}

@@ -6,7 +6,7 @@
  * Приоритет для completion card: total → per-MP → per-product
  */
 import { useState, useMemo, useCallback } from 'react';
-import { ChevronLeft, ChevronRight, ChevronDown, Target, RotateCcw, Loader2 } from 'lucide-react';
+import { ChevronLeft, ChevronRight, ChevronDown, Target, RotateCcw, Loader2, AlertTriangle } from 'lucide-react';
 import { toast } from 'sonner';
 import {
   useSalesPlan,
@@ -68,6 +68,27 @@ export function SalesPlanEditor() {
   const productTabTotal = useMemo(() => {
     return productPlans.reduce((sum, p) => sum + p.plan_revenue, 0);
   }, [productPlans]);
+
+  // Consistency warnings between plan levels
+  const warnings = useMemo(() => {
+    const result: string[] = [];
+    const mpSum = summary.wb + summary.ozon;
+    if (summary.total > 0 && mpSum > 0 && mpSum > summary.total * 1.01) {
+      result.push(`Сумма МП (${formatCurrency(mpSum)}) превышает общий план (${formatCurrency(summary.total)})`);
+    }
+    if (summary.total > 0 && (summary.wb > 0 || summary.ozon > 0)) {
+      result.push('При наличии общего плана он имеет приоритет над планами МП');
+    }
+    const wbProductTotal = (wbData?.plans ?? []).reduce((s, p) => s + p.plan_revenue, 0);
+    const ozonProductTotal = (ozonData?.plans ?? []).reduce((s, p) => s + p.plan_revenue, 0);
+    if (summary.wb > 0 && wbProductTotal > summary.wb * 1.01) {
+      result.push(`Сумма товаров WB (${formatCurrency(wbProductTotal)}) > план WB (${formatCurrency(summary.wb)})`);
+    }
+    if (summary.ozon > 0 && ozonProductTotal > summary.ozon * 1.01) {
+      result.push(`Сумма товаров Ozon (${formatCurrency(ozonProductTotal)}) > план Ozon (${formatCurrency(summary.ozon)})`);
+    }
+    return result;
+  }, [summary, wbData, ozonData]);
 
   // Save summary plan
   const saveSummary = useCallback(
@@ -280,6 +301,18 @@ export function SalesPlanEditor() {
               </button>
             </div>
           )}
+        </div>
+      )}
+
+      {/* Consistency warnings */}
+      {warnings.length > 0 && (
+        <div className="mt-3 space-y-1">
+          {warnings.map((w, i) => (
+            <div key={i} className="flex items-start gap-1.5 text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-2.5 py-1.5">
+              <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
+              <span>{w}</span>
+            </div>
+          ))}
         </div>
       )}
 

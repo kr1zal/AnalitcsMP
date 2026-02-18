@@ -1,10 +1,10 @@
 /**
  * SettingsTabs — vertical sidebar (md+) / horizontal scroll pills (mobile).
  */
-import { Link2, Package, CreditCard, User } from 'lucide-react';
+import { Link2, Package, Target, CreditCard, User } from 'lucide-react';
 import { cn } from '../../lib/utils';
 
-export type SettingsTabId = 'connections' | 'products' | 'billing' | 'profile';
+export type SettingsTabId = 'connections' | 'products' | 'plan' | 'billing' | 'profile';
 
 interface TabDef {
   id: SettingsTabId;
@@ -15,6 +15,7 @@ interface TabDef {
 const TABS: TabDef[] = [
   { id: 'connections', label: 'Подключения', icon: Link2 },
   { id: 'products', label: 'Товары', icon: Package },
+  { id: 'plan', label: 'План продаж', icon: Target },
   { id: 'billing', label: 'Тариф', icon: CreditCard },
   { id: 'profile', label: 'Профиль', icon: User },
 ];

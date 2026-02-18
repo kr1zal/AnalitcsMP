@@ -56,8 +56,8 @@ const CustomTooltip = ({ active, payload, label }: CustomTooltipProps) => {
 
 export const StockHistoryChartInner = ({ data, lines }: StockHistoryChartInnerProps) => {
   return (
-    <div className="h-[160px] sm:h-[200px]">
-      <ResponsiveContainer width="100%" height="100%">
+    <div>
+      <ResponsiveContainer width="100%" height={160} className="sm:!h-[200px]">
         <LineChart data={data} margin={{ top: 4, right: 4, bottom: 0, left: -20 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" />
           <XAxis

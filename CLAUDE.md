@@ -25,7 +25,8 @@ Read and follow coding standards: .claude/rules/coding-standards.md
 - Прибыль per OZON/WB в карточках MarketplaceBreakdown
 - Dashboard v2: ProfitWaterfall + ProfitChart + TopProductsChart + ConversionChart
 - План продаж: 3 уровня (total → per-MP → per-product), completion card, UE column
-- Enterprise Settings: unified `/settings` с табами (Подключения, Товары, Тариф, Профиль)
+- Enterprise Settings: unified `/settings` с 5 табами (Подключения, Товары, План продаж, Тариф, Профиль)
+- Sales Plan Audit: 6 багфиксов (completion inflation, per-MP actual, weighted avg, FeatureGate, SaveInput, warnings)
 
 ## Активные задачи
 - [x] Hide Business tier, SEO index.html, admin ID→config — CLOSED
@@ -62,7 +63,8 @@ Read and follow coding standards: .claude/rules/coding-standards.md
 26. **Dashboard layout (lg+):** 2x2 charts grid (Sales|Profit, DRR|Conversion) + analytics row (Waterfall|TopProducts)
 27. **Sales Plan:** 3 уровня (total → per-MP → per-product). Приоритет completion: total > MP > product. Факт ТОЛЬКО за месяцы с планом (НЕ за весь date range дашборда). Сброс: `DELETE /sales-plan/reset`. `mp_sales_plan` (per-product) + `mp_sales_plan_summary` (total/MP)
 28. **Dashboard Cards:** grid 4×2 (`grid-cols-2 lg:grid-cols-4`). Enterprise SummaryCard с accent-иконками, secondaryValue, ChangeBadge. Row1: Заказы|Выкупы|Себестоимость|Чист.прибыль. Row2: Удержания|Реклама+ДРР|К перечисл.|Δ/Рентабельность. ДРР merged в Реклама (НЕ отдельная карточка). Period comparison через ChangeBadge (НЕ отдельные карточки)
-29. **Enterprise Settings:** unified `/settings?tab=` (НЕ отдельные /sync, /settings, аккаунт-блок). 4 таба: Подключения|Товары|Тариф|Профиль. URL state через `useSearchParams`. Desktop: vertical sidebar (md+). Mobile: horizontal scroll pills. SyncingOverlay как full-screen фаза (idle→syncing→done). `/sync` → redirect `/settings?tab=connections`. ARIA: tablist/tab/tabpanel
+29. **Enterprise Settings:** unified `/settings?tab=` (НЕ отдельные /sync, /settings, аккаунт-блок). 5 табов: Подключения|Товары|**План продаж**|Тариф|Профиль. URL state через `useSearchParams`. Desktop: vertical sidebar (md+). Mobile: horizontal scroll pills. SyncingOverlay как full-screen фаза (idle→syncing→done). `/sync` → redirect `/settings?tab=connections`. ARIA: tablist/tab/tabpanel
+30. **Sales Plan completion:** actual только по МП с планами (`active_mps`). Per-MP actual из wbData/ozonData (НЕ planData.by_product). Footer = взвешенное completion (НЕ простое среднее). SaveInput: skip server sync при focus. Warnings при Σ(МП)>total
 
 ## Формулы (КРИТИЧНО)
 ```

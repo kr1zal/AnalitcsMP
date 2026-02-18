@@ -273,6 +273,25 @@ profit_ozon = ozon_total_accrued - adjustedPurchase × share - ad × share
 4. costsTreeRatio использует чистые "Продажи" (у OZON = displayed, т.к. нет credits)
 5. Прибыль считается от `total_accrued` (пейаут), НЕ от "Продажи"
 
+## Sales Plan Audit & Fixes — DEPLOYED (18.02.2026)
+
+Комплексный аудит механизма плана продаж (4 агента: backend, frontend UX, сценарии, CJM).
+
+### Исправленные баги (P1)
+1. **Completion inflation** (`sales_plan.py`): marketplace=all + план только на WB → actual считал WB+Ozon. Fix: `active_mps` list, actual только по МП с планами
+2. **wbPlanMap actual mismatch** (`UnitEconomicsPage.tsx`): `planData.by_product` содержал all-MP actual, а план per-MP. Fix: actual из `wbData.products`/`ozonData.products`
+3. **Footer weighted avg** (`UeTable.tsx`): простое среднее `Σ%/N` вместо взвешенного. Fix: `totalPlanCompletion` prop из backend `completion_percent`
+4. **FeatureGate**: Free-пользователи видели план. Fix: SalesPlanEditor + PlanCompletionCard обёрнуты в FeatureGate
+5. **SaveInput data loss** (`SaveInput.tsx`): server sync перезаписывал ввод при фокусе. Fix: `isFocusedRef`, skip sync при focus
+6. **Consistency warnings** (`SalesPlanEditor.tsx`): предупреждения при Σ(МП) > total, Σ(товары) > МП, total + МП coexist
+
+### Вынос "План продаж" в отдельный таб
+- `PlanTab.tsx` — обёртка SalesPlanEditor + FeatureGate
+- `ProductsTab.tsx` — теперь только ProductManagement
+- `SettingsTabs.tsx` — 5 табов: Подключения | Товары | **План продаж** | Тариф | Профиль
+- `SettingsPage.tsx` — routing для нового таба
+- URL: `/settings?tab=plan`
+
 ## Enterprise Settings — DEPLOYED (18.02.2026)
 
 Объединение трёх элементов (SyncPage, SettingsPage-монолит, аккаунт-блок) в единую enterprise `/settings` с табами.
@@ -283,11 +302,12 @@ profit_ozon = ozon_total_accrued - adjustedPurchase × share - ad × share
 - **ARIA:** `role="tablist/tab/tabpanel"`, `aria-selected`, `aria-controls`
 - **SyncingOverlay:** full-screen фазовый overlay (idle → syncing → done) с логарифмическим прогресс-баром
 
-### 4 таба
+### 5 табов
 | Таб | Компонент | Содержимое |
 |-----|-----------|-----------|
 | **Подключения** | `ConnectionsTab.tsx` (~350 строк) | API-токены (WB, Ozon×2) + статус синхронизации + ручной sync + логи |
-| **Товары** | `ProductsTab.tsx` | ProductManagement + SalesPlanEditor |
+| **Товары** | `ProductsTab.tsx` | ProductManagement |
+| **План продаж** | `PlanTab.tsx` | SalesPlanEditor (FeatureGate: Pro+) |
 | **Тариф** | `BillingTab.tsx` | SubscriptionCard + обработка `?payment=success/fail` |
 | **Профиль** | `ProfileTab.tsx` | Email + logout + удаление аккаунта (double-confirm) |
 

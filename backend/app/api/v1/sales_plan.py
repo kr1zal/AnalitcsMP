@@ -341,19 +341,32 @@ async def get_sales_plan_completion(
         }
 
     # Priority 2: per-MP summary plans
+    # FIX: Only count actual revenue from marketplaces that actually have plans
     if mp_filter:
         mp_plan = summary_by_level.get(mp_filter, 0)
         plan_months = sorted(months_with_summary.get(mp_filter, set()))
+        active_mps = [mp_filter] if mp_plan > 0 else []
     else:
-        mp_plan = summary_by_level.get("wb", 0) + summary_by_level.get("ozon", 0)
+        active_mps = []
+        if summary_by_level.get("wb", 0) > 0:
+            active_mps.append("wb")
+        if summary_by_level.get("ozon", 0) > 0:
+            active_mps.append("ozon")
+        mp_plan = sum(summary_by_level.get(mp, 0) for mp in active_mps)
         plan_months = sorted(
-            (months_with_summary.get("wb", set()) | months_with_summary.get("ozon", set()))
+            set().union(*(months_with_summary.get(mp, set()) for mp in active_mps)) if active_mps else set()
         )
 
     if mp_plan > 0:
         actual_from, actual_to = _plan_months_range(plan_months, today)
         label = _make_label(plan_months)
-        total_actual = await _get_total_actual(supabase, current_user.id, actual_from, actual_to, mp_filter)
+        # When marketplace=all and only some MPs have plans, sum actual only for those MPs
+        if mp_filter or len(active_mps) == 2:
+            total_actual = await _get_total_actual(supabase, current_user.id, actual_from, actual_to, mp_filter)
+        else:
+            total_actual = 0
+            for mp in active_mps:
+                total_actual += await _get_total_actual(supabase, current_user.id, actual_from, actual_to, mp)
         total_completion = round((total_actual / mp_plan) * 100, 1) if mp_plan > 0 else 0
         return {
             "status": "success",

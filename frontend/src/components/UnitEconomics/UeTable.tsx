@@ -69,6 +69,8 @@ interface UeTableProps {
   hasReturns: boolean;
   hasPlan: boolean;
   totalProfit: number;
+  /** Weighted completion from backend (Σactual/Σplan×100) */
+  totalPlanCompletion: number;
   planPaceMap: Map<string, PlanPaceData>;
   matrixFilter: MatrixQuadrant | null;
   matrixProductIds: Set<string> | null;
@@ -152,7 +154,7 @@ function ContributionBar({ pct }: { pct: number }) {
 
 export function UeTable({
   products, abcMap, planMap, mpBreakdown, marketplace,
-  hasAds, hasReturns: _hasReturns, hasPlan, totalProfit,
+  hasAds, hasReturns: _hasReturns, hasPlan, totalProfit, totalPlanCompletion,
   planPaceMap, matrixFilter, matrixProductIds, onMatrixClear,
   planMonth: _planMonth, onPlanSave: _onPlanSave, wbPlanMap, ozonPlanMap,
 }: UeTableProps) {
@@ -494,7 +496,7 @@ export function UeTable({
                 <td className="px-2 sm:px-3 py-2.5" />
                 <td className="px-1 py-2.5" />
                 {hasPlan && (() => {
-                  const pct = planMap.size > 0 ? Math.round([...planMap.values()].reduce((a, b) => a + b, 0) / planMap.size) : 0;
+                  const pct = Math.round(totalPlanCompletion);
                   return (
                     <td className="px-2 py-2.5 text-right">
                       <span className={cn('text-xs font-medium px-1.5 py-0.5 rounded tabular-nums', getCompletionColor(pct))}>{pct}%</span>

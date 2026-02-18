@@ -22,15 +22,17 @@ export function SaveInput({ value, onSave, placeholder = '0', className = '', co
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const timeoutRef = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const isFocusedRef = useRef(false);
 
-  // Sync with server value when it changes
+  // Sync with server value when it changes (skip when input is focused to prevent data loss)
   const prevValue = useRef(value);
-  if (prevValue.current !== value && !saving) {
+  if (prevValue.current !== value && !saving && !isFocusedRef.current) {
     prevValue.current = value;
     setLocalValue(value > 0 ? String(value) : '');
   }
 
   const handleBlur = async () => {
+    isFocusedRef.current = false;
     const newValue = parseFloat(localValue) || 0;
     if (newValue === value) return;
 
@@ -57,6 +59,7 @@ export function SaveInput({ value, onSave, placeholder = '0', className = '', co
         step="1000"
         value={localValue}
         onChange={(e) => setLocalValue(e.target.value)}
+        onFocus={() => { isFocusedRef.current = true; }}
         onBlur={handleBlur}
         onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
         placeholder={placeholder}

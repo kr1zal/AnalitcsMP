@@ -28,6 +28,7 @@ import { CostsDonutChart } from '../components/Dashboard/CostsDonutChart';
 import { StockForecastChart } from '../components/Dashboard/StockForecastChart';
 import { StockHistoryChart } from '../components/Dashboard/StockHistoryChart';
 import { PlanCompletionCard } from '../components/Dashboard/PlanCompletionCard';
+import { FeatureGate } from '../components/Shared/FeatureGate';
 import { FilterPanel } from '../components/Shared/FilterPanel';
 import { LoadingSpinner } from '../components/Shared/LoadingSpinner';
 import {
@@ -794,10 +795,12 @@ export const DashboardPage = () => {
         )}
       </div>
 
-      {/* 2.5. План продаж (если задан) */}
-      <div className="mb-4 sm:mb-5 lg:mb-6">
-        <PlanCompletionCard data={planCompletionData} loading={planCompletionLoading} />
-      </div>
+      {/* 2.5. План продаж (если задан, только Pro+) */}
+      <FeatureGate feature="unit_economics" hide>
+        <div className="mb-4 sm:mb-5 lg:mb-6">
+          <PlanCompletionCard data={planCompletionData} loading={planCompletionLoading} />
+        </div>
+      </FeatureGate>
 
       {/* 3. MarketplaceBreakdown (OZON / WB) */}
       <MarketplaceBreakdown
