@@ -1,6 +1,7 @@
 /**
  * AdsCampaignTable — Enterprise таблица рекламных кампаний
- * Search, sort, pagination, color-coded DRR, progress bars
+ * Desktop: sortable table with progress bars
+ * Mobile: expandable cards with summary bar, progressive disclosure
  */
 import { useMemo, useState, useCallback } from 'react';
 import { Search, ChevronUp, ChevronDown, ChevronLeft, ChevronRight } from 'lucide-react';
@@ -52,6 +53,7 @@ export const AdsCampaignTable = ({ campaigns, isLoading }: AdsCampaignTableProps
   const [sortField, setSortField] = useState<SortField>('cost');
   const [sortDir, setSortDir] = useState<SortDir>('desc');
   const [page, setPage] = useState(0);
+  const [expandedCards, setExpandedCards] = useState<Set<string>>(new Set());
 
   const handleSort = useCallback((field: SortField) => {
     if (sortField === field) {
@@ -63,11 +65,19 @@ export const AdsCampaignTable = ({ campaigns, isLoading }: AdsCampaignTableProps
     setPage(0);
   }, [sortField]);
 
+  const toggleCard = useCallback((key: string) => {
+    setExpandedCards((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }, []);
+
   // Filter + sort
   const { filtered, totalCost, totalImpressions, totalClicks, totalOrders } = useMemo(() => {
     let items = [...campaigns];
 
-    // Search
     if (search.trim()) {
       const q = search.trim().toLowerCase();
       items = items.filter(
@@ -78,18 +88,15 @@ export const AdsCampaignTable = ({ campaigns, isLoading }: AdsCampaignTableProps
       );
     }
 
-    // MP filter
     if (mpFilter === 'wb') items = items.filter((c) => c.marketplace === 'wb');
     else if (mpFilter === 'ozon') items = items.filter((c) => c.marketplace === 'ozon');
     else if (mpFilter === 'high-drr') items = items.filter((c) => c.drr > 20);
 
-    // Totals before sort
     const totalCost = items.reduce((s, c) => s + c.cost, 0);
     const totalImpressions = items.reduce((s, c) => s + c.impressions, 0);
     const totalClicks = items.reduce((s, c) => s + c.clicks, 0);
     const totalOrders = items.reduce((s, c) => s + c.orders, 0);
 
-    // Sort
     items.sort((a, b) => {
       const av = a[sortField] ?? 0;
       const bv = b[sortField] ?? 0;
@@ -99,12 +106,11 @@ export const AdsCampaignTable = ({ campaigns, isLoading }: AdsCampaignTableProps
     return { filtered: items, totalCost, totalImpressions, totalClicks, totalOrders };
   }, [campaigns, search, mpFilter, sortField, sortDir]);
 
-  // Pagination
   const totalPages = Math.max(1, Math.ceil(filtered.length / ITEMS_PER_PAGE));
   const paged = filtered.slice(page * ITEMS_PER_PAGE, (page + 1) * ITEMS_PER_PAGE);
   const maxCost = filtered.length > 0 ? Math.max(...filtered.map((c) => c.cost)) : 1;
 
-  // Sort header helper
+  // Sort header helper (desktop)
   const SortHeader = ({ field, label, align = 'right' }: { field: SortField; label: string; align?: 'left' | 'right' }) => (
     <th
       className={cn(
@@ -169,7 +175,7 @@ export const AdsCampaignTable = ({ campaigns, isLoading }: AdsCampaignTableProps
               placeholder="Поиск кампании..."
               value={search}
               onChange={(e) => { setSearch(e.target.value); setPage(0); }}
-              className="w-full pl-8 pr-3 py-1.5 text-xs rounded-lg border border-gray-200 focus:border-indigo-300 focus:ring-1 focus:ring-indigo-200 outline-none"
+              className="w-full pl-8 pr-3 py-2 text-sm rounded-lg border border-gray-200 bg-gray-50 placeholder:text-gray-400 focus:border-indigo-300 focus:ring-1 focus:ring-indigo-200 outline-none transition-all"
             />
           </div>
 
@@ -180,7 +186,7 @@ export const AdsCampaignTable = ({ campaigns, isLoading }: AdsCampaignTableProps
                 key={f.value}
                 onClick={() => { setMpFilter(f.value); setPage(0); }}
                 className={cn(
-                  'px-2 py-0.5 rounded-full text-[10px] sm:text-xs font-medium transition-colors',
+                  'px-2.5 py-1.5 rounded-full text-[11px] sm:text-xs font-medium transition-colors active:scale-95',
                   mpFilter === f.value
                     ? f.value === 'high-drr' ? 'bg-red-600 text-white' : 'bg-indigo-600 text-white'
                     : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
@@ -191,20 +197,32 @@ export const AdsCampaignTable = ({ campaigns, isLoading }: AdsCampaignTableProps
             ))}
           </div>
 
-          {/* Mobile sort dropdown */}
-          <select
-            value={sortField}
-            onChange={(e) => { setSortField(e.target.value as SortField); setPage(0); }}
-            className="sm:hidden text-xs border border-gray-200 rounded-lg px-2 py-1.5"
-          >
-            {SORT_OPTIONS.map((o) => (
-              <option key={o.value} value={o.value}>{o.label}</option>
-            ))}
-          </select>
+          {/* Mobile sort: dropdown + direction toggle */}
+          <div className="sm:hidden flex items-center gap-1.5">
+            <select
+              value={sortField}
+              onChange={(e) => { setSortField(e.target.value as SortField); setPage(0); }}
+              className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 bg-gray-50"
+            >
+              {SORT_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>{o.label}</option>
+              ))}
+            </select>
+            <button
+              onClick={() => setSortDir((d) => d === 'asc' ? 'desc' : 'asc')}
+              className="p-1.5 rounded-lg border border-gray-200 active:bg-gray-50"
+              aria-label={sortDir === 'asc' ? 'По возрастанию' : 'По убыванию'}
+            >
+              {sortDir === 'asc'
+                ? <ChevronUp className="w-3.5 h-3.5 text-gray-500" />
+                : <ChevronDown className="w-3.5 h-3.5 text-gray-500" />
+              }
+            </button>
+          </div>
         </div>
       </div>
 
-      {/* Table (desktop) */}
+      {/* Desktop table */}
       <div className="hidden sm:block overflow-x-auto">
         <table className="w-full">
           <thead className="bg-gray-50">
@@ -254,8 +272,6 @@ export const AdsCampaignTable = ({ campaigns, isLoading }: AdsCampaignTableProps
               );
             })}
           </tbody>
-
-          {/* Summary row */}
           <tfoot className="bg-gray-50">
             <tr className="font-semibold text-sm">
               <td className="px-3 py-2.5 text-gray-900">ИТОГО</td>
@@ -267,11 +283,7 @@ export const AdsCampaignTable = ({ campaigns, isLoading }: AdsCampaignTableProps
                 {formatPercent(totalImpressions > 0 ? (totalClicks / totalImpressions) * 100 : 0)}
               </td>
               <td className="px-3 py-2.5 text-right text-gray-900 tabular-nums">{formatNumber(totalOrders)}</td>
-              <td className="px-3 py-2.5 text-right">
-                <span className={getDrrColor(totalCost > 0 ? (totalCost / (totalCost / ((campaigns[0]?.drr || 1) / 100))) * 100 : 0)}>
-                  —
-                </span>
-              </td>
+              <td className="px-3 py-2.5 text-right text-gray-500">—</td>
               <td className="px-3 py-2.5 text-right text-gray-700 tabular-nums">
                 {formatCurrency(totalClicks > 0 ? totalCost / totalClicks : 0)}
               </td>
@@ -280,32 +292,98 @@ export const AdsCampaignTable = ({ campaigns, isLoading }: AdsCampaignTableProps
         </table>
       </div>
 
-      {/* Cards (mobile) */}
+      {/* Mobile: summary bar */}
+      <div className="sm:hidden px-3 py-2 bg-gray-50/80 border-b border-gray-100 flex items-center gap-3 text-[10px] text-gray-500">
+        <span>Расход <b className="text-red-600 tabular-nums">{formatCurrency(totalCost)}</b></span>
+        <span>Заказов <b className="text-gray-700 tabular-nums">{formatNumber(totalOrders)}</b></span>
+        <span className="ml-auto text-gray-400 tabular-nums">{filtered.length} камп.</span>
+      </div>
+
+      {/* Mobile: expandable cards */}
       <div className="sm:hidden divide-y divide-gray-100">
-        {paged.map((c) => (
-          <div key={`${c.campaign_id}-${c.marketplace}-m`} className="p-3">
-            <div className="flex items-center justify-between mb-1.5">
-              <span className="text-sm font-medium text-gray-900 truncate flex-1 mr-2">
-                {c.campaign_name || `#${c.campaign_id.slice(0, 8)}`}
-              </span>
-              {getMpBadge(c.marketplace)}
+        {paged.map((c) => {
+          const cardKey = `${c.campaign_id}-${c.marketplace}`;
+          const isExpanded = expandedCards.has(cardKey);
+          const costPct = maxCost > 0 ? (c.cost / maxCost) * 100 : 0;
+          return (
+            <div key={`${cardKey}-m`}>
+              <button
+                type="button"
+                onClick={() => toggleCard(cardKey)}
+                className="w-full px-3 py-3 text-left active:bg-gray-50/50 transition-colors"
+                aria-expanded={isExpanded}
+              >
+                {/* Row 1: Name + MP badge */}
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-[13px] font-medium text-gray-900 truncate flex-1 mr-2 leading-tight">
+                    {c.campaign_name || `#${c.campaign_id.slice(0, 8)}`}
+                  </span>
+                  <div className="flex items-center gap-1.5">
+                    {getMpBadge(c.marketplace)}
+                    <ChevronDown className={cn(
+                      'w-3.5 h-3.5 text-gray-400 transition-transform duration-200',
+                      isExpanded && 'rotate-180'
+                    )} />
+                  </div>
+                </div>
+
+                {/* Row 2: Key metrics */}
+                <div className="grid grid-cols-3 gap-3 mb-1.5">
+                  <div>
+                    <span className="text-[10px] text-gray-400 block">Расход</span>
+                    <div className="text-sm font-semibold text-red-600 tabular-nums">{formatCurrency(c.cost)}</div>
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-gray-400 block">ДРР</span>
+                    <div className={cn('text-sm font-semibold tabular-nums', getDrrColor(c.drr))}>
+                      {formatPercent(c.drr)}
+                    </div>
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-gray-400 block">Заказы</span>
+                    <div className="text-sm font-semibold text-gray-900 tabular-nums">{formatNumber(c.orders)}</div>
+                  </div>
+                </div>
+
+                {/* Cost progress bar */}
+                <div className="h-1 rounded-full bg-gray-100 overflow-hidden">
+                  <div className="h-full rounded-full bg-red-400" style={{ width: `${Math.max(2, costPct)}%` }} />
+                </div>
+              </button>
+
+              {/* Expanded details */}
+              {isExpanded && (
+                <div className="px-3 pb-3">
+                  <div className="bg-gray-50 rounded-lg p-2.5">
+                    {c.product_name && (
+                      <p className="text-[10px] text-gray-400 mb-2 truncate">
+                        Товар: <span className="text-gray-600">{c.product_name}</span>
+                      </p>
+                    )}
+                    <div className="grid grid-cols-2 gap-2 text-[11px]">
+                      <div>
+                        <span className="text-gray-400">Показы</span>
+                        <div className="font-semibold text-gray-900 tabular-nums">{formatNumber(c.impressions)}</div>
+                      </div>
+                      <div>
+                        <span className="text-gray-400">Клики</span>
+                        <div className="font-semibold text-gray-900 tabular-nums">{formatNumber(c.clicks)}</div>
+                      </div>
+                      <div>
+                        <span className="text-gray-400">CTR</span>
+                        <div className="font-semibold text-gray-900 tabular-nums">{formatPercent(c.ctr)}</div>
+                      </div>
+                      <div>
+                        <span className="text-gray-400">CPC</span>
+                        <div className="font-semibold text-gray-900 tabular-nums">{formatCurrency(c.cpc)}</div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
-            <div className="grid grid-cols-3 gap-2 text-[11px]">
-              <div>
-                <span className="text-gray-400">Расход</span>
-                <div className="font-semibold text-red-600 tabular-nums">{formatCurrency(c.cost)}</div>
-              </div>
-              <div>
-                <span className="text-gray-400">ДРР</span>
-                <div className={cn('font-semibold tabular-nums', getDrrColor(c.drr))}>{formatPercent(c.drr)}</div>
-              </div>
-              <div>
-                <span className="text-gray-400">Заказы</span>
-                <div className="font-semibold text-gray-900 tabular-nums">{formatNumber(c.orders)}</div>
-              </div>
-            </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
 
       {/* Pagination */}
@@ -314,20 +392,22 @@ export const AdsCampaignTable = ({ campaigns, isLoading }: AdsCampaignTableProps
           <span className="text-xs text-gray-500">
             {page * ITEMS_PER_PAGE + 1}–{Math.min((page + 1) * ITEMS_PER_PAGE, filtered.length)} из {filtered.length}
           </span>
-          <div className="flex gap-1">
+          <div className="flex gap-1.5">
             <button
               onClick={() => setPage((p) => Math.max(0, p - 1))}
               disabled={page === 0}
-              className="p-1 rounded hover:bg-gray-200 disabled:opacity-30"
+              className="p-1.5 rounded-lg border border-gray-200 hover:bg-gray-200 disabled:opacity-30 active:bg-gray-50 transition-colors"
+              aria-label="Предыдущая страница"
             >
-              <ChevronLeft className="w-4 h-4" />
+              <ChevronLeft className="w-4 h-4 text-gray-600" />
             </button>
             <button
               onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
               disabled={page >= totalPages - 1}
-              className="p-1 rounded hover:bg-gray-200 disabled:opacity-30"
+              className="p-1.5 rounded-lg border border-gray-200 hover:bg-gray-200 disabled:opacity-30 active:bg-gray-50 transition-colors"
+              aria-label="Следующая страница"
             >
-              <ChevronRight className="w-4 h-4" />
+              <ChevronRight className="w-4 h-4 text-gray-600" />
             </button>
           </div>
         </div>

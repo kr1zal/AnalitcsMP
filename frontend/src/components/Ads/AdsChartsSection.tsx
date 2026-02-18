@@ -1,31 +1,25 @@
 /**
- * AdsChartsSection — 2-column lazy-loaded charts
+ * AdsChartsSection — 2-column charts
  * Left: DRR trend (reuse DrrChart)
- * Right: Spend vs Revenue (lazy AdsSpendChart)
+ * Right: Spend vs Revenue (AdsSpendChart)
+ *
+ * NOTE: DrrChart is already statically imported → Recharts in main bundle.
+ * Lazy-loading AdsSpendChart was causing Recharts "width(-1)" warnings
+ * due to Suspense timing. Static import eliminates the issue.
  */
-import { Suspense, lazy } from 'react';
 import { DrrChart } from '../Dashboard/DrrChart';
+import { AdsSpendChart } from './AdsSpendChart';
 import type { AdCostsChartDataPoint } from '../../types';
-
-const LazySpendChart = lazy(() =>
-  import('./AdsSpendChart').then((m) => ({ default: m.AdsSpendChart }))
-);
 
 interface AdsChartsSectionProps {
   data: AdCostsChartDataPoint[];
   isLoading: boolean;
 }
 
-const ChartFallback = () => (
-  <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-3 sm:p-4">
-    <div className="h-[160px] sm:h-[200px] bg-gray-50 rounded animate-pulse" />
-  </div>
-);
-
 const EmptyChart = ({ title }: { title: string }) => (
-  <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-2 sm:p-3">
+  <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-3 sm:p-4">
     <h3 className="text-xs sm:text-sm font-semibold text-gray-900 mb-1.5 sm:mb-2">{title}</h3>
-    <div className="h-[160px] sm:h-[200px] flex items-center justify-center">
+    <div className="h-[180px] sm:h-[220px] flex items-center justify-center">
       <p className="text-sm text-gray-300">Нет данных</p>
     </div>
   </div>
@@ -45,13 +39,11 @@ export const AdsChartsSection = ({ data, isLoading }: AdsChartsSectionProps) => 
 
       {/* Расход vs Выручка */}
       {hasData ? (
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-2 sm:p-3">
+        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-3 sm:p-4">
           <h3 className="text-xs sm:text-sm font-semibold text-gray-900 mb-1.5 sm:mb-2">
             Расход vs Выручка
           </h3>
-          <Suspense fallback={<ChartFallback />}>
-            <LazySpendChart data={data} />
-          </Suspense>
+          <AdsSpendChart data={data} />
         </div>
       ) : (
         <EmptyChart title="Расход vs Выручка" />

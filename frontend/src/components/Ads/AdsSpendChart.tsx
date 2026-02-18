@@ -61,9 +61,11 @@ export const AdsSpendChart = ({ data }: AdsSpendChartProps) => {
     [data]
   );
 
+  if (data.length === 0) return null;
+
   return (
-    <div className="h-[160px] sm:h-[200px]">
-      <ResponsiveContainer width="100%" height="100%">
+    <div>
+      <ResponsiveContainer width="100%" height={180} className="sm:!h-[220px]">
         <BarChart data={chartData} margin={{ top: 4, right: 4, bottom: 0, left: -20 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" vertical={false} />
           <XAxis

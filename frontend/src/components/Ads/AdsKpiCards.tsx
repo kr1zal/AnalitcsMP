@@ -5,7 +5,7 @@
  */
 import { Megaphone, TrendingUp, Eye, ShoppingCart, MousePointer, Target, Banknote } from 'lucide-react';
 import { SummaryCard, type CardAccent } from '../Dashboard/SummaryCard';
-import { formatCurrency, formatPercent, formatNumber } from '../../lib/utils';
+import { formatPercent, formatNumber } from '../../lib/utils';
 import type { AdCostsResponse } from '../../types';
 
 interface AdsKpiCardsProps {
@@ -68,6 +68,7 @@ export const AdsKpiCards = ({ totals, previousTotals, isLoading }: AdsKpiCardsPr
         isPositive={totals.drr <= (previousTotals?.drr ?? totals.drr)}
         loading={isLoading}
         tooltip="Доля рекламных расходов = Расход / Выручка × 100%"
+        tooltipAlign="right"
         secondaryValue={previousTotals ? `было ${formatPercent(previousTotals.drr)}` : undefined}
       />
       <SummaryCard
@@ -93,6 +94,7 @@ export const AdsKpiCards = ({ totals, previousTotals, isLoading }: AdsKpiCardsPr
         loading={isLoading}
         secondaryValue={`CR ${formatPercent(cr)}`}
         tooltip="Заказы, атрибутированные к рекламным кампаниям"
+        tooltipAlign="right"
       />
 
       {/* Row 2 */}
@@ -109,19 +111,22 @@ export const AdsKpiCards = ({ totals, previousTotals, isLoading }: AdsKpiCardsPr
       <SummaryCard
         title="CPC"
         mobileTitle="CPC"
-        value={formatCurrency(cpc)}
+        value={cpc}
+        format="currency"
         icon={MousePointer}
         accent="violet"
         change={calcChange(cpc, prevCpc)}
         isPositive={prevCpc !== undefined ? cpc <= prevCpc : undefined}
         loading={isLoading}
         tooltip="Cost Per Click = Расход / Клики"
+        tooltipAlign="right"
         subtitle="Стоимость клика"
       />
       <SummaryCard
         title="CPO"
         mobileTitle="CPO"
-        value={formatCurrency(cpo)}
+        value={cpo}
+        format="currency"
         icon={Banknote}
         accent="amber"
         change={calcChange(cpo, prevCpo)}
@@ -139,6 +144,7 @@ export const AdsKpiCards = ({ totals, previousTotals, isLoading }: AdsKpiCardsPr
         change={calcChange(roas, prevRoas)}
         loading={isLoading}
         tooltip="Return On Ad Spend = Выручка / Расход"
+        tooltipAlign="right"
         subtitle={roas > 0 ? `на 1₽ → ${formatNumber(Math.round(roas))}₽ выручки` : undefined}
       />
     </div>
