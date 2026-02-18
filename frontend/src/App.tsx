@@ -8,7 +8,7 @@ import { Layout } from './components/Shared/Layout';
 import { ProtectedRoute } from './components/Shared/ProtectedRoute';
 import { DashboardPage } from './pages/DashboardPage';
 import { UnitEconomicsPage } from './pages/UnitEconomicsPage';
-import { SyncPage } from './pages/SyncPage';
+// SyncPage removed — content merged into SettingsPage ConnectionsTab
 import { AdsPage } from './pages/AdsPage';
 import { PrintPage } from './pages/PrintPage';
 import { LoginPage } from './pages/LoginPage';
@@ -82,7 +82,7 @@ function AppRoutes() {
         <Route path="unit-economics" element={<UnitEconomicsPage />} />
         <Route path="products" element={<Navigate to="/unit-economics" replace />} />
         <Route path="ads" element={<AdsPage />} />
-        <Route path="sync" element={<SyncPage />} />
+        <Route path="sync" element={<Navigate to="/settings?tab=connections" replace />} />
         <Route path="settings" element={<SettingsPage />} />
       </Route>
     </Routes>

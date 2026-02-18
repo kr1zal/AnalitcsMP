@@ -5,7 +5,7 @@
  */
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { Outlet, Link, useLocation } from 'react-router-dom';
-import { BarChart3, ClipboardList, Package, TrendingUp, RefreshCw, ChevronLeft, LogOut, Settings } from 'lucide-react';
+import { BarChart3, ClipboardList, Package, TrendingUp, ChevronLeft, LogOut, Settings } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { useIsMobile } from '../../hooks/useMediaQuery';
 import { useAuthStore } from '../../store/useAuthStore';
@@ -22,7 +22,6 @@ const navigation: {
   { name: 'Заказы', href: '/orders', icon: ClipboardList, feature: 'order_monitor' },
   { name: 'Unit-экономика', href: '/unit-economics', icon: TrendingUp },
   { name: 'Реклама', href: '/ads', icon: Package },
-  { name: 'Синхронизация', href: '/sync', icon: RefreshCw },
   { name: 'Настройки', href: '/settings', icon: Settings },
 ];
 

@@ -27,9 +27,10 @@ Read and follow coding standards: .claude/rules/coding-standards.md
 - План продаж: 3 уровня (total → per-MP → per-product), completion card, UE column
 
 ## Активные задачи
-- [ ] Hide Business tier, SEO index.html, admin ID→config
-- [ ] Возвраты + ДРР от заказов/выкупов
+- [x] Hide Business tier, SEO index.html, admin ID→config — CLOSED
+- [x] Возвраты + ДРР от заказов/выкупов — CLOSED
 - [ ] Улучшить PDF экспорт
+- [ ] Enterprise Settings: объединение Синхронизация + Настройки + Аккаунт
 
 ## Архитектурные решения (НЕ МЕНЯТЬ — 27 правил)
 1. **Costs-tree:** отдельные параллельные запросы per marketplace (НЕ combined)

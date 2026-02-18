@@ -165,7 +165,7 @@ export function UePlanPanel({ planData, summaryData, summaryMut, resetMut, month
           {/* Footer: link + reset */}
           <div className="flex items-center justify-between mt-3 pt-2 border-t border-gray-100">
             <Link
-              to="/settings#sales-plan"
+              to="/settings?tab=products"
               className="flex items-center gap-1 text-xs text-indigo-500 hover:text-indigo-700 transition-colors"
             >
               <ExternalLink className="w-3 h-3" />

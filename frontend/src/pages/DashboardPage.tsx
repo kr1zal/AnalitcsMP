@@ -557,7 +557,7 @@ export const DashboardPage = () => {
                 Позже
               </button>
               <button
-                onClick={() => { dismissCcModal(); navigate('/settings#products'); }}
+                onClick={() => { dismissCcModal(); navigate('/settings?tab=products'); }}
                 className="flex-1 py-2 text-sm font-medium text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 transition-colors"
               >
                 Перейти в настройки

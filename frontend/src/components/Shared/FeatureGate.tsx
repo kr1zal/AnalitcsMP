@@ -44,7 +44,7 @@ export function FeatureGate({ feature, children, hide }: FeatureGateProps) {
           Доступно на тарифе {minPlan}
         </p>
         <a
-          href="/settings#subscription"
+          href="/settings?tab=billing"
           className="mt-2 inline-flex items-center gap-1 text-xs text-indigo-600 hover:text-indigo-800 font-medium"
         >
           Подробнее <ArrowUpRight className="w-3 h-3" />
