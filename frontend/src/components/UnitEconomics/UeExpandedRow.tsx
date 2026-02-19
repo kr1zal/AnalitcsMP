@@ -6,7 +6,7 @@ import { Lightbulb } from 'lucide-react';
 import { formatCurrency, formatPercent, cn } from '../../lib/utils';
 import { UeMiniWaterfall } from './UeMiniWaterfall';
 import { getCompletionBarColor } from './uePlanHelpers';
-import type { UnitEconomicsItem, Marketplace } from '../../types';
+import type { UnitEconomicsItem, FulfillmentBreakdownItem, Marketplace } from '../../types';
 
 interface MpPlanEntry {
   plan_revenue: number;
@@ -28,6 +28,67 @@ const MP_STYLES = {
   wb: { color: '#8B3FFD', label: 'WB', border: 'border-purple-200', bg: 'bg-purple-50/30', dot: 'bg-purple-500' },
   ozon: { color: '#005BFF', label: 'OZON', border: 'border-blue-200', bg: 'bg-blue-50/30', dot: 'bg-blue-500' },
 };
+
+const FT_STYLES = {
+  fbo: { badge: 'bg-gray-100 text-gray-600', bar: 'bg-gray-400', label: 'FBO' },
+  fbs: { badge: 'bg-blue-100 text-blue-700', bar: 'bg-blue-500', label: 'FBS' },
+};
+
+function FtRow({ ft, data, totalRevenue }: { ft: 'fbo' | 'fbs'; data: FulfillmentBreakdownItem; totalRevenue: number }) {
+  const s = FT_STYLES[ft];
+  const pct = totalRevenue > 0 ? (data.revenue / totalRevenue) * 100 : 0;
+  const marginColor = data.margin >= 20 ? 'text-emerald-700' : data.margin >= 10 ? 'text-amber-700' : 'text-red-600';
+
+  return (
+    <div className="flex items-center gap-1.5 min-w-0">
+      <span className={cn('text-[9px] font-semibold px-1.5 py-0.5 rounded flex-shrink-0', s.badge)}>
+        {s.label}
+      </span>
+      <span className="text-[10px] tabular-nums text-gray-500 flex-shrink-0">{data.sales_count} шт</span>
+      <span className={cn('text-[10px] tabular-nums font-medium flex-shrink-0', marginColor)}>
+        {formatPercent(data.margin)}
+      </span>
+      {/* Proportion bar */}
+      <div className="flex-1 h-1.5 bg-gray-100 rounded-full overflow-hidden min-w-[32px]">
+        <div className={cn('h-full rounded-full', s.bar)} style={{ width: `${Math.min(100, pct)}%` }} />
+      </div>
+      <span className="text-[9px] tabular-nums text-gray-400 flex-shrink-0 w-7 text-right">{Math.round(pct)}%</span>
+    </div>
+  );
+}
+
+function FtBreakdownSection({ breakdown }: {
+  breakdown: { fbo?: FulfillmentBreakdownItem; fbs?: FulfillmentBreakdownItem };
+}) {
+  const { fbo, fbs } = breakdown;
+  if (!fbo && !fbs) return null;
+
+  // Use sum of FBO+FBS revenue as base (NOT costs-tree revenue) so FBO%+FBS%=100%
+  const ftTotalRevenue = (fbo?.revenue ?? 0) + (fbs?.revenue ?? 0);
+  const marginDelta = fbo && fbs && fbo.sales_count > 0 && fbs.sales_count > 0
+    ? fbo.margin - fbs.margin
+    : null;
+
+  return (
+    <div className="mt-2.5 pt-2 border-t border-dashed border-gray-200/80">
+      <div className="flex items-center gap-1.5 mb-1.5">
+        <span className="text-[9px] font-medium text-gray-400 uppercase tracking-wider">Фулфилмент</span>
+        {marginDelta !== null && Math.abs(marginDelta) > 5 && (
+          <span className={cn(
+            'text-[9px] font-medium px-1 py-0.5 rounded',
+            marginDelta > 0 ? 'bg-gray-50 text-gray-500' : 'bg-blue-50 text-blue-600',
+          )}>
+            {marginDelta > 0 ? 'FBO' : 'FBS'} +{Math.abs(marginDelta).toFixed(0)} пп
+          </span>
+        )}
+      </div>
+      <div className="space-y-1">
+        {fbo && fbo.sales_count > 0 && <FtRow ft="fbo" data={fbo} totalRevenue={ftTotalRevenue} />}
+        {fbs && fbs.sales_count > 0 && <FtRow ft="fbs" data={fbs} totalRevenue={ftTotalRevenue} />}
+      </div>
+    </div>
+  );
+}
 
 function MpCard({ metrics, mp, plan }: { metrics: UnitEconomicsItem; mp: 'wb' | 'ozon'; plan?: MpPlanEntry }) {
   const style = MP_STYLES[mp];
@@ -75,6 +136,11 @@ function MpCard({ metrics, mp, plan }: { metrics: UnitEconomicsItem; mp: 'wb' | 
         ads={m.ad_cost ?? 0}
         profit={m.net_profit}
       />
+
+      {/* FBO/FBS breakdown */}
+      {metrics.fulfillment_breakdown && (
+        <FtBreakdownSection breakdown={metrics.fulfillment_breakdown} />
+      )}
 
       {/* Bottom metrics */}
       <div className="grid grid-cols-3 gap-2 mt-3 pt-2 border-t border-gray-200/60">

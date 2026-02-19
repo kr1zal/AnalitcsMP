@@ -93,6 +93,13 @@ async def get_unit_economics(
     """
     supabase = get_supabase_client()
 
+    # Feature gate: FBS filtering requires Pro+ plan
+    include_ft_breakdown = True
+    if fulfillment_type and not has_feature(sub.plan, "fbs_analytics"):
+        fulfillment_type = None
+    if not has_feature(sub.plan, "fbs_analytics"):
+        include_ft_breakdown = False
+
     if not date_from:
         date_from = (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d")
     if not date_to:
@@ -153,6 +160,10 @@ async def get_unit_economics(
         # 5. Агрегация продаж и удержаний по товарам
         product_metrics: dict[str, dict] = {}
 
+        # 5a. FBO/FBS breakdown per product (when not filtered by fulfillment_type)
+        ft_sales: dict[str, dict[str, dict]] = {}  # {product_id: {FBO: {sales, revenue}, FBS: {...}}}
+        ft_costs: dict[str, dict[str, float]] = {}  # {product_id: {FBO: costs, FBS: costs}}
+
         for sale in sales_result.data:
             product_id = sale["product_id"]
             if product_id not in product_metrics:
@@ -161,11 +172,28 @@ async def get_unit_economics(
             product_metrics[product_id]["revenue"] += float(sale.get("revenue", 0))
             product_metrics[product_id]["returns"] += sale.get("returns_count", 0) or 0
 
+            # Track per fulfillment_type (only for Pro+ with fbs_analytics)
+            if include_ft_breakdown and not fulfillment_type:
+                ft = sale.get("fulfillment_type", "FBO") or "FBO"
+                if product_id not in ft_sales:
+                    ft_sales[product_id] = {}
+                if ft not in ft_sales[product_id]:
+                    ft_sales[product_id][ft] = {"sales": 0, "revenue": 0}
+                ft_sales[product_id][ft]["sales"] += sale.get("sales_count", 0)
+                ft_sales[product_id][ft]["revenue"] += float(sale.get("revenue", 0))
+
         for cost in costs_result.data:
             product_id = cost["product_id"]
             if product_id not in product_metrics:
                 continue
             product_metrics[product_id]["costs"] += float(cost.get("total_costs", 0))
+
+            # Track per fulfillment_type (only for Pro+ with fbs_analytics)
+            if include_ft_breakdown and not fulfillment_type:
+                ft = cost.get("fulfillment_type", "FBO") or "FBO"
+                if product_id not in ft_costs:
+                    ft_costs[product_id] = {}
+                ft_costs[product_id][ft] = ft_costs[product_id].get(ft, 0) + float(cost.get("total_costs", 0))
 
         # 6. Costs-tree: payout (total_accrued) + revenue ("Продажи") + credits (СПП и т.д.)
         #    Используем payout для расчёта прибыли — точно как на дашборде.
@@ -262,7 +290,39 @@ async def get_unit_economics(
 
             drr = round((ad_cost / displayed_revenue) * 100, 1) if displayed_revenue > 0 and ad_cost > 0 else 0
 
-            result.append({
+            # FBO/FBS breakdown (only when no fulfillment_type filter)
+            fb: dict | None = None
+            if not fulfillment_type and product_id in ft_sales:
+                ft_data = ft_sales[product_id]
+                # Only include if product has >1 fulfillment type or has FBS
+                has_fbs = "FBS" in ft_data and ft_data["FBS"]["sales"] > 0
+                if has_fbs:
+                    fb = {}
+                    for ft_key in ("FBO", "FBS"):
+                        s = ft_data.get(ft_key, {"sales": 0, "revenue": 0})
+                        c = ft_costs.get(product_id, {}).get(ft_key, 0)
+                        ft_rev = s["revenue"]
+                        ft_cnt = s["sales"]
+                        ft_purchase = purchase_price * ft_cnt
+                        # Proportional ad: ad_ft = ad × (ft_revenue / total_revenue)
+                        ft_ad = ad_cost * (ft_rev / mp_sales_revenue) if mp_sales_revenue > 0 else 0
+                        # Profit: payout_share - purchase - ads (same payout distribution)
+                        if use_payout and total_mp_sales_revenue > 0:
+                            ft_payout = total_payout * (ft_rev / total_mp_sales_revenue)
+                            ft_profit = ft_payout - ft_purchase - ft_ad
+                        else:
+                            ft_profit = ft_rev - c - ft_purchase - ft_ad
+                        ft_margin = (ft_profit / ft_rev * 100) if ft_rev > 0 else 0
+                        ft_unit_profit = round(ft_profit / ft_cnt, 2) if ft_cnt > 0 else 0
+                        fb[ft_key.lower()] = {
+                            "sales_count": ft_cnt,
+                            "revenue": round(ft_rev, 2),
+                            "net_profit": round(ft_profit, 2),
+                            "margin": round(ft_margin, 1),
+                            "unit_profit": ft_unit_profit,
+                        }
+
+            item: dict = {
                 "product": {
                     "id": product_id,
                     "name": product["name"],
@@ -280,7 +340,10 @@ async def get_unit_economics(
                     "net_profit": round(net_profit, 2),
                     "unit_profit": unit_profit
                 }
-            })
+            }
+            if fb:
+                item["fulfillment_breakdown"] = fb
+            result.append(item)
 
         result.sort(key=lambda x: x["metrics"]["net_profit"], reverse=True)
 

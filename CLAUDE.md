@@ -72,6 +72,7 @@ Read and follow coding standards: .claude/rules/coding-standards.md
 31. **Sales Plan v2:** PlanCompletionCard v2 (pace/forecast/days + кликабельность). StockPlanAlerts (self-contained, useStocks). Copy plan (НЕ auto-suggest — удалён как сырой). Month state поднят в PlanTab (НЕ дублировать getCurrentMonth). salesPlanApi с generic типами
 32. **FBS pills:** ВСЕГДА видны в FilterPanel (Все|FBO|FBS). НИКОГДА не скрывать, не удалять. Если FBS-данных нет — кнопка FBS disabled (серая, некликабельная). FBS — фича продукта, пользователь должен видеть что аналитика FBS поддерживается. `useFulfillmentInfo` хук для проверки наличия данных
 33. **FBS Sync:** WB: `isSupply=true→FBS` из reportDetailByPeriod (fallback `delivery_type_id`: 1=FBO, 2=FBS). Ozon costs: `posting.delivery_schema` из `/v3/finance/transaction/list`. Ozon sales (analytics API) — НЕТ FBS разбивки, остаётся FBO default. WB stocks — нет надёжного поля, FBO default. Хелпер: `SyncService._determine_wb_fulfillment(row)`. Миграция 018: колонка `fulfillment_type VARCHAR(10) DEFAULT 'FBO'` в 6 таблицах, RPC с `p_fulfillment_type`
+34. **UE FBO/FBS Breakdown:** ТОЛЬКО в раскрытой MpCard (НЕ в свёрнутой карточке). Backend: `fulfillment_breakdown` в UE ответе (per-product, вычисляется при агрегации). Скрывается если только FBO. Feature gate: `fbs_analytics` (Pro+). Пропорция: FBO%+FBS%=100% (base=sum ft_revenue, НЕ costs-tree). Реклама: `ad_ft = ad × (ft_rev / mp_sales_rev)`. Маржа delta badge при >5 пп. Цвета: gray=FBO, blue=FBS
 
 ## Формулы (КРИТИЧНО)
 ```
@@ -93,6 +94,9 @@ Conversion: sales / orders × 100% (выкуп %)
 Plan completion: actual ONLY for months WITH a plan. Priority: total > MP-sum > product-sum. Reset: deletes both tables for month
 Pace: pace_daily = actual / days_elapsed; required_pace = (plan - actual) / days_remaining
 Forecast: forecast_revenue = actual + pace_daily × days_remaining; forecast_percent = forecast / plan × 100
+FT breakdown: ft_payout = total_payout × (ft_rev / total_mp_sales_rev); ft_profit = ft_payout - ft_purchase - ft_ad
+FT ad distribution: ad_ft = ad_product × (ft_rev / product_rev) — реклама account-level, делится пропорционально
+FT proportion bar: pct = ft_rev / (fbo_rev + fbs_rev) × 100% — гарантия FBO% + FBS% = 100%
 ```
 
 ## Источники данных

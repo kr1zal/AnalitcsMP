@@ -158,6 +158,14 @@ export interface ProductMetrics {
   unit_profit: number;
 }
 
+export interface FulfillmentBreakdownItem {
+  sales_count: number;
+  revenue: number;
+  net_profit: number;
+  margin: number;
+  unit_profit: number;
+}
+
 export interface UnitEconomicsItem {
   product: {
     id: string;
@@ -166,6 +174,10 @@ export interface UnitEconomicsItem {
     purchase_price: number;
   };
   metrics: ProductMetrics;
+  fulfillment_breakdown?: {
+    fbo?: FulfillmentBreakdownItem;
+    fbs?: FulfillmentBreakdownItem;
+  };
 }
 
 export interface UnitEconomicsResponse {

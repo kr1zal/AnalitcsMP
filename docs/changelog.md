@@ -8,7 +8,22 @@
 ## [Unreleased]
 - PDF export improvements (Playwright backend)
 - Hide Business tier, SEO index.html, admin ID -> config
-- UE с разбивкой FBO/FBS (фронтенд)
+
+---
+
+## 2026-02-20
+
+### UE FBO/FBS Breakdown в MpCard
+- **Backend**: `fulfillment_breakdown` в ответе `/dashboard/unit-economics` — per-product FBO/FBS метрики (sales_count, revenue, net_profit, margin, unit_profit)
+- Breakdown вычисляется на лету при агрегации sales/costs (не доп. запросы)
+- Скрывается если товар только FBO (нет FBS продаж за период)
+- Feature gate: `fbs_analytics` (Pro+ план). Free план не получает breakdown и ft-фильтрацию
+- Реклама распределяется пропорционально: `ad_ft = ad × (ft_revenue / total_revenue)`
+- **Frontend types**: `FulfillmentBreakdownItem`, `fulfillment_breakdown?` в `UnitEconomicsItem`
+- **Frontend UI**: `FtBreakdownSection` + `FtRow` в `UeExpandedRow.tsx` → внутри MpCard
+- Stacked proportion bar (серый FBO / синий FBS), маржа с цветом, delta badge при >5 пп
+- FBO% + FBS% = 100% (используется сумма ft-revenue, не costs-tree revenue)
+- UE header: badge FBO/FBS + tooltip про рекламу (account-level)
 
 ---
 
