@@ -34,10 +34,45 @@ const FT_STYLES = {
   fbs: { badge: 'bg-blue-100 text-blue-700', bar: 'bg-blue-500', label: 'FBS' },
 };
 
-function FtRow({ ft, data, totalRevenue }: { ft: 'fbo' | 'fbs'; data: FulfillmentBreakdownItem; totalRevenue: number }) {
+/** Benchmark цвета маржинальности (индустриальный стандарт) */
+function getMarginStyle(margin: number): { text: string; bg: string } {
+  if (margin >= 25) return { text: 'text-emerald-700', bg: 'bg-emerald-50' };
+  if (margin >= 15) return { text: 'text-sky-700', bg: 'bg-sky-50' };
+  if (margin >= 10) return { text: 'text-amber-700', bg: 'bg-amber-50' };
+  if (margin >= 5) return { text: 'text-orange-600', bg: 'bg-orange-50' };
+  return { text: 'text-red-600', bg: 'bg-red-50' };
+}
+
+/** Строка FBO/FBS: два режима — пропорция (2 типа) или информативный (1 тип) */
+function FtRow({ ft, data, totalRevenue, singleType }: {
+  ft: 'fbo' | 'fbs';
+  data: FulfillmentBreakdownItem;
+  totalRevenue: number;
+  singleType: boolean;
+}) {
   const s = FT_STYLES[ft];
+  const ms = getMarginStyle(data.margin);
+
+  if (singleType) {
+    // Единственный тип — без шкалы, с подписью "маржинальность"
+    return (
+      <div className="flex items-center gap-2 min-w-0">
+        <span className={cn('text-[9px] font-semibold px-1.5 py-0.5 rounded flex-shrink-0', s.badge)}>
+          {s.label}
+        </span>
+        <span className="text-[10px] tabular-nums text-gray-500 flex-shrink-0">{data.sales_count} шт</span>
+        <span className="text-[10px] text-gray-300 flex-shrink-0">·</span>
+        <span className="text-[9px] text-gray-400 flex-shrink-0 hidden sm:inline">маржинальность</span>
+        <span className="text-[9px] text-gray-400 flex-shrink-0 sm:hidden">маржин.</span>
+        <span className={cn('text-[10px] font-semibold tabular-nums px-1.5 py-0.5 rounded flex-shrink-0', ms.text, ms.bg)}>
+          {formatPercent(data.margin)}
+        </span>
+      </div>
+    );
+  }
+
+  // Два типа — маржинальность + шкала доли выручки
   const pct = totalRevenue > 0 ? (data.revenue / totalRevenue) * 100 : 0;
-  const marginColor = data.margin >= 20 ? 'text-emerald-700' : data.margin >= 10 ? 'text-amber-700' : 'text-red-600';
 
   return (
     <div className="flex items-center gap-1.5 min-w-0">
@@ -45,11 +80,12 @@ function FtRow({ ft, data, totalRevenue }: { ft: 'fbo' | 'fbs'; data: Fulfillmen
         {s.label}
       </span>
       <span className="text-[10px] tabular-nums text-gray-500 flex-shrink-0">{data.sales_count} шт</span>
-      <span className={cn('text-[10px] tabular-nums font-medium flex-shrink-0', marginColor)}>
+      <span className="text-[10px] text-gray-300 flex-shrink-0">·</span>
+      <span className={cn('text-[10px] tabular-nums font-semibold px-1 py-0.5 rounded flex-shrink-0', ms.text, ms.bg)}>
         {formatPercent(data.margin)}
       </span>
-      {/* Proportion bar */}
-      <div className="flex-1 h-1.5 bg-gray-100 rounded-full overflow-hidden min-w-[32px]">
+      {/* Доля выручки */}
+      <div className="flex-1 h-1.5 bg-gray-100 rounded-full overflow-hidden min-w-[24px]">
         <div className={cn('h-full rounded-full', s.bar)} style={{ width: `${Math.min(100, pct)}%` }} />
       </div>
       <span className="text-[9px] tabular-nums text-gray-400 flex-shrink-0 w-7 text-right">{Math.round(pct)}%</span>
@@ -63,28 +99,24 @@ function FtBreakdownSection({ breakdown }: {
   const { fbo, fbs } = breakdown;
   if (!fbo && !fbs) return null;
 
+  const hasFbo = fbo && fbo.sales_count > 0;
+  const hasFbs = fbs && fbs.sales_count > 0;
+  const hasBoth = hasFbo && hasFbs;
+
   // Use sum of FBO+FBS revenue as base (NOT costs-tree revenue) so FBO%+FBS%=100%
   const ftTotalRevenue = (fbo?.revenue ?? 0) + (fbs?.revenue ?? 0);
-  const marginDelta = fbo && fbs && fbo.sales_count > 0 && fbs.sales_count > 0
-    ? fbo.margin - fbs.margin
-    : null;
 
   return (
     <div className="mt-2.5 pt-2 border-t border-dashed border-gray-200/80">
-      <div className="flex items-center gap-1.5 mb-1.5">
+      <div className="flex items-center justify-between mb-1.5">
         <span className="text-[9px] font-medium text-gray-400 uppercase tracking-wider">Фулфилмент</span>
-        {marginDelta !== null && Math.abs(marginDelta) > 5 && (
-          <span className={cn(
-            'text-[9px] font-medium px-1 py-0.5 rounded',
-            marginDelta > 0 ? 'bg-gray-50 text-gray-500' : 'bg-blue-50 text-blue-600',
-          )}>
-            {marginDelta > 0 ? 'FBO' : 'FBS'} +{Math.abs(marginDelta).toFixed(0)} пп
-          </span>
+        {hasBoth && (
+          <span className="text-[9px] text-gray-300 uppercase tracking-wider">доля выручки</span>
         )}
       </div>
       <div className="space-y-1">
-        {fbo && fbo.sales_count > 0 && <FtRow ft="fbo" data={fbo} totalRevenue={ftTotalRevenue} />}
-        {fbs && fbs.sales_count > 0 && <FtRow ft="fbs" data={fbs} totalRevenue={ftTotalRevenue} />}
+        {hasFbo && <FtRow ft="fbo" data={fbo} totalRevenue={ftTotalRevenue} singleType={!hasBoth} />}
+        {hasFbs && <FtRow ft="fbs" data={fbs} totalRevenue={ftTotalRevenue} singleType={!hasBoth} />}
       </div>
     </div>
   );
@@ -94,7 +126,8 @@ function MpCard({ metrics, mp, plan }: { metrics: UnitEconomicsItem; mp: 'wb' | 
   const style = MP_STYLES[mp];
   const m = metrics.metrics;
   const margin = m.revenue > 0 ? (m.net_profit / m.revenue) * 100 : 0;
-  const marginColor = margin >= 20 ? 'bg-emerald-50 text-emerald-700' : margin >= 10 ? 'bg-amber-50 text-amber-700' : 'bg-red-50 text-red-700';
+  const ms = getMarginStyle(margin);
+  const marginColor = `${ms.bg} ${ms.text}`;
 
   return (
     <div className={cn('rounded-lg border-2 p-3 sm:p-4', style.border, style.bg)}>

@@ -290,37 +290,36 @@ async def get_unit_economics(
 
             drr = round((ad_cost / displayed_revenue) * 100, 1) if displayed_revenue > 0 and ad_cost > 0 else 0
 
-            # FBO/FBS breakdown (only when no fulfillment_type filter)
+            # FBO/FBS breakdown (always when no fulfillment_type filter)
             fb: dict | None = None
             if not fulfillment_type and product_id in ft_sales:
                 ft_data = ft_sales[product_id]
-                # Only include if product has >1 fulfillment type or has FBS
-                has_fbs = "FBS" in ft_data and ft_data["FBS"]["sales"] > 0
-                if has_fbs:
-                    fb = {}
-                    for ft_key in ("FBO", "FBS"):
-                        s = ft_data.get(ft_key, {"sales": 0, "revenue": 0})
-                        c = ft_costs.get(product_id, {}).get(ft_key, 0)
-                        ft_rev = s["revenue"]
-                        ft_cnt = s["sales"]
-                        ft_purchase = purchase_price * ft_cnt
-                        # Proportional ad: ad_ft = ad × (ft_revenue / total_revenue)
-                        ft_ad = ad_cost * (ft_rev / mp_sales_revenue) if mp_sales_revenue > 0 else 0
-                        # Profit: payout_share - purchase - ads (same payout distribution)
-                        if use_payout and total_mp_sales_revenue > 0:
-                            ft_payout = total_payout * (ft_rev / total_mp_sales_revenue)
-                            ft_profit = ft_payout - ft_purchase - ft_ad
-                        else:
-                            ft_profit = ft_rev - c - ft_purchase - ft_ad
-                        ft_margin = (ft_profit / ft_rev * 100) if ft_rev > 0 else 0
-                        ft_unit_profit = round(ft_profit / ft_cnt, 2) if ft_cnt > 0 else 0
-                        fb[ft_key.lower()] = {
-                            "sales_count": ft_cnt,
-                            "revenue": round(ft_rev, 2),
-                            "net_profit": round(ft_profit, 2),
-                            "margin": round(ft_margin, 1),
-                            "unit_profit": ft_unit_profit,
-                        }
+                fb = {}
+                for ft_key in ("FBO", "FBS"):
+                    s = ft_data.get(ft_key, {"sales": 0, "revenue": 0})
+                    ft_cnt = s["sales"]
+                    ft_rev = s["revenue"]
+                    if ft_cnt <= 0 and ft_rev <= 0:
+                        continue
+                    c = ft_costs.get(product_id, {}).get(ft_key, 0)
+                    ft_purchase = purchase_price * ft_cnt
+                    # Proportional ad: ad_ft = ad × (ft_revenue / total_revenue)
+                    ft_ad = ad_cost * (ft_rev / mp_sales_revenue) if mp_sales_revenue > 0 else 0
+                    # Profit: payout_share - purchase - ads (same payout distribution)
+                    if use_payout and total_mp_sales_revenue > 0:
+                        ft_payout = total_payout * (ft_rev / total_mp_sales_revenue)
+                        ft_profit = ft_payout - ft_purchase - ft_ad
+                    else:
+                        ft_profit = ft_rev - c - ft_purchase - ft_ad
+                    ft_margin = (ft_profit / ft_rev * 100) if ft_rev > 0 else 0
+                    ft_unit_profit = round(ft_profit / ft_cnt, 2) if ft_cnt > 0 else 0
+                    fb[ft_key.lower()] = {
+                        "sales_count": ft_cnt,
+                        "revenue": round(ft_rev, 2),
+                        "net_profit": round(ft_profit, 2),
+                        "margin": round(ft_margin, 1),
+                        "unit_profit": ft_unit_profit,
+                    }
 
             item: dict = {
                 "product": {
