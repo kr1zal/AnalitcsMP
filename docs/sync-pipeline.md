@@ -1,7 +1,7 @@
 # Sync Pipeline — Документация
 
-> Последнее обновление: 18.02.2026
-> SyncService: `backend/app/services/sync_service.py` (~2573 строк)
+> Последнее обновление: 20.02.2026
+> SyncService: `backend/app/services/sync_service.py` (~2650 строк)
 
 ---
 
@@ -265,7 +265,12 @@ WildberriesClient.get_report_detail(date_from, date_to, period="daily")
   → Safety limit: 1,500,000 строк
 ```
 
-**Группировка**: по `(nm_id, rr_dt[:10])`
+**Группировка**: по `(nm_id, rr_dt[:10], fulfillment_type)`
+
+**FBS detection:** `_determine_wb_fulfillment(row)` определяет тип из строки финотчета:
+- `isSupply=true` → FBS, `isSupply=false` → FBO
+- Fallback: `delivery_type_id` (1=FBO, 2=FBS)
+- Default: FBO
 
 **Классификация строк:**
 | doc_type_name | supplier_oper_name | Действие |
@@ -276,6 +281,8 @@ WildberriesClient.get_report_detail(date_from, date_to, period="daily")
 **Расчеты:**
 - `orders_count = sales + returns`
 - `buyout_percent = sales / orders_count * 100`
+
+**Upsert:** по `user_id, product_id, marketplace, date, fulfillment_type`
 
 **Дополнительно:** Воронка WB (cart_adds) через Analytics API (`/api/v2/nm-report/detail`). Результат обновляет `mp_sales.cart_adds`.
 
@@ -409,6 +416,12 @@ quantity = max(present - reserved, 0)
 | Корректировка ВВ | Корректировка ВВ | `cashback_commission_change` | +/- |
 | Изменение сроков | Изменение сроков | `payment_schedule` | +/- |
 
+#### FBS detection в costs
+
+Каждая строка финотчета WB проходит через `_determine_wb_fulfillment(row)`:
+- Ключи агрегации: `costs_agg[(pid, date, ft)]`, `details_agg[(pid, date, ft, cat, subcat)]`, `payout_by_key[(pid, date, ft)]`
+- Delete перед insert: удаляет ALL fulfillment_type (не только FBO), т.к. ресинк полностью пересоздает данные
+
 #### Балансировка (residual)
 
 Для 100% совпадения с ЛК WB дерево балансируется до "К перечислению" (`ppvz_for_pay`):
@@ -418,6 +431,8 @@ diff = payout - SUM(details)
 if abs(diff) >= 0.01:
     details["Прочие удержания/выплаты"] += diff
 ```
+
+Балансировка per `(pid, date, ft)` — каждая комбинация товар+дата+фулфилмент балансируется отдельно.
 
 #### Агрегация mp_costs
 
@@ -434,8 +449,8 @@ if abs(diff) >= 0.01:
 
 #### Запись в БД
 
-1. `mp_costs` — upsert по `user_id, product_id, marketplace, date`
-2. `mp_costs_details` — **delete + insert** за период (не upsert, т.к. нет unique constraint на category/subcategory)
+1. `mp_costs` — upsert по `user_id, product_id, marketplace, date, fulfillment_type`
+2. `mp_costs_details` — **delete + insert** за период (не upsert, т.к. нет unique constraint на category/subcategory). Delete удаляет ALL fulfillment_type.
 
 ### 8.2 Ozon Costs
 
@@ -449,6 +464,17 @@ OzonClient.get_finance_transaction_list(date_from, date_to, page=N)
   → page_size=1000, до 20 страниц
   → Ограничение API: макс. 30 дней за запрос
 ```
+
+#### FBS detection в Ozon costs
+
+Каждая операция содержит `posting.delivery_schema`:
+```python
+posting = op.get("posting", {}) or {}
+delivery_schema = str(posting.get("delivery_schema") or "").upper()
+ft = "FBS" if delivery_schema == "FBS" else "FBO"
+```
+Ключи агрегации включают `ft`: `costs_agg[(barcode, date, ft)]`, `details_agg[(pid, date, ft, cat, subcat)]`.
+Delete перед insert удаляет ALL fulfillment_type.
 
 #### Классификация операций (`_classify_ozon_operation`)
 
@@ -558,6 +584,7 @@ OzonClient.get_finance_transaction_list(date_from, date_to, page=N)
     other_fees += abs(penalty + deduction + acceptance)
     payout += ppvz_for_pay
   → sale_price = retail_price_withdisc_rub (цена после СПП)
+  → fulfillment_type = _determine_wb_fulfillment(row)
   → settled = true
 ```
 
@@ -745,13 +772,13 @@ wb_tok = decrypt_token(row["wb_api_token"]) or settings.wb_api_token
 | Таблица | Описание | Unique constraint |
 |---------|----------|-------------------|
 | `mp_products` | Мастер-данные товаров | `barcode` (+ `user_id` через RLS) |
-| `mp_sales` | Продажи по дням | `user_id, product_id, marketplace, date` |
-| `mp_stocks` | Остатки по складам | `user_id, product_id, marketplace, warehouse` |
-| `mp_costs` | Удержания МП (агрегированные) | `user_id, product_id, marketplace, date` |
-| `mp_costs_details` | Удержания МП (гранулярные) | Нет unique (insert-only, delete+insert) |
+| `mp_sales` | Продажи по дням | `user_id, product_id, marketplace, date, fulfillment_type` |
+| `mp_stocks` | Остатки по складам | `user_id, product_id, marketplace, warehouse, fulfillment_type` |
+| `mp_costs` | Удержания МП (агрегированные) | `user_id, product_id, marketplace, date, fulfillment_type` |
+| `mp_costs_details` | Удержания МП (гранулярные) | Нет unique (insert-only, delete+insert). Колонка `fulfillment_type` |
 | `mp_ad_costs` | Рекламные расходы | `user_id, product_id, marketplace, date, campaign_id` |
-| `mp_orders` | Позаказные данные | `user_id, marketplace, order_id` |
-| `mp_stock_snapshots` | Снимки остатков по дням | `user_id, product_id, marketplace, date` |
+| `mp_orders` | Позаказные данные | `user_id, marketplace, order_id`. Колонка `fulfillment_type` |
+| `mp_stock_snapshots` | Снимки остатков по дням | `user_id, product_id, marketplace, date, fulfillment_type` |
 
 ### Служебные таблицы
 
@@ -768,6 +795,46 @@ wb_tok = decrypt_token(row["wb_api_token"]) or settings.wb_api_token
 total_costs = commission + logistics + storage + promotion +
               penalties + acquiring + other_costs  -- GENERATED ALWAYS AS ... STORED
 ```
+
+---
+
+## 14.1 FBS Detection (миграция 018, 20.02.2026)
+
+Колонка `fulfillment_type VARCHAR(10) DEFAULT 'FBO'` добавлена в 6 таблиц: mp_sales, mp_costs, mp_costs_details, mp_orders, mp_stocks, mp_stock_snapshots. Unique constraints обновлены.
+
+### Что определяет FBS
+
+| Sync функция | Источник FBS | Метод |
+|---|---|---|
+| `sync_sales_wb` | `isSupply` / `delivery_type_id` из reportDetail | `_determine_wb_fulfillment()` |
+| `sync_costs_wb` | то же (reportDetail) | `_determine_wb_fulfillment()` |
+| `sync_orders_wb` | то же (шаг 3, reportDetail) | `_determine_wb_fulfillment()` |
+| `sync_costs_ozon` | `posting.delivery_schema` из finance transactions | inline check |
+| `sync_stocks_ozon` | `stocks[].type` (fbo/fbs) — уже было | existing logic |
+| `sync_orders_ozon` | отдельные endpoints FBS/FBO — уже было | existing logic |
+
+### Что НЕ определяет FBS (остается FBO default)
+
+| Sync функция | Причина |
+|---|---|
+| `sync_sales_ozon` | Ozon Analytics API (`/v1/analytics/data`) не предоставляет FBO/FBS breakdown |
+| `sync_stocks_wb` | WB Stocks API не имеет надежного поля для FBS |
+
+### `_determine_wb_fulfillment(row)` — приоритет полей
+
+```python
+1. isSupply = True  → FBS (продавец отгружает сам)
+2. isSupply = False → FBO (склад WB)
+3. delivery_type_id = 2 → FBS
+4. delivery_type_id = 1 → FBO
+5. default → FBO
+```
+
+### RPC функции
+
+Все RPC (costs-tree, upsert_mp_sales и т.д.) обновлены в миграции 018 с параметром `p_fulfillment_type`:
+- `rpc_costs_tree(p_user_id, p_date_from, p_date_to, p_marketplace)` — агрегирует данные ВСЕХ fulfillment_type (без фильтра)
+- `upsert_mp_sales(...)` — принимает `p_fulfillment_type`, используется в unique key
 
 ---
 
@@ -853,6 +920,7 @@ backend/
     010_sync_queue.sql         — mp_sync_queue + trigger column
     011_orders.sql             — mp_orders
     017_stock_snapshots.sql    — mp_stock_snapshots
+    018_fbs_fulfillment_type.sql — fulfillment_type column + unique constraints update
   scripts/
     reconstruct_stock_history.py — One-time historical reconstruction
 ```

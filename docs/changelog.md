@@ -8,6 +8,23 @@
 ## [Unreleased]
 - PDF export improvements (Playwright backend)
 - Hide Business tier, SEO index.html, admin ID -> config
+- UE с разбивкой FBO/FBS (фронтенд)
+
+---
+
+## 2026-02-20
+
+### FBS Sync Pipeline
+- **Migration 018**: `fulfillment_type VARCHAR(10) DEFAULT 'FBO'` в 6 таблицах (mp_sales, mp_costs, mp_costs_details, mp_orders, mp_stocks, mp_stock_snapshots)
+- Unique constraints обновлены: все включают `fulfillment_type`
+- RPC функции обновлены с параметром `p_fulfillment_type`
+- `_determine_wb_fulfillment(row)`: определяет FBO/FBS из WB reportDetail (isSupply → delivery_type_id → default FBO)
+- **sync_sales_wb**: группировка по `(nm_id, date, ft)` вместо `(nm_id, date)`
+- **sync_costs_wb**: ключи costs_agg, details_agg, payout_by_key включают ft; балансировка per (pid, date, ft)
+- **sync_orders_wb**: fulfillment_type из шага 3 (reportDetail enrichment)
+- **sync_costs_ozon**: FBS из `posting.delivery_schema` в finance transactions
+- Не затронуты: sync_sales_ozon (Ozon Analytics API без FBS breakdown), sync_stocks_wb (нет FBS поля)
+- sync_stocks_ozon и sync_orders_ozon — уже корректно обрабатывали FBO/FBS
 
 ---
 

@@ -578,16 +578,17 @@ class SyncService:
             # Важно: берём daily разрез, чтобы совпадать по датам.
             report = await self.wb_client.get_report_detail(date_from, date_to, period="daily")
 
-            # Группируем по дате rr_dt и nm_id
+            # Группируем по дате rr_dt, nm_id и fulfillment_type
             # sales/revenue считаем только по строкам "Продажа/Продажа".
-            sales_agg = {}  # {(nm_id, date): {sales, returns, revenue}}
+            sales_agg = {}  # {(nm_id, date, ft): {sales, returns, revenue}}
 
             for row in report:
                 nm_id = row.get("nm_id")
                 date = (row.get("rr_dt") or "")[:10]
                 if not nm_id or not date:
                     continue
-                key = (nm_id, date)
+                ft = self._determine_wb_fulfillment(row)
+                key = (nm_id, date, ft)
                 if key not in sales_agg:
                     sales_agg[key] = {"sales": 0, "returns": 0, "revenue": 0.0}
 
@@ -612,7 +613,7 @@ class SyncService:
                     sales_agg[key]["returns"] += abs(qty)
 
             # Сохраняем в БД
-            for (nm_id, date), data in sales_agg.items():
+            for (nm_id, date, ft), data in sales_agg.items():
                 # Находим товар по nm_id
                 product_id = None
                 for barcode, product in products_map.items():
@@ -638,7 +639,7 @@ class SyncService:
                     "returns_count": data["returns"],
                     "revenue": data["revenue"],
                     "buyout_percent": buyout_percent,
-                    "fulfillment_type": "FBO",
+                    "fulfillment_type": ft,
                 }
                 if self.user_id:
                     row["user_id"] = self.user_id
@@ -1270,11 +1271,11 @@ class SyncService:
             report = await self.wb_client.get_report_detail(date_from, date_to, period="daily")
 
             # Агрегация для mp_costs (положительные суммы расходов)
-            costs_agg = {}  # {(product_id, date): {commission, logistics, storage, ...}}
+            costs_agg = {}  # {(product_id, date, ft): {commission, logistics, storage, ...}}
 
             # Гранулярные данные для mp_costs_details (tree-view)
-            details_agg = {}  # {(product_id, date, category, subcategory): amount}
-            payout_by_key = {}  # {(product_id, date): payout_sum}
+            details_agg = {}  # {(product_id, date, ft, category, subcategory): amount}
+            payout_by_key = {}  # {(product_id, date, ft): payout_sum}
 
             WB_SYSTEM_BARCODE = "WB_ACCOUNT"
             WB_SYSTEM_NAME = "WB: вне разреза товаров"
@@ -1314,8 +1315,9 @@ class SyncService:
                 if not date:
                     continue
                 product_id = _pid_for_row(row)
+                ft = self._determine_wb_fulfillment(row)
 
-                key = (product_id, date)
+                key = (product_id, date, ft)
                 if key not in costs_agg:
                     costs_agg[key] = {
                         "commission": 0.0,
@@ -1332,7 +1334,7 @@ class SyncService:
                 operation_type = str(row.get("doc_type_name") or row.get("supplier_oper_name") or "WB")
                 operation_id = str(row.get("rrd_id") or "")
                 for rec in self._classify_wb_report_row(row):
-                    dkey = (product_id, date, rec["category"], rec["subcategory"])
+                    dkey = (product_id, date, ft, rec["category"], rec["subcategory"])
                     if dkey not in details_agg:
                         details_agg[dkey] = {"amount": 0.0, "operation_type": operation_type, "operation_id": operation_id}
                     details_agg[dkey]["amount"] += float(rec["amount"] or 0)
@@ -1360,21 +1362,21 @@ class SyncService:
 
             # Доводка до "К перечислению" через кабинетную сущность "Прочие удержания/выплаты".
             # Это НЕ "затычка": в ЛК WB есть отдельная колонка "Прочие удержания/выплаты".
-            for (pid, date) in payout_by_key.keys():
-                payout = payout_by_key[(pid, date)]
+            for (pid, date, ft) in payout_by_key.keys():
+                payout = payout_by_key[(pid, date, ft)]
                 details_sum = 0.0
-                for (p, d, _, _), data in details_agg.items():
-                    if p == pid and d == date:
+                for (p, d, f, _, _), data in details_agg.items():
+                    if p == pid and d == date and f == ft:
                         details_sum += float(data["amount"] or 0)
                 diff = round(payout - details_sum, 2)
                 if abs(diff) >= 0.01:
-                    dkey = (pid, date, "Прочие удержания/выплаты", "Прочие удержания/выплаты")
+                    dkey = (pid, date, ft, "Прочие удержания/выплаты", "Прочие удержания/выплаты")
                     if dkey not in details_agg:
                         details_agg[dkey] = {"amount": 0.0, "operation_type": "WB_RESIDUAL", "operation_id": ""}
                     details_agg[dkey]["amount"] += diff
 
             # Сохраняем mp_costs
-            for (pid, date), costs in costs_agg.items():
+            for (pid, date, ft), costs in costs_agg.items():
                 upsert_row = {
                     "product_id": pid,
                     "marketplace": "wb",
@@ -1386,7 +1388,7 @@ class SyncService:
                     "penalties": round(costs["penalties"], 2),
                     "acquiring": round(costs["acquiring"], 2),
                     "other_costs": round(costs["other"], 2),
-                    "fulfillment_type": "FBO",
+                    "fulfillment_type": ft,
                 }
                 if self.user_id:
                     upsert_row["user_id"] = self.user_id
@@ -1396,11 +1398,11 @@ class SyncService:
                 records_count += 1
 
             # Удаляем старые записи деталей WB за период и вставляем новые
+            # Удаляем все fulfillment_type (FBO+FBS), т.к. re-sync полностью пересоздаёт данные
             delete_query = (
                 self.supabase.table("mp_costs_details")
                 .delete()
                 .eq("marketplace", "wb")
-                .eq("fulfillment_type", "FBO")
                 .gte("date", date_from.strftime("%Y-%m-%d"))
                 .lte("date", date_to.strftime("%Y-%m-%d"))
             )
@@ -1409,7 +1411,7 @@ class SyncService:
             delete_query.execute()
 
             details_count = 0
-            for (pid, date, category, subcategory), data in details_agg.items():
+            for (pid, date, ft, category, subcategory), data in details_agg.items():
                 insert_row = {
                     "product_id": pid,
                     "marketplace": "wb",
@@ -1419,7 +1421,7 @@ class SyncService:
                     "amount": round(float(data["amount"] or 0), 2),
                     "operation_type": data.get("operation_type", "WB"),
                     "operation_id": data.get("operation_id", ""),
-                    "fulfillment_type": "FBO",
+                    "fulfillment_type": ft,
                 }
                 if self.user_id:
                     insert_row["user_id"] = self.user_id
@@ -1434,6 +1436,28 @@ class SyncService:
             logger.error(f"Ошибка синхронизации удержаний WB: {error_msg}")
             self._log_sync("wb", "costs", "error", 0, error_msg, started_at)
             return {"status": "error", "message": error_msg}
+
+    @staticmethod
+    def _determine_wb_fulfillment(row: dict) -> str:
+        """
+        Определяет тип фулфилмента из строки WB reportDetailByPeriod.
+        Приоритет: isSupply → delivery_type_id → default FBO.
+        WB API: isSupply=true → FBS (продавец отгружает сам).
+        """
+        is_supply = row.get("isSupply")
+        if is_supply is True:
+            return "FBS"
+        if is_supply is False:
+            return "FBO"
+
+        # Fallback: delivery_type_id (1=FBO, 2=FBS)
+        dt_id = row.get("delivery_type_id")
+        if dt_id == 2:
+            return "FBS"
+        if dt_id == 1:
+            return "FBO"
+
+        return "FBO"
 
     def _classify_wb_report_row(self, row: dict) -> list[dict]:
         """
@@ -1765,8 +1789,8 @@ class SyncService:
 
             logger.info(f"Ozon finance: получено {len(all_operations)} операций за {date_from.strftime('%Y-%m-%d')} - {date_to.strftime('%Y-%m-%d')}")
 
-            # === 1. Агрегация для mp_costs (как раньше) ===
-            costs_agg = {}  # {(barcode, date): {commission, logistics, ...}}
+            # === 1. Агрегация для mp_costs ===
+            costs_agg = {}  # {(barcode, date, ft): {commission, logistics, ...}}
 
             for op in all_operations:
                 date = op.get("operation_date", "")[:10]
@@ -1776,13 +1800,18 @@ class SyncService:
                 sale_commission = float(op.get("sale_commission", 0))
                 services = op.get("services", [])
 
+                # Определяем FBO/FBS из posting.delivery_schema
+                posting = op.get("posting", {}) or {}
+                delivery_schema = str(posting.get("delivery_schema") or "").upper()
+                ft = "FBS" if delivery_schema == "FBS" else "FBO"
+
                 for item in items:
                     sku = str(item.get("sku", ""))
                     barcode = self.ozon_sku_map.get(sku)
                     if not barcode:
                         continue
 
-                    key = (barcode, date)
+                    key = (barcode, date, ft)
                     if key not in costs_agg:
                         costs_agg[key] = {
                             "commission": 0, "logistics": 0, "storage": 0,
@@ -1811,7 +1840,7 @@ class SyncService:
                         costs_agg[key]["other"] += abs(amount)
 
             # Сохраняем mp_costs
-            for (barcode, date), costs in costs_agg.items():
+            for (barcode, date, ft), costs in costs_agg.items():
                 product_id = products_map.get(barcode, {}).get("id")
                 if not product_id:
                     continue
@@ -1827,7 +1856,7 @@ class SyncService:
                     "penalties": costs["penalties"],
                     "acquiring": costs["acquiring"],
                     "other_costs": costs["other"],
-                    "fulfillment_type": "FBO",
+                    "fulfillment_type": ft,
                 }
                 if self.user_id:
                     upsert_row["user_id"] = self.user_id
@@ -1837,12 +1866,17 @@ class SyncService:
                 records_count += 1
 
             # === 2. Гранулярные данные для mp_costs_details (tree-view) ===
-            details_agg = {}  # {(product_id, date, category, subcategory): amount}
+            details_agg = {}  # {(product_id, date, ft, category, subcategory): amount}
 
             for op in all_operations:
                 date = op.get("operation_date", "")[:10]
                 items = op.get("items", [])
                 operation_id = str(op.get("operation_id", ""))
+
+                # Определяем FBO/FBS
+                posting = op.get("posting", {}) or {}
+                delivery_schema = str(posting.get("delivery_schema") or "").upper()
+                ft = "FBS" if delivery_schema == "FBS" else "FBO"
 
                 detail_records = self._classify_ozon_operation(op)
 
@@ -1884,7 +1918,7 @@ class SyncService:
                         for rec in detail_records:
                             alloc = rec.get("allocation")
                             amt = rec["amount"] * share if alloc == "order" else rec["amount"]
-                            key = (pid, date, rec["category"], rec["subcategory"])
+                            key = (pid, date, ft, rec["category"], rec["subcategory"])
                             if key not in details_agg:
                                 details_agg[key] = {
                                     "amount": 0,
@@ -1916,7 +1950,7 @@ class SyncService:
                         rem = abs_cents % n
 
                         for i, pid in enumerate(ozon_product_ids):
-                            key = (pid, date, rec["category"], rec["subcategory"])
+                            key = (pid, date, ft, rec["category"], rec["subcategory"])
                             if key not in details_agg:
                                 details_agg[key] = {
                                     "amount": 0,
@@ -1927,11 +1961,11 @@ class SyncService:
                             details_agg[key]["amount"] += sign * (cents / 100.0)
 
             # Удаляем старые записи за период перед вставкой
+            # Удаляем все fulfillment_type (FBO+FBS), т.к. re-sync полностью пересоздаёт данные
             delete_query = (
                 self.supabase.table("mp_costs_details")
                 .delete()
                 .eq("marketplace", "ozon")
-                .eq("fulfillment_type", "FBO")
                 .gte("date", date_from.strftime("%Y-%m-%d"))
                 .lte("date", date_to.strftime("%Y-%m-%d"))
             )
@@ -1940,7 +1974,7 @@ class SyncService:
             delete_query.execute()
 
             # Сохраняем mp_costs_details
-            for (pid, date, category, subcategory), data in details_agg.items():
+            for (pid, date, ft, category, subcategory), data in details_agg.items():
                 insert_row = {
                     "product_id": pid,
                     "marketplace": "ozon",
@@ -1950,7 +1984,7 @@ class SyncService:
                     "amount": round(data["amount"], 2),
                     "operation_type": data["operation_type"],
                     "operation_id": data["operation_id"],
-                    "fulfillment_type": "FBO",
+                    "fulfillment_type": ft,
                 }
                 if self.user_id:
                     insert_row["user_id"] = self.user_id
@@ -2286,6 +2320,8 @@ class SyncService:
                 retail_price_withdisc = float(row.get("retail_price_withdisc_rub", 0) or 0)
                 rrd_id = row.get("rrd_id")
 
+                ft = self._determine_wb_fulfillment(row)
+
                 if srid in orders_by_srid:
                     # Накапливаем финансовые данные (несколько строк на srid)
                     orders_by_srid[srid]["commission"] = orders_by_srid[srid].get("commission", 0) + commission
@@ -2295,6 +2331,7 @@ class SyncService:
                     orders_by_srid[srid]["payout"] = (orders_by_srid[srid].get("payout") or 0) + payout_val
                     orders_by_srid[srid]["wb_rrd_id"] = rrd_id
                     orders_by_srid[srid]["settled"] = True
+                    orders_by_srid[srid]["_fulfillment"] = ft
                     # retail_price_withdisc_rub — реальная цена после СПП (не накапливаем, берём первое ненулевое)
                     if retail_price_withdisc and not orders_by_srid[srid].get("sale_price"):
                         orders_by_srid[srid]["sale_price"] = retail_price_withdisc
@@ -2334,6 +2371,7 @@ class SyncService:
                         "payout": payout_val,
                         "wb_rrd_id": rrd_id,
                         "settled": True,
+                        "_fulfillment": ft,
                     }
 
             # Batch upsert в mp_orders
@@ -2361,7 +2399,7 @@ class SyncService:
                     "region": order_data.get("region"),
                     "warehouse": order_data.get("warehouse"),
                     "updated_at": datetime.now().isoformat(),
-                    "fulfillment_type": "FBO",
+                    "fulfillment_type": order_data.get("_fulfillment", "FBO"),
                 }
                 if self.user_id:
                     row["user_id"] = self.user_id
