@@ -35,7 +35,7 @@ Read and follow coding standards: .claude/rules/coding-standards.md
 - [x] Enterprise Settings: объединение Синхронизация + Настройки + Аккаунт — DONE (18.02.2026)
 - [ ] Улучшить PDF экспорт
 
-## Архитектурные решения (НЕ МЕНЯТЬ — 29 правил)
+## Архитектурные решения (НЕ МЕНЯТЬ — 32 правила)
 1. **Costs-tree:** отдельные параллельные запросы per marketplace (НЕ combined)
 2. **AccrualsCards:** данные через props из DashboardPage
 3. **DateRangePicker:** `captionLayout="label"` (НЕ dropdown)
@@ -67,6 +67,7 @@ Read and follow coding standards: .claude/rules/coding-standards.md
 29. **Enterprise Settings:** unified `/settings?tab=` (НЕ отдельные /sync, /settings, аккаунт-блок). 5 табов: Подключения|Товары|**План продаж**|Тариф|Профиль. URL state через `useSearchParams`. Desktop: vertical sidebar (md+). Mobile: horizontal scroll pills. SyncingOverlay как full-screen фаза (idle→syncing→done). `/sync` → redirect `/settings?tab=connections`. ARIA: tablist/tab/tabpanel
 30. **Sales Plan completion:** actual только по МП с планами (`active_mps`). Per-MP actual из wbData/ozonData (НЕ planData.by_product). Footer = взвешенное completion (НЕ простое среднее). SaveInput: skip server sync при focus. Warnings при Σ(МП)>total
 31. **Sales Plan v2:** PlanCompletionCard v2 (pace/forecast/days + кликабельность). StockPlanAlerts (self-contained, useStocks). Copy plan (НЕ auto-suggest — удалён как сырой). Month state поднят в PlanTab (НЕ дублировать getCurrentMonth). salesPlanApi с generic типами
+32. **FBS pills:** ВСЕГДА видны в FilterPanel (Все|FBO|FBS). НИКОГДА не скрывать, не удалять. Если FBS-данных нет — кнопка FBS disabled (серая, некликабельная). FBS — фича продукта, пользователь должен видеть что аналитика FBS поддерживается. `useFulfillmentInfo` хук для проверки наличия данных
 
 ## Формулы (КРИТИЧНО)
 ```

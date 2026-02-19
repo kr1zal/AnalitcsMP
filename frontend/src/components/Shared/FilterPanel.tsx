@@ -9,6 +9,7 @@ import { useFiltersStore } from '../../store/useFiltersStore';
 import { cn, getDateRangeFromPreset, getMaxAvailableDateYmd, normalizeDateRangeYmd } from '../../lib/utils';
 import { DateRangePicker } from './DateRangePicker';
 import { useIsMobile } from '../../hooks/useMediaQuery';
+import { useFulfillmentInfo } from '../../hooks/useDashboard';
 import { FileSpreadsheet, FileText, Loader2 } from 'lucide-react';
 import type { DateRangePreset, FulfillmentType, Marketplace } from '../../types';
 import type { ExportType } from '../../hooks/useExport';
@@ -32,6 +33,8 @@ export const FilterPanel = ({
 }: FilterPanelProps) => {
   const isMobile = useIsMobile();
   const { datePreset, marketplace, fulfillmentType, customDateFrom, customDateTo, setDatePreset, setMarketplace, setFulfillmentType, setCustomDates } = useFiltersStore();
+  const { data: fulfillmentInfo } = useFulfillmentInfo();
+  const hasFbsData = fulfillmentInfo?.has_fbs_data ?? false;
   // Максимальная дата: после 10:00 МСК = сегодня, до 10:00 = вчера
   const maxAvailableDate = getMaxAvailableDateYmd();
   const effectiveRange = getDateRangeFromPreset(datePreset, customDateFrom, customDateTo, maxAvailableDate);
@@ -84,20 +87,27 @@ export const FilterPanel = ({
           </div>
 
           <div className="flex gap-px bg-gray-100 rounded-lg p-0.5">
-            {fulfillmentOptions.map((ft) => (
-              <button
-                key={ft.value}
-                onClick={() => setFulfillmentType(ft.value)}
-                className={cn(
-                  'h-7 px-2 text-xs font-medium rounded-md transition-all',
-                  fulfillmentType === ft.value
-                    ? 'bg-white text-indigo-700 shadow-sm'
-                    : 'text-gray-500'
-                )}
-              >
-                {ft.label}
-              </button>
-            ))}
+            {fulfillmentOptions.map((ft) => {
+              const disabled = ft.value === 'FBS' && !hasFbsData;
+              return (
+                <button
+                  key={ft.value}
+                  onClick={() => !disabled && setFulfillmentType(ft.value)}
+                  disabled={disabled}
+                  title={disabled ? 'Нет FBS-данных' : undefined}
+                  className={cn(
+                    'h-7 px-2 text-xs font-medium rounded-md transition-all',
+                    disabled
+                      ? 'text-gray-300 cursor-not-allowed'
+                      : fulfillmentType === ft.value
+                        ? 'bg-white text-indigo-700 shadow-sm'
+                        : 'text-gray-500'
+                  )}
+                >
+                  {ft.label}
+                </button>
+              );
+            })}
           </div>
         </div>
 
@@ -230,20 +240,27 @@ export const FilterPanel = ({
         <div className="flex items-center gap-2">
           <span className="text-sm font-medium text-gray-600">Тип:</span>
           <div className="flex gap-0.5 bg-gray-100 rounded-lg p-0.5">
-            {fulfillmentOptions.map((ft) => (
-              <button
-                key={ft.value}
-                onClick={() => setFulfillmentType(ft.value)}
-                className={cn(
-                  'h-8 px-3 text-sm font-medium rounded-md transition-all',
-                  fulfillmentType === ft.value
-                    ? 'bg-white text-indigo-700 shadow-sm'
-                    : 'text-gray-600 hover:text-gray-900'
-                )}
-              >
-                {ft.label}
-              </button>
-            ))}
+            {fulfillmentOptions.map((ft) => {
+              const disabled = ft.value === 'FBS' && !hasFbsData;
+              return (
+                <button
+                  key={ft.value}
+                  onClick={() => !disabled && setFulfillmentType(ft.value)}
+                  disabled={disabled}
+                  title={disabled ? 'Нет FBS-данных' : undefined}
+                  className={cn(
+                    'h-8 px-3 text-sm font-medium rounded-md transition-all',
+                    disabled
+                      ? 'text-gray-300 cursor-not-allowed'
+                      : fulfillmentType === ft.value
+                        ? 'bg-white text-indigo-700 shadow-sm'
+                        : 'text-gray-600 hover:text-gray-900'
+                  )}
+                >
+                  {ft.label}
+                </button>
+              );
+            })}
           </div>
         </div>
 
