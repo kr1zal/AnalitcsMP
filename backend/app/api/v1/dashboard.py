@@ -467,6 +467,8 @@ async def get_ad_costs(
             prev_sales_query = supabase.table("mp_sales").select("revenue").eq("user_id", current_user.id).gte("date", prev_from).lte("date", prev_to)
             if marketplace and marketplace != "all":
                 prev_sales_query = prev_sales_query.eq("marketplace", marketplace)
+            if fulfillment_type:
+                prev_sales_query = prev_sales_query.eq("fulfillment_type", fulfillment_type)
             prev_sales_result = prev_sales_query.execute()
 
             prev_ad_cost = sum(float(ad.get("cost", 0)) for ad in prev_ads_result.data)

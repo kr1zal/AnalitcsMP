@@ -7,6 +7,7 @@
 import { Suspense, lazy, useCallback, useMemo, useState } from 'react';
 import { formatNumber } from '../../lib/utils';
 import { useStockHistory } from '../../hooks/useDashboard';
+import { useFiltersStore } from '../../store/useFiltersStore';
 
 const LazyChart = lazy(() =>
   import('./StockHistoryChartInner').then((m) => ({ default: m.StockHistoryChartInner }))
@@ -42,8 +43,11 @@ export const StockHistoryChart = ({ dateFrom, dateTo, enabled = true }: StockHis
   const [selectedProducts, setSelectedProducts] = useState<Set<string>>(new Set());
   const [mpFilter, setMpFilter] = useState<MpFilter>('all');
 
+  const { fulfillmentType } = useFiltersStore();
+  const ftParam = fulfillmentType === 'all' ? undefined : fulfillmentType;
+
   const { data, isLoading } = useStockHistory(
-    { date_from: dateFrom, date_to: dateTo, marketplace: mpFilter },
+    { date_from: dateFrom, date_to: dateTo, marketplace: mpFilter, fulfillment_type: ftParam },
     { enabled }
   );
 

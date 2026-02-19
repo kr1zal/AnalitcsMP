@@ -162,7 +162,7 @@ export const useProducts = (marketplace?: Marketplace, opts?: QueryOpts) => {
  * Hook для получения истории остатков (для графика динамики)
  */
 export const useStockHistory = (
-  params?: { date_from?: string; date_to?: string; marketplace?: string; product_id?: string },
+  params?: { date_from?: string; date_to?: string; marketplace?: string; product_id?: string; fulfillment_type?: string },
   opts?: QueryOpts
 ) => {
   return useQuery({

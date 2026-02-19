@@ -17,7 +17,7 @@ export type ProductFilter = 'all' | 'profitable' | 'loss' | 'abc_a' | 'abc_b' | 
 
 export interface AlertItem {
   key: string;
-  icon: 'loss' | 'margin_low' | 'drr_high' | 'trap' | 'potential';
+  icon: 'loss' | 'margin_low' | 'drr_high';
   tooltip: string;
   color: string;
 }
@@ -124,7 +124,7 @@ export const ABC_STYLES: Record<AbcGrade, string> = {
 
 // ==================== SMART ALERTS ====================
 
-export function getAlerts(item: UnitEconomicsItem, planCompletion?: number): AlertItem[] {
+export function getAlerts(item: UnitEconomicsItem): AlertItem[] {
   const alerts: AlertItem[] = [];
   const margin = getMargin(item);
 
@@ -135,42 +135,22 @@ export function getAlerts(item: UnitEconomicsItem, planCompletion?: number): Ale
       tooltip: `Убыток ${Math.abs(item.metrics.net_profit).toLocaleString('ru-RU', { maximumFractionDigits: 0 })} ₽`,
       color: 'text-red-500',
     });
-  } else if (margin > 0 && margin < 10) {
+  } else if (margin > 0 && margin < 5) {
     alerts.push({
       key: 'margin_low',
       icon: 'margin_low',
-      tooltip: `Маржа ${margin.toFixed(1)}% — ниже 10%`,
+      tooltip: `Маржа ${margin.toFixed(1)}% — ниже 5%`,
       color: 'text-amber-500',
     });
   }
 
-  if (item.metrics.drr > 15) {
+  if (item.metrics.drr > 30) {
     alerts.push({
       key: 'drr_high',
       icon: 'drr_high',
-      tooltip: `ДРР ${item.metrics.drr.toFixed(1)}% — выше 15%`,
+      tooltip: `ДРР ${item.metrics.drr.toFixed(1)}% — выше 30%`,
       color: 'text-orange-500',
     });
-  }
-
-  // Plan-aware alerts
-  if (planCompletion !== undefined) {
-    if (planCompletion >= 70 && item.metrics.net_profit < 0) {
-      alerts.push({
-        key: 'trap',
-        icon: 'trap',
-        tooltip: `Ловушка: план ${Math.round(planCompletion)}% при убытке`,
-        color: 'text-orange-600',
-      });
-    }
-    if (planCompletion < 50 && margin > 20) {
-      alerts.push({
-        key: 'potential',
-        icon: 'potential',
-        tooltip: `Потенциал: маржа ${margin.toFixed(1)}%, но план ${Math.round(planCompletion)}%`,
-        color: 'text-blue-500',
-      });
-    }
   }
 
   return alerts;

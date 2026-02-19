@@ -14,8 +14,6 @@ import {
   AlertTriangle,
   TrendingDown,
   Megaphone,
-  ShieldAlert,
-  Sparkles,
 } from 'lucide-react';
 import { formatCurrency, formatPercent, cn } from '../../lib/utils';
 import { UeExpandedRow } from './UeExpandedRow';
@@ -95,8 +93,6 @@ function AlertIcons({ alerts }: { alerts: AlertItem[] }) {
     loss: AlertTriangle,
     margin_low: TrendingDown,
     drr_high: Megaphone,
-    trap: ShieldAlert,
-    potential: Sparkles,
   };
   return (
     <div className="flex items-center gap-0.5">
@@ -362,7 +358,7 @@ export function UeTable({
                 const positive = item.metrics.net_profit >= 0;
                 const isExpanded = expandedRows.has(item.product.id);
                 const abc = abcMap.get(item.product.id) ?? 'C';
-                const alerts = getAlerts(item, planMap.get(item.product.id));
+                const alerts = getAlerts(item);
                 const contribution = getContribution(item, totalProfit);
                 const returns = item.metrics.returns_count ?? 0;
 
@@ -519,7 +515,7 @@ export function UeTable({
             const positive = item.metrics.net_profit >= 0;
             const abc = abcMap.get(item.product.id) ?? 'C';
             const isExpanded = expandedRows.has(item.product.id);
-            const alerts = getAlerts(item, planMap.get(item.product.id));
+            const alerts = getAlerts(item);
 
             return (
               <div key={item.product.id}>

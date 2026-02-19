@@ -338,7 +338,8 @@ const OrderMonitorPage = () => {
     date_from: dateFrom,
     date_to: dateTo,
     marketplace: marketplace === 'all' ? undefined : marketplace,
-  }), [dateFrom, dateTo, marketplace]);
+    fulfillment_type: ftParam,
+  }), [dateFrom, dateTo, marketplace, ftParam]);
 
   const { data: funnelData } = useOrderFunnel(funnelFilters);
   const { data: ordersData, isLoading, isFetching } = useOrdersList(ordersFilters);
