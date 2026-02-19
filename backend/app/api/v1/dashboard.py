@@ -136,6 +136,20 @@ async def get_unit_economics(
             else:
                 unattributed_ad += cost
 
+        # 4a. При фильтре по fulfillment_type: пропорциональное распределение рекламы
+        # Реклама — account-level, не привязана к FBO/FBS. Чтобы profit_FBO + profit_FBS = profit_Total,
+        # распределяем рекламу пропорционально: ad_ft = ad × (revenue_ft / revenue_total) per product.
+        total_revenue_by_product: dict[str, float] = {}
+        if fulfillment_type:
+            total_sales_query = supabase.table("mp_sales").select("product_id, revenue").eq("user_id", current_user.id).gte("date", date_from).lte("date", date_to)
+            if marketplace and marketplace != "all":
+                total_sales_query = total_sales_query.eq("marketplace", marketplace)
+            # NO fulfillment_type filter — total revenue across FBO+FBS
+            total_sales_result = total_sales_query.execute()
+            for sale in total_sales_result.data:
+                pid = sale["product_id"]
+                total_revenue_by_product[pid] = total_revenue_by_product.get(pid, 0) + float(sale.get("revenue", 0))
+
         # 5. Агрегация продаж и удержаний по товарам
         product_metrics: dict[str, dict] = {}
 

@@ -11,6 +11,7 @@
  * - Killer-фичи: ABC, Mini Waterfall, Smart Alerts, Pace/Forecast, Inline Plan Edit
  */
 import { useState, useMemo, useCallback } from 'react';
+import { HelpCircle } from 'lucide-react';
 import { useUnitEconomics, useProducts } from '../hooks/useDashboard';
 import {
   useSalesPlanCompletion,
@@ -232,7 +233,22 @@ export const UnitEconomicsPage = () => {
       <div className="max-w-7xl mx-auto px-3 sm:px-6 py-4 sm:py-8">
         {/* Header */}
         <div className="mb-4 sm:mb-6">
-          <h2 className="text-lg sm:text-2xl font-bold text-gray-900">Unit-экономика</h2>
+          <div className="flex items-center gap-2">
+            <h2 className="text-lg sm:text-2xl font-bold text-gray-900">Unit-экономика</h2>
+            {fulfillmentType !== 'all' && (
+              <>
+                <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-indigo-100 text-indigo-800">
+                  {fulfillmentType}
+                </span>
+                <span className="group/tip relative inline-flex items-center">
+                  <HelpCircle className="w-4 h-4 text-gray-400 cursor-help" />
+                  <span className="invisible group-hover/tip:visible absolute top-full mt-1.5 right-0 z-50 w-56 rounded-lg bg-gray-900 px-3 py-2 text-xs leading-relaxed text-white shadow-lg">
+                    Рекламные расходы показаны целиком — реклама привлекает трафик на карточку независимо от типа фулфилмента
+                  </span>
+                </span>
+              </>
+            )}
+          </div>
           <p className="text-xs sm:text-sm text-gray-500 mt-0.5">
             Прибыль на единицу · {unitProducts.length} товаров · {dateRange.from} — {dateRange.to}
           </p>
