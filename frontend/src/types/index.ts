@@ -533,25 +533,6 @@ export interface PreviousPlanResponse {
   plans: { product_id: string; plan_revenue: number; marketplace: string }[];
 }
 
-export interface SuggestProductItem {
-  product_id: string;
-  product_name: string;
-  marketplace: string;
-  avg_revenue: number;
-  suggested_revenue: number;
-}
-
-export interface PlanSuggestResponse {
-  status: 'success';
-  has_data: boolean;
-  months_analyzed?: number;
-  avg_monthly?: number;
-  suggested_revenue?: number;
-  growth_percent?: number;
-  by_marketplace?: Record<string, { avg: number; suggested: number }>;
-  by_product?: SuggestProductItem[];
-}
-
 export interface SalesPlanSummary {
   total: number;
   wb: number;

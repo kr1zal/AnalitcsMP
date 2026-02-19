@@ -348,14 +348,10 @@ Settings — unified `/settings?tab=` (НЕ отдельные /sync, /settings,
 - **Фильтрация**: WB_ACCOUNT system product исключён
 - **Синхронизация**: month state поднят в PlanTab, передаётся в оба дочерних компонента
 
-### 3. Copy Plan + Auto-suggest
+### 3. Copy Plan
 - **Копирование**: кнопка "Из {prev_month}" — копирует summary + per-product планы
 - **Backend**: `GET /sales-plan/previous` — планы за пред. месяц (summary + products)
-- **Backend**: `GET /sales-plan/suggest` — avg revenue за 3 мес. × 1.1 (10% рост)
-- **WB_ACCOUNT**: фильтруется в suggest endpoint
-- **SuggestHint**: кликабельная подсказка "Ср. за 3 мес: X₽" под каждым SaveInput
-- **Уровни подсказок**: total, per-MP (wb/ozon), per-product per-MP
-- **Frontend hooks**: `usePreviousPlan`, `usePlanSuggest` (staleTime: 10min)
+- **Frontend hooks**: `usePreviousPlan` (staleTime: 10min)
 - **Type safety**: salesPlanApi с generic типами (SalesPlanResponse, etc.)
 
 ### Архитектурное решение #30

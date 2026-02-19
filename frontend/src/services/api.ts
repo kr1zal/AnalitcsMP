@@ -33,7 +33,6 @@ import type {
   SalesPlanCompletionResponse,
   SalesPlanSummaryResponse,
   PreviousPlanResponse,
-  PlanSuggestResponse,
 } from '../types';
 
 // Создаём axios instance с базовыми настройками
@@ -530,10 +529,6 @@ export const salesPlanApi = {
     return data;
   },
 
-  getSuggest: async (month: string): Promise<PlanSuggestResponse> => {
-    const { data } = await api.get<PlanSuggestResponse>('/sales-plan/suggest', { params: { month } });
-    return data;
-  },
 };
 
 export default api;

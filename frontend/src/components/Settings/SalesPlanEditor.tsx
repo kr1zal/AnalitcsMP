@@ -6,7 +6,7 @@
  * Приоритет для completion card: total → per-MP → per-product
  */
 import { useState, useMemo, useCallback } from 'react';
-import { ChevronLeft, ChevronRight, ChevronDown, Target, RotateCcw, Loader2, AlertTriangle, Copy, Sparkles } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Target, RotateCcw, Loader2, AlertTriangle, Copy } from 'lucide-react';
 import { toast } from 'sonner';
 import {
   useSalesPlan,
@@ -15,7 +15,6 @@ import {
   useUpsertSummaryPlan,
   useResetSalesPlan,
   usePreviousPlan,
-  usePlanSuggest,
 } from '../../hooks/useSalesPlan';
 import { formatCurrency } from '../../lib/utils';
 import { SaveInput } from '../Shared/SaveInput';
@@ -43,22 +42,6 @@ function monthLabel(month: string): string {
   return `${MONTHS_RU[m]} ${y}`;
 }
 
-// ============ Suggest Hint ============
-
-function SuggestHint({ avg, onApply }: { avg: number; onApply: () => void }) {
-  if (avg <= 0) return null;
-  return (
-    <button
-      type="button"
-      onClick={onApply}
-      className="flex items-center gap-1 text-[10px] text-indigo-500 hover:text-indigo-700 transition-colors mt-0.5"
-    >
-      <Sparkles className="w-3 h-3" />
-      Ср. за 3 мес: {formatCurrency(avg)}
-    </button>
-  );
-}
-
 // ============ Main Component ============
 
 interface SalesPlanEditorProps {
@@ -70,7 +53,6 @@ export function SalesPlanEditor({ month: controlledMonth, onMonthChange }: Sales
   const [internalMonth, setInternalMonth] = useState(getCurrentMonth);
   const month = controlledMonth ?? internalMonth;
   const setMonth = onMonthChange ?? setInternalMonth;
-  const [showProducts, setShowProducts] = useState(false);
   const [productTab, setProductTab] = useState<MpTab>('wb');
   const [confirmReset, setConfirmReset] = useState(false);
 
@@ -85,9 +67,8 @@ export function SalesPlanEditor({ month: controlledMonth, onMonthChange }: Sales
   const upsertProductMut = useUpsertSalesPlan();
   const resetMut = useResetSalesPlan();
 
-  // Previous month + suggest data
+  // Previous month data (for copy feature)
   const { data: prevData } = usePreviousPlan(month);
-  const { data: suggestData } = usePlanSuggest(month);
   const [copying, setCopying] = useState(false);
 
   const activeProductData = productTab === 'wb' ? wbData : ozonData;
@@ -98,18 +79,6 @@ export function SalesPlanEditor({ month: controlledMonth, onMonthChange }: Sales
   const productTabTotal = useMemo(() => {
     return productPlans.reduce((sum, p) => sum + p.plan_revenue, 0);
   }, [productPlans]);
-
-  // Product suggest map: product_id → avg_revenue
-  const productSuggestMap = useMemo(() => {
-    const map = new Map<string, number>();
-    if (!suggestData?.by_product) return map;
-    for (const p of suggestData.by_product) {
-      if (p.marketplace === productTab) {
-        map.set(p.product_id, p.avg_revenue);
-      }
-    }
-    return map;
-  }, [suggestData, productTab]);
 
   // Consistency warnings between plan levels
   const warnings = useMemo(() => {
@@ -247,9 +216,6 @@ export function SalesPlanEditor({ month: controlledMonth, onMonthChange }: Sales
               placeholder="Общий план ₽"
               className="w-full"
             />
-            {suggestData?.has_data && suggestData.avg_monthly && (
-              <SuggestHint avg={suggestData.avg_monthly} onApply={() => saveSummary('total')(Math.round(suggestData.suggested_revenue ?? 0))} />
-            )}
           </div>
 
           {/* Level 2: Per-marketplace */}
@@ -266,9 +232,6 @@ export function SalesPlanEditor({ month: controlledMonth, onMonthChange }: Sales
                   placeholder="WB ₽"
                   className="w-full"
                 />
-                {suggestData?.by_marketplace?.wb && (
-                  <SuggestHint avg={suggestData.by_marketplace.wb.avg} onApply={() => saveSummary('wb')(Math.round(suggestData.by_marketplace!.wb.suggested))} />
-                )}
               </div>
               <div>
                 <div className="text-[10px] text-gray-400 mb-1">Ozon</div>
@@ -278,9 +241,6 @@ export function SalesPlanEditor({ month: controlledMonth, onMonthChange }: Sales
                   placeholder="Ozon ₽"
                   className="w-full"
                 />
-                {suggestData?.by_marketplace?.ozon && (
-                  <SuggestHint avg={suggestData.by_marketplace.ozon.avg} onApply={() => saveSummary('ozon')(Math.round(suggestData.by_marketplace!.ozon.suggested))} />
-                )}
               </div>
             </div>
             {(summary.wb > 0 || summary.ozon > 0) && (
@@ -290,80 +250,64 @@ export function SalesPlanEditor({ month: controlledMonth, onMonthChange }: Sales
             )}
           </div>
 
-          {/* Level 3: Per-product (collapsible) */}
+          {/* Level 3: Per-product (always visible) */}
           <div>
-            <button
-              onClick={() => setShowProducts((v) => !v)}
-              className="flex items-center gap-1.5 text-xs font-medium text-gray-500 hover:text-gray-700 transition-colors mb-2"
-            >
-              <ChevronDown className={`w-3.5 h-3.5 transition-transform ${showProducts ? 'rotate-0' : '-rotate-90'}`} />
+            <label className="text-xs font-medium text-gray-500 mb-1.5 block">
               По товарам
-            </button>
+            </label>
 
-            {showProducts && (
+            {/* MP tabs */}
+            <div className="flex gap-1 mb-3 bg-gray-100 rounded-lg p-0.5">
+              {(['wb', 'ozon'] as const).map((mp) => (
+                <button
+                  key={mp}
+                  onClick={() => setProductTab(mp)}
+                  className={`flex-1 text-xs font-medium py-1.5 rounded-md transition-colors ${
+                    productTab === mp
+                      ? 'bg-white text-gray-900 shadow-sm'
+                      : 'text-gray-500 hover:text-gray-700'
+                  }`}
+                >
+                  {mp === 'wb' ? 'Wildberries' : 'Ozon'}
+                </button>
+              ))}
+            </div>
+
+            {activeProductLoading ? (
+              <div className="flex items-center justify-center py-4">
+                <Loader2 className="w-4 h-4 text-indigo-500 animate-spin" />
+              </div>
+            ) : productPlans.length === 0 ? (
+              <p className="text-xs text-gray-400 text-center py-3">
+                Нет товаров {productTab === 'wb' ? 'WB' : 'Ozon'}
+              </p>
+            ) : (
               <div>
-                {/* MP tabs */}
-                <div className="flex gap-1 mb-3 bg-gray-100 rounded-lg p-0.5">
-                  {(['wb', 'ozon'] as const).map((mp) => (
-                    <button
-                      key={mp}
-                      onClick={() => setProductTab(mp)}
-                      className={`flex-1 text-xs font-medium py-1.5 rounded-md transition-colors ${
-                        productTab === mp
-                          ? 'bg-white text-gray-900 shadow-sm'
-                          : 'text-gray-500 hover:text-gray-700'
-                      }`}
-                    >
-                      {mp === 'wb' ? 'Wildberries' : 'Ozon'}
-                    </button>
+                <div className="space-y-2 max-h-[480px] overflow-y-auto pr-1">
+                  {productPlans.map((plan) => (
+                    <div key={plan.product_id} className="flex items-center gap-3">
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm text-gray-800 truncate">{plan.product_name}</div>
+                        <div className="text-[10px] text-gray-400">{plan.barcode}</div>
+                      </div>
+                      <SaveInput
+                        value={plan.plan_revenue}
+                        onSave={saveProduct(plan.product_id)}
+                        className="w-32 flex-shrink-0"
+                      />
+                    </div>
                   ))}
                 </div>
 
-                {activeProductLoading ? (
-                  <div className="flex items-center justify-center py-4">
-                    <Loader2 className="w-4 h-4 text-indigo-500 animate-spin" />
-                  </div>
-                ) : productPlans.length === 0 ? (
-                  <p className="text-xs text-gray-400 text-center py-3">
-                    Нет товаров {productTab === 'wb' ? 'WB' : 'Ozon'}
-                  </p>
-                ) : (
-                  <div className="space-y-2">
-                    {productPlans.map((plan) => {
-                      const suggestAvg = productSuggestMap.get(plan.product_id) ?? 0;
-                      return (
-                        <div key={plan.product_id}>
-                          <div className="flex items-center gap-3">
-                            <div className="flex-1 min-w-0">
-                              <div className="text-sm text-gray-800 truncate">{plan.product_name}</div>
-                              <div className="text-[10px] text-gray-400">{plan.barcode}</div>
-                            </div>
-                            <SaveInput
-                              value={plan.plan_revenue}
-                              onSave={saveProduct(plan.product_id)}
-                              className="w-32 flex-shrink-0"
-                            />
-                          </div>
-                          {suggestAvg > 0 && (
-                            <div className="flex justify-end">
-                              <SuggestHint avg={suggestAvg} onApply={() => saveProduct(plan.product_id)(Math.round(suggestAvg * 1.1))} />
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })}
-
-                    {/* Tab total */}
-                    <div className="flex items-center justify-between pt-2 border-t border-gray-100">
-                      <span className="text-xs font-medium text-gray-600">
-                        Итого {productTab === 'wb' ? 'WB' : 'Ozon'}
-                      </span>
-                      <span className="text-xs font-semibold text-indigo-600 tabular-nums">
-                        {formatCurrency(productTabTotal)}
-                      </span>
-                    </div>
-                  </div>
-                )}
+                {/* Tab total */}
+                <div className="flex items-center justify-between pt-2 mt-2 border-t border-gray-100">
+                  <span className="text-xs font-medium text-gray-600">
+                    Итого {productTab === 'wb' ? 'WB' : 'Ozon'}
+                  </span>
+                  <span className="text-xs font-semibold text-indigo-600 tabular-nums">
+                    {formatCurrency(productTabTotal)}
+                  </span>
+                </div>
               </div>
             )}
           </div>
