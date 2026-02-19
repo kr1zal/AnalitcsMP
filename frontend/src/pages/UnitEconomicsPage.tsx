@@ -14,11 +14,7 @@ import { useState, useMemo, useCallback } from 'react';
 import { useUnitEconomics, useProducts } from '../hooks/useDashboard';
 import {
   useSalesPlanCompletion,
-  useSalesPlanSummary,
   useSalesPlan,
-  useUpsertSalesPlan,
-  useUpsertSummaryPlan,
-  useResetSalesPlan,
 } from '../hooks/useSalesPlan';
 import { useFiltersStore } from '../store/useFiltersStore';
 import { FilterPanel } from '../components/Shared/FilterPanel';
@@ -80,13 +76,15 @@ function buildMpBreakdown(
 // ==================== PAGE COMPONENT ====================
 
 export const UnitEconomicsPage = () => {
-  const { datePreset, marketplace, customDateFrom, customDateTo } = useFiltersStore();
+  const { datePreset, marketplace, fulfillmentType, customDateFrom, customDateTo } = useFiltersStore();
   const dateRange = getDateRangeFromPreset(datePreset, customDateFrom, customDateTo);
+  const ftParam = fulfillmentType === 'all' ? undefined : fulfillmentType;
 
   const filters = {
     date_from: dateRange.from,
     date_to: dateRange.to,
     marketplace,
+    fulfillment_type: ftParam,
   };
 
   // ==================== DATA FETCHING ====================
@@ -113,17 +111,9 @@ export const UnitEconomicsPage = () => {
   // Plan month (derived from completion data or current month)
   const planMonth = extractPlanMonth(planData);
 
-  // Plan summary (for panel editing)
-  const { data: summaryData } = useSalesPlanSummary(planMonth);
-
   // Per-MP plan data (for expanded row plan progress)
   const { data: wbPlanData } = useSalesPlan(planMonth, 'wb');
   const { data: ozonPlanData } = useSalesPlan(planMonth, 'ozon');
-
-  // Mutations
-  const upsertPlanMut = useUpsertSalesPlan();
-  const upsertSummaryMut = useUpsertSummaryPlan();
-  const resetPlanMut = useResetSalesPlan();
 
   // ==================== DERIVED DATA ====================
 
@@ -213,17 +203,7 @@ export const UnitEconomicsPage = () => {
     [unitProducts, wbData, ozonData, productsList],
   );
 
-  const costsTreeRatio = unitData?.costs_tree_ratio ?? 1;
-
   // ==================== HANDLERS ====================
-
-  const handlePlanSave = useCallback(async (mp: string, productId: string, value: number) => {
-    await upsertPlanMut.mutateAsync({
-      month: planMonth,
-      marketplace: mp,
-      items: [{ product_id: productId, plan_revenue: value }],
-    });
-  }, [upsertPlanMut, planMonth]);
 
   const handleMatrixClick = useCallback((q: MatrixQuadrant | null) => {
     setMatrixFilter((prev) => (prev === q ? null : q));
@@ -255,11 +235,6 @@ export const UnitEconomicsPage = () => {
           <h2 className="text-lg sm:text-2xl font-bold text-gray-900">Unit-экономика</h2>
           <p className="text-xs sm:text-sm text-gray-500 mt-0.5">
             Прибыль на единицу · {unitProducts.length} товаров · {dateRange.from} — {dateRange.to}
-            {costsTreeRatio < 1 && (
-              <span className="ml-1 text-amber-600" title="Закупка скорректирована по доле проведённых заказов из финотчёта МП">
-                · проведено {Math.round(costsTreeRatio * 100)}%
-              </span>
-            )}
           </p>
         </div>
 
@@ -270,9 +245,6 @@ export const UnitEconomicsPage = () => {
         <div className="mt-4 sm:mt-6">
           <UePlanPanel
             planData={planData}
-            summaryData={summaryData}
-            summaryMut={upsertSummaryMut}
-            resetMut={resetPlanMut}
             month={planMonth}
           />
         </div>
@@ -328,8 +300,6 @@ export const UnitEconomicsPage = () => {
           matrixFilter={matrixFilter}
           matrixProductIds={matrixProductIds}
           onMatrixClear={() => setMatrixFilter(null)}
-          planMonth={planMonth}
-          onPlanSave={handlePlanSave}
           wbPlanMap={wbPlanMap}
           ozonPlanMap={ozonPlanMap}
         />

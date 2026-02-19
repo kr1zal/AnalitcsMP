@@ -8,9 +8,10 @@ interface PrintCoverPageProps {
   dateFrom: string;
   dateTo: string;
   marketplace: 'all' | 'ozon' | 'wb';
+  fulfillmentType?: 'FBO' | 'FBS' | null;
 }
 
-export function PrintCoverPage({ dateFrom, dateTo, marketplace }: PrintCoverPageProps) {
+export function PrintCoverPage({ dateFrom, dateTo, marketplace, fulfillmentType }: PrintCoverPageProps) {
   const mpLabel =
     marketplace === 'all'
       ? 'OZON + Wildberries'
@@ -80,6 +81,14 @@ export function PrintCoverPage({ dateFrom, dateTo, marketplace }: PrintCoverPage
               style={{ backgroundColor: COLORS.wb }}
             >
               Wildberries
+            </div>
+          )}
+          {fulfillmentType && (
+            <div
+              className="px-4 py-2 rounded-full text-sm font-semibold border"
+              style={{ borderColor: COLORS.indigo, color: COLORS.indigo }}
+            >
+              {fulfillmentType}
             </div>
           )}
         </div>

@@ -45,7 +45,7 @@ Read and follow coding standards: .claude/rules/coding-standards.md
 7. **Шифрование:** Fernet backend (НЕ pgcrypto/Vault)
 8. **Подписки:** планы в коде plans.py (НЕ в БД)
 9. **Sync:** DB queue + cron (НЕ Celery — 1 ядро VPS)
-10. **Прибыль:** пропорциональная коррекция закупки через costsTreeRatio
+10. **Прибыль:** COGS = purchase_price × sales_count (БЕЗ коэффициентов). profit = payout - purchase - ads
 11. **Order Monitor v1:** из mp_sales, непроведённые из costs-tree RPC
 12. **Order Monitor v2:** mp_orders, WB srid 3-step accumulate, Ozon FBS+FBO
 13. **WB SPP:** sale_price = retail_price_withdisc_rub (после СПП)
@@ -70,10 +70,10 @@ Read and follow coding standards: .claude/rules/coding-standards.md
 
 ## Формулы (КРИТИЧНО)
 ```
-profit = total_payout - purchase×costsTreeRatio - ads×costsTreeRatio
-costsTreeRatio = costs_tree_SALES / mp_sales_revenue  (БЕЗ credits!)
+profit = total_payout - purchase - ads  (БЕЗ costsTreeRatio — удалён 19.02.2026, индустриальный стандарт)
+COGS (purchase) = purchase_price × sales_count (полная сумма, НЕ корректируется ratio)
 displayed_revenue = costs_tree_sales + credits (СПП, возмещения)
-UE: profit_i = total_payout × (revenue_i / Σrevenue) - purchase_i×ratio - ad_i×ratio
+UE: profit_i = total_payout × (revenue_i / Σrevenue) - purchase_i - ad_i
 DRR = ad_cost / revenue × 100%
 Stock forecast: days_remaining = quantity / avg_daily_sales(30d)
 Per-MP profit: profit_mp = payout_mp - purchase×share - ad×share (share=pureSales_mp/totalPureSales)

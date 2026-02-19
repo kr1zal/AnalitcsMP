@@ -17,6 +17,7 @@ export type ExportType = 'excel' | 'pdf' | null;
 export interface PdfExportParams {
   period: { from: string; to: string };
   marketplace: string;
+  fulfillment_type?: string;
 }
 
 export interface UseExportReturn {
@@ -116,6 +117,7 @@ export function useExport(): UseExportReturn {
           date_from: params.period.from,
           date_to: params.period.to,
           marketplace: params.marketplace,
+          fulfillment_type: params.fulfillment_type,
         });
         const filename = generateFilename(params.period.from, params.period.to, 'pdf');
         downloadBlob(blob, filename);

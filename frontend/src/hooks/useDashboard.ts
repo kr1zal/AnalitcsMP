@@ -3,7 +3,7 @@
  */
 import { useQuery } from '@tanstack/react-query';
 import { dashboardApi, productsApi } from '../services/api';
-import type { DashboardFilters, Marketplace } from '../types';
+import type { DashboardFilters, FulfillmentType, Marketplace } from '../types';
 
 type QueryOpts = {
   enabled?: boolean;
@@ -68,12 +68,25 @@ export const useSalesChart = (filters?: DashboardFilters, opts?: QueryOpts) => {
 /**
  * Hook для получения остатков на складах
  */
-export const useStocks = (marketplace?: Marketplace, opts?: QueryOpts) => {
+export const useStocks = (marketplace?: Marketplace, fulfillmentType?: FulfillmentType, opts?: QueryOpts) => {
+  const ft = fulfillmentType === 'all' ? undefined : fulfillmentType;
   return useQuery({
-    queryKey: ['dashboard', 'stocks', marketplace],
-    queryFn: () => dashboardApi.getStocks(marketplace === 'all' ? undefined : marketplace),
+    queryKey: ['dashboard', 'stocks', marketplace, ft],
+    queryFn: () => dashboardApi.getStocks(marketplace === 'all' ? undefined : marketplace, ft),
     staleTime: 1000 * 60 * 10, // 10 минут (остатки меняются реже)
     refetchInterval: 1000 * 60 * 10, // автообновление каждые 10 минут
+    enabled: opts?.enabled ?? true,
+  });
+};
+
+/**
+ * Hook для проверки наличия FBS данных (Progressive Disclosure)
+ */
+export const useFulfillmentInfo = (opts?: QueryOpts) => {
+  return useQuery({
+    queryKey: ['dashboard', 'fulfillment-info'],
+    queryFn: () => dashboardApi.getFulfillmentInfo(),
+    staleTime: 1000 * 60 * 30, // 30 минут — меняется редко
     enabled: opts?.enabled ?? true,
   });
 };

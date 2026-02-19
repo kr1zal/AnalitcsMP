@@ -216,13 +216,15 @@ Analytics Dashboard — SaaS-платформа для аналитики про
 
 ---
 
-### Правило 10. Прибыль: пропорциональная коррекция через costsTreeRatio
+### Правило 10. Прибыль: RAW себестоимость (costsTreeRatio УДАЛЁН — 19.02.2026)
 
-**Правило:** Закупочная цена и реклама корректируются через `costsTreeRatio = costs_tree_SALES / mp_sales_revenue` (БЕЗ credits).
+**Правило:** Себестоимость берётся RAW (`purchase = purchase_price * sales_count`), без коэффициента коррекции. `profit = payout - purchase - ads`.
 
-**Почему:** `mp_sales.revenue` содержит ВСЕ заказы (включая непроведённые), а `costs_tree` — только финализированные. Ratio = доля проведённых заказов. Без коррекции закупка завышена на 10-30%.
+**Почему:** Исходный `costsTreeRatio` (= `costs_tree_SALES / mp_sales_revenue`) вводил пропорциональную коррекцию закупки на долю проведённых заказов. Это усложняло формулу без достаточного обоснования для текущей бизнес-задачи. Удалено 19.02.2026.
 
-**Anti-pattern:** `purchase = purchase_price * orders_count` (без коррекции). Использование credits в ratio (завышает коэффициент).
+**Историческая заметка:** До 19.02.2026 использовалась формула `purchase_adjusted = purchase * costsTreeRatio`. Backend по-прежнему возвращает поле `costs_tree_ratio` в ответе `/dashboard/unit-economics` (значение фактически 1.0 после удаления логики умножения).
+
+**Anti-pattern:** Возврат `costsTreeRatio` для умножения на закупку. Использование credits в ratio.
 
 ---
 
@@ -298,11 +300,11 @@ Analytics Dashboard — SaaS-платформа для аналитики про
 
 ### Правило 18. UE Profit: payout distribution
 
-**Правило:** `profit_i = total_payout * (revenue_i / SUM(revenue)) - purchase_i*ratio - ad_i*ratio`
+**Правило:** `profit_i = total_payout * (revenue_i / SUM(revenue)) - purchase_i - ad_i`
 
-**Почему:** Формула `revenue - costs` не сходится с dashboard profit (разные источники: mp_sales vs costs-tree). Payout distribution гарантирует: SUM(profit_i) = dashboard_profit.
+**Почему:** Формула `revenue - costs` не сходится с dashboard profit (разные источники: mp_sales vs costs-tree). Payout distribution гарантирует: SUM(profit_i) = dashboard_profit. С 19.02.2026 `purchase_i = purchase_price_i * sales_count_i` (RAW, без ratio).
 
-**Anti-pattern:** `profit_i = revenue_i - costs_i - purchase_i - ad_i`. Любая формула где SUM(UE) != dashboard.
+**Anti-pattern:** `profit_i = revenue_i - costs_i - purchase_i - ad_i`. Любая формула где SUM(UE) != dashboard. Умножение purchase на costsTreeRatio.
 
 ---
 
@@ -312,7 +314,7 @@ Analytics Dashboard — SaaS-платформа для аналитики про
 
 **Почему:** СПП — реальные деньги от WB (компенсация скидки). Клиент видит их в ЛК как часть продаж. Но для ratio credits не учитываются (они не от покупателей).
 
-**Anti-pattern:** Исключать credits из "Продажи". Включать credits в costsTreeRatio.
+**Anti-pattern:** Исключать credits из "Продажи". Включать credits в costsTreeRatio (понятие устарело с 19.02.2026).
 
 ---
 
@@ -533,15 +535,13 @@ Analytics Dashboard — SaaS-платформа для аналитики про
 └──────────────────────────────────────────────────────────────────────┘
 ```
 
-**Ключевые расчёты в DashboardPage:**
+**Ключевые расчёты в DashboardPage (актуально с 19.02.2026):**
 ```
-costsTreeRatio = costs_tree_SALES / mp_sales_revenue   (БЕЗ credits!)
-adjustedPurchase = purchase * costsTreeRatio
-adjustedAds = ads * costsTreeRatio
-profit = total_payout - adjustedPurchase - adjustedAds
+purchase = purchase_price * sales_count          (RAW, без коэффициента)
+profit = total_payout - purchase - ads
 profitMargin = profit / revenue
 perMpShare = pureSales_mp / totalPureSales
-profit_mp = payout_mp - adjustedPurchase * share - adjustedAds * share
+profit_mp = payout_mp - purchase * share - ads * share
 ```
 
 ### 4.3. Auth Flow (авторизация)
@@ -861,13 +861,12 @@ frontend/src/
 
 ## 7. Формулы (критичные)
 
-### Прибыль (Dashboard)
+### Прибыль (Dashboard) — актуально с 19.02.2026
 
 ```
-costsTreeRatio = costs_tree_SALES / mp_sales_revenue      (БЕЗ credits!)
-adjustedPurchase = purchase * costsTreeRatio
-adjustedAds = ads * costsTreeRatio
-profit = total_payout - adjustedPurchase - adjustedAds
+purchase = purchase_price * sales_count          (RAW, без коэффициента)
+profit = total_payout - purchase - ads
+// costsTreeRatio УДАЛЁН 19.02.2026
 ```
 
 ### Выручка (отображение)
@@ -876,18 +875,19 @@ profit = total_payout - adjustedPurchase - adjustedAds
 displayed_revenue = costs_tree_sales + credits    (СПП, возмещения)
 ```
 
-### Unit Economics (per product)
+### Unit Economics (per product) — актуально с 19.02.2026
 
 ```
-profit_i = total_payout * (revenue_i / SUM(revenue)) - purchase_i * ratio - ad_i * ratio
+profit_i = total_payout * (revenue_i / SUM(revenue)) - purchase_i - ad_i
+// purchase_i = purchase_price_i * sales_count_i  (RAW)
 // Гарантия: SUM(profit_i) = dashboard_profit
 ```
 
-### Per-MP прибыль
+### Per-MP прибыль — актуально с 19.02.2026
 
 ```
 share = pureSales_mp / totalPureSales             (OZON + WB)
-profit_mp = payout_mp - adjustedPurchase * share - adjustedAds * share
+profit_mp = payout_mp - purchase * share - ads * share
 // Гарантия: profit_ozon + profit_wb = dashboard_profit
 ```
 
@@ -969,7 +969,7 @@ margin = profit / revenue * 100%
 
 | Ограничение | Причина | Последствие | Как живём |
 |-------------|---------|-------------|-----------|
-| costs-tree vs mp_sales | Разные источники (финотчёт vs статистика) | Расхождение revenue → необходим costsTreeRatio | Пропорциональная коррекция (правило #10) |
+| costs-tree vs mp_sales | Разные источники (финотчёт vs статистика) | Расхождение revenue — costsTreeRatio удалён 19.02.2026 | Себестоимость RAW (purchase = price × qty), прибыль = payout − purchase − ads |
 | Нет daily costs | costs_tree агрегирован по периоду | ProfitChart = margin estimation | profitMargin = netProfit / revenue * dailyRevenue |
 | Ozon нет cost_price | API не отдаёт закупочную | Пользователь вводит вручную | purchase_price в mp_products (ручной ввод) |
 | WB credits (СПП) | Положительные суммы помимо "Продажи" | Усложнение формул, необходимость разделения | Отдельный учёт credits, ratio без credits (правило #19) |

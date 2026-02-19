@@ -11,6 +11,17 @@
 
 ---
 
+## 2026-02-19
+
+### Удаление costsTreeRatio из расчёта прибыли
+- **BREAKING CHANGE (бизнес-логика):** costsTreeRatio удалён из расчёта закупки
+- Новая формула: `profit = payout - purchase - ads`, где `purchase = purchase_price * sales_count` (RAW)
+- До этого: `purchase_adjusted = purchase * (costs_tree_SALES / mp_sales_revenue)` — пропорциональная коррекция на долю проведённых заказов
+- Backend возвращает поле `costs_tree_ratio` в `/dashboard/unit-economics` для обратной совместимости (значение не применяется)
+- Обновлена документация: architecture.md (правило #10, #18), business-logic.md (разделы 2, 4, 5), database.md, README.md, api-reference.md, frontend-guide.md, phases-history.md
+
+---
+
 ## 2026-02-18
 
 ### Sales Plan Audit & Fixes

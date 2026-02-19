@@ -20,6 +20,7 @@ async def get_summary(
     date_from: Optional[str] = Query(None, description="Дата начала (YYYY-MM-DD)"),
     date_to: Optional[str] = Query(None, description="Дата окончания (YYYY-MM-DD)"),
     marketplace: Optional[str] = Query(None, description="Фильтр по МП: wb, ozon"),
+    fulfillment_type: Optional[str] = Query(None, pattern="^(FBO|FBS)$", description="Фильтр по типу фулфилмента"),
     include_prev_period: bool = Query(False, description="Включить данные предыдущего периода"),
     include_ozon_truth: bool = Query(False, description="Использовать 'истинную' выручку Ozon из costs-tree")
 ):
@@ -29,6 +30,10 @@ async def get_summary(
     # Feature gate: period comparison requires pro+
     if include_prev_period and not has_feature(sub.plan, "period_comparison"):
         include_prev_period = False
+
+    # Feature gate: FBS analytics requires pro+
+    if fulfillment_type and not has_feature(sub.plan, "fbs_analytics"):
+        fulfillment_type = None
 
     supabase = get_supabase_client()
 
@@ -47,6 +52,7 @@ async def get_summary(
                     "p_marketplace": marketplace,
                     "p_include_costs_tree_revenue": include_ozon_truth,
                     "p_user_id": current_user.id,
+                    "p_fulfillment_type": fulfillment_type,
                 }
             ).execute()
         else:
@@ -57,6 +63,7 @@ async def get_summary(
                     "p_date_to": date_to,
                     "p_marketplace": marketplace,
                     "p_user_id": current_user.id,
+                    "p_fulfillment_type": fulfillment_type,
                 }
             ).execute()
 
@@ -72,15 +79,16 @@ async def get_unit_economics(
     sub: UserSubscription = Depends(require_feature("unit_economics")),
     date_from: Optional[str] = Query(None),
     date_to: Optional[str] = Query(None),
-    marketplace: Optional[str] = Query(None)
+    marketplace: Optional[str] = Query(None),
+    fulfillment_type: Optional[str] = Query(None, pattern="^(FBO|FBS)$"),
 ):
     """
     Unit-экономика по товарам.
     Методология ИДЕНТИЧНА дашборду:
     - Payout (total_accrued) берётся из costs-tree и распределяется по товарам пропорционально выручке
-    - Закупка корректируется по costsTreeRatio (доля проведённых заказов)
+    - Закупка = purchase_price × sales_count (без коэффициентов)
     - Реклама учитывается по товарам (mp_ad_costs)
-    - Формула: Прибыль = PayoutShare − Закупка×ratio − Реклама
+    - Формула: Прибыль = PayoutShare − Закупка − Реклама
     - Гарантия: SUM(profit) = Dashboard profit
     """
     supabase = get_supabase_client()
@@ -99,15 +107,19 @@ async def get_unit_economics(
         sales_query = supabase.table("mp_sales").select("*").eq("user_id", current_user.id).gte("date", date_from).lte("date", date_to)
         if marketplace and marketplace != "all":
             sales_query = sales_query.eq("marketplace", marketplace)
+        if fulfillment_type:
+            sales_query = sales_query.eq("fulfillment_type", fulfillment_type)
         sales_result = sales_query.execute()
 
         # 3. Удержания МП (mp_costs) — для отображения в таблице
         costs_query = supabase.table("mp_costs").select("*").eq("user_id", current_user.id).gte("date", date_from).lte("date", date_to)
         if marketplace and marketplace != "all":
             costs_query = costs_query.eq("marketplace", marketplace)
+        if fulfillment_type:
+            costs_query = costs_query.eq("fulfillment_type", fulfillment_type)
         costs_result = costs_query.execute()
 
-        # 4. Рекламные расходы по товарам (mp_ad_costs)
+        # 4. Рекламные расходы по товарам (mp_ad_costs) — NOT filtered by fulfillment_type (account-level)
         ad_query = supabase.table("mp_ad_costs").select("product_id, cost").eq("user_id", current_user.id).gte("date", date_from).lte("date", date_to)
         if marketplace and marketplace != "all":
             ad_query = ad_query.eq("marketplace", marketplace)
@@ -161,6 +173,7 @@ async def get_unit_economics(
                         "p_product_id": None,
                         "p_include_children": False,
                         "p_user_id": current_user.id,
+                        "p_fulfillment_type": fulfillment_type,
                     }
                 ).execute()
                 if ct_result.data:
@@ -182,14 +195,6 @@ async def get_unit_economics(
 
         # revenue с учётом credits (для отображения: "Продажи" вкл. СПП)
         costs_tree_revenue = costs_tree_sales + costs_tree_credits
-
-        # Ratio: ЧИСТЫЕ продажи (без credits) / mp_sales revenue
-        # Credits (СПП) — не от продаж, ratio должен отражать долю проведённых заказов
-        costs_tree_ratio = (
-            costs_tree_sales / total_mp_sales_revenue
-            if total_mp_sales_revenue > 0 and 0 < costs_tree_sales < total_mp_sales_revenue
-            else 1.0
-        )
 
         # Флаг: есть ли данные costs-tree для расчёта через payout
         use_payout = total_payout != 0
@@ -220,7 +225,6 @@ async def get_unit_economics(
             costs = metrics["costs"]  # из mp_costs (fallback)
             purchase_price = float(product.get("purchase_price", 0))
             raw_purchase = purchase_price * sales_count
-            adjusted_purchase = raw_purchase * costs_tree_ratio
             ad_cost = ad_by_product.get(product_id, 0)
 
             if use_payout and total_mp_sales_revenue > 0 and costs_tree_revenue > 0:
@@ -233,12 +237,12 @@ async def get_unit_economics(
                 # Удержания МП = Выручка − Начислено (всегда >= 0 т.к. CT revenue > payout)
                 mp_costs_consistent = max(0, displayed_revenue - payout_share)
                 # Прибыль = Начислено − Закупка − Реклама
-                net_profit = payout_share - adjusted_purchase - ad_cost
+                net_profit = payout_share - raw_purchase - ad_cost
             else:
                 # Fallback: если costs-tree недоступен — mp_sales/mp_costs
                 displayed_revenue = mp_sales_revenue
                 mp_costs_consistent = costs
-                net_profit = mp_sales_revenue - costs - adjusted_purchase - ad_cost
+                net_profit = mp_sales_revenue - costs - raw_purchase - ad_cost
 
             unit_profit = round(net_profit / sales_count, 2) if sales_count > 0 else 0
 
@@ -256,7 +260,7 @@ async def get_unit_economics(
                     "returns_count": metrics["returns"],
                     "revenue": round(displayed_revenue, 2),
                     "mp_costs": round(mp_costs_consistent, 2),
-                    "purchase_costs": round(adjusted_purchase, 2),
+                    "purchase_costs": round(raw_purchase, 2),
                     "ad_cost": round(ad_cost, 2),
                     "drr": drr,
                     "net_profit": round(net_profit, 2),
@@ -273,7 +277,7 @@ async def get_unit_economics(
             "status": "success",
             "period": {"from": date_from, "to": date_to},
             "marketplace": marketplace or "all",
-            "costs_tree_ratio": round(costs_tree_ratio, 4),
+            "costs_tree_ratio": 1.0,  # deprecated: ratio больше не используется, оставлено для совместимости
             "total_ad_cost": round(total_ad_cost, 2),
             "total_payout": round(total_payout, 2),
             "total_returns": total_returns,
@@ -290,7 +294,8 @@ async def get_sales_chart(
     date_from: Optional[str] = Query(None),
     date_to: Optional[str] = Query(None),
     marketplace: Optional[str] = Query(None),
-    product_id: Optional[str] = Query(None)
+    product_id: Optional[str] = Query(None),
+    fulfillment_type: Optional[str] = Query(None, pattern="^(FBO|FBS)$"),
 ):
     """
     Данные для графика продаж (по дням)
@@ -309,6 +314,8 @@ async def get_sales_chart(
             query = query.eq("marketplace", marketplace)
         if product_id:
             query = query.eq("product_id", product_id)
+        if fulfillment_type:
+            query = query.eq("fulfillment_type", fulfillment_type)
 
         result = query.execute()
 
@@ -351,6 +358,7 @@ async def get_ad_costs(
     date_from: Optional[str] = Query(None),
     date_to: Optional[str] = Query(None),
     marketplace: Optional[str] = Query(None),
+    fulfillment_type: Optional[str] = Query(None, pattern="^(FBO|FBS)$"),
     include_prev_period: bool = Query(False),
 ):
     """
@@ -372,6 +380,8 @@ async def get_ad_costs(
         sales_query = supabase.table("mp_sales").select("*").eq("user_id", current_user.id).gte("date", date_from).lte("date", date_to)
         if marketplace and marketplace != "all":
             sales_query = sales_query.eq("marketplace", marketplace)
+        if fulfillment_type:
+            sales_query = sales_query.eq("fulfillment_type", fulfillment_type)
         sales_result = sales_query.execute()
 
         revenue_by_date = {}
@@ -593,7 +603,8 @@ async def get_costs_tree(
     date_to: Optional[str] = Query(None, description="Дата окончания (YYYY-MM-DD)"),
     marketplace: Optional[str] = Query(None, description="Фильтр по МП: wb, ozon"),
     product_id: Optional[str] = Query(None, description="Фильтр по товару (UUID)"),
-    include_children: bool = Query(True, description="Включать подкатегории (детализацию) в дереве")
+    include_children: bool = Query(True, description="Включать подкатегории (детализацию) в дереве"),
+    fulfillment_type: Optional[str] = Query(None, pattern="^(FBO|FBS)$"),
 ):
     """
     Иерархическое дерево удержаний (tree-view как в ЛК Ozon).
@@ -619,6 +630,7 @@ async def get_costs_tree(
                 "p_product_id": product_id,
                 "p_include_children": include_children,
                 "p_user_id": current_user.id,
+                "p_fulfillment_type": fulfillment_type,
             }
         ).execute()
 
@@ -635,7 +647,8 @@ async def get_costs_tree_combined(
     date_from: Optional[str] = Query(None, description="Дата начала (YYYY-MM-DD)"),
     date_to: Optional[str] = Query(None, description="Дата окончания (YYYY-MM-DD)"),
     product_id: Optional[str] = Query(None, description="Фильтр по товару (UUID)"),
-    include_children: bool = Query(True, description="Включать подкатегории (детализацию) в дереве")
+    include_children: bool = Query(True, description="Включать подкатегории (детализацию) в дереве"),
+    fulfillment_type: Optional[str] = Query(None, pattern="^(FBO|FBS)$"),
 ):
     """
     Объединённое дерево удержаний для Ozon и WB в одном запросе.
@@ -659,6 +672,7 @@ async def get_costs_tree_combined(
                 "p_product_id": product_id,
                 "p_include_children": include_children,
                 "p_user_id": current_user.id,
+                "p_fulfillment_type": fulfillment_type,
             }
         ).execute()
 
@@ -672,6 +686,7 @@ async def get_costs_tree_combined(
 async def get_stocks(
     current_user: CurrentUser = Depends(get_current_user),
     marketplace: Optional[str] = Query(None),
+    fulfillment_type: Optional[str] = Query(None, pattern="^(FBO|FBS)$"),
 ):
     """
     Текущие остатки по складам
@@ -683,6 +698,8 @@ async def get_stocks(
 
         if marketplace and marketplace != "all":
             query = query.eq("marketplace", marketplace)
+        if fulfillment_type:
+            query = query.eq("fulfillment_type", fulfillment_type)
 
         result = query.execute()
 
@@ -692,6 +709,8 @@ async def get_stocks(
         sales_query = supabase.table("mp_sales").select("product_id, sales_count").eq("user_id", current_user.id).gte("date", date_30d_ago).lte("date", date_today)
         if marketplace and marketplace != "all":
             sales_query = sales_query.eq("marketplace", marketplace)
+        if fulfillment_type:
+            sales_query = sales_query.eq("fulfillment_type", fulfillment_type)
         sales_result = sales_query.execute()
 
         sales_by_product: dict[str, int] = {}
@@ -765,6 +784,7 @@ async def get_stock_history(
     date_to: Optional[str] = Query(None, description="Дата окончания (YYYY-MM-DD)"),
     marketplace: Optional[str] = Query(None, description="Фильтр по МП: wb, ozon, all"),
     product_id: Optional[str] = Query(None, description="UUID товара (опционально)"),
+    fulfillment_type: Optional[str] = Query(None, pattern="^(FBO|FBS)$"),
 ):
     """
     История остатков по дням (из mp_stock_snapshots).
@@ -793,6 +813,9 @@ async def get_stock_history(
 
         if product_id:
             query = query.eq("product_id", product_id)
+
+        if fulfillment_type:
+            query = query.eq("fulfillment_type", fulfillment_type)
 
         result = query.execute()
 
@@ -873,6 +896,7 @@ async def get_order_funnel(
     date_from: Optional[str] = Query(None, description="Дата начала (YYYY-MM-DD)"),
     date_to: Optional[str] = Query(None, description="Дата окончания (YYYY-MM-DD)"),
     marketplace: Optional[str] = Query(None, description="Фильтр по МП: wb, ozon"),
+    fulfillment_type: Optional[str] = Query(None, pattern="^(FBO|FBS)$"),
 ):
     """
     Воронка заказов: Заказы → Выкупы → Возвраты + непроведённые Ozon.
@@ -894,6 +918,8 @@ async def get_order_funnel(
         sales_query = supabase.table("mp_sales").select("*").eq("user_id", current_user.id).gte("date", date_from).lte("date", date_to)
         if marketplace and marketplace != "all":
             sales_query = sales_query.eq("marketplace", marketplace)
+        if fulfillment_type:
+            sales_query = sales_query.eq("fulfillment_type", fulfillment_type)
         sales_result = sales_query.execute()
 
         # 3. Агрегация по дням и по товарам
@@ -975,6 +1001,7 @@ async def get_order_funnel(
                         "p_product_id": None,
                         "p_include_children": False,
                         "p_user_id": current_user.id,
+                        "p_fulfillment_type": fulfillment_type,
                     }
                 ).execute()
                 if ct_result.data:
@@ -1024,6 +1051,7 @@ async def get_orders_list(
     date_from: Optional[str] = Query(None, description="Дата начала (YYYY-MM-DD)"),
     date_to: Optional[str] = Query(None, description="Дата окончания (YYYY-MM-DD)"),
     marketplace: Optional[str] = Query(None, description="Фильтр по МП: wb, ozon"),
+    fulfillment_type: Optional[str] = Query(None, pattern="^(FBO|FBS)$"),
     status: Optional[str] = Query(None, description="Фильтр по статусу: ordered, sold, returned, cancelled, delivering"),
     product_id: Optional[str] = Query(None, description="Фильтр по product_id"),
     settled: Optional[bool] = Query(None, description="Фильтр по проведённости"),
@@ -1056,6 +1084,8 @@ async def get_orders_list(
 
         if marketplace and marketplace != "all":
             query = query.eq("marketplace", marketplace)
+        if fulfillment_type:
+            query = query.eq("fulfillment_type", fulfillment_type)
         if status:
             query = query.eq("status", status)
         if product_id:
@@ -1104,6 +1134,7 @@ async def get_orders_list(
                 "warehouse": row.get("warehouse"),
                 "wb_sale_id": row.get("wb_sale_id"),
                 "ozon_posting_status": row.get("ozon_posting_status"),
+                "fulfillment_type": row.get("fulfillment_type", "FBO"),
             })
 
         # Summary: агрегация по всем записям (не только по текущей странице)
@@ -1116,6 +1147,8 @@ async def get_orders_list(
         )
         if marketplace and marketplace != "all":
             summary_query = summary_query.eq("marketplace", marketplace)
+        if fulfillment_type:
+            summary_query = summary_query.eq("fulfillment_type", fulfillment_type)
         summary_result = summary_query.execute()
 
         total_orders = len(summary_result.data)
@@ -1210,11 +1243,43 @@ async def get_order_detail(
                 "wb_sale_id": row.get("wb_sale_id"),
                 "wb_rrd_id": row.get("wb_rrd_id"),
                 "ozon_posting_status": row.get("ozon_posting_status"),
+                "fulfillment_type": row.get("fulfillment_type", "FBO"),
                 "raw_data": row.get("raw_data"),
             },
         }
 
     except HTTPException:
         raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/dashboard/fulfillment-info")
+async def get_fulfillment_info(
+    current_user: CurrentUser = Depends(get_current_user),
+):
+    """
+    Проверяет наличие FBS данных у пользователя.
+    Используется для Progressive Disclosure: FBS pills скрыты если нет FBS данных.
+    """
+    supabase = get_supabase_client()
+
+    try:
+        result = (
+            supabase.table("mp_sales")
+            .select("id", count="exact")
+            .eq("user_id", current_user.id)
+            .eq("fulfillment_type", "FBS")
+            .limit(1)
+            .execute()
+        )
+
+        has_fbs = result.count is not None and result.count > 0
+
+        return {
+            "has_fbs_data": has_fbs,
+            "fbs_products_count": result.count or 0,
+        }
+
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

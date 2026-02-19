@@ -237,11 +237,12 @@ Unit-экономика по товарам. Методология иденти
 **Auth:** JWT Bearer
 **Feature Gate:** `unit_economics` (Pro+)
 
-**Формулы:**
-- `costsTreeRatio = costs_tree_SALES / mp_sales_revenue` (без credits!)
-- `profit_i = payout_share - purchase * ratio - ad_cost`
+**Формулы (актуально с 19.02.2026):**
+- `purchase_i = purchase_price_i * sales_count_i` (RAW, без коэффициента)
+- `profit_i = payout_share - purchase_i - ad_cost`
 - `drr = ad_cost / displayed_revenue * 100%`
 - Гарантия: `SUM(profit_i) = Dashboard profit`
+- Поле `costs_tree_ratio` в ответе сохранено для обратной совместимости, но не используется в расчётах
 
 **Параметры:**
 

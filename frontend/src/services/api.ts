@@ -29,6 +29,7 @@ import type {
   OrderDetailResponse,
   OrdersFilters,
   StockHistoryResponse,
+  FulfillmentInfo,
   SalesPlanResponse,
   SalesPlanCompletionResponse,
   SalesPlanSummaryResponse,
@@ -222,15 +223,23 @@ export const dashboardApi = {
   /**
    * Получить остатки на складах
    */
-  getStocks: async (marketplace?: string, timeout?: number) => {
+  getStocks: async (marketplace?: string, fulfillmentType?: string, timeout?: number) => {
     const { data } = await api.get<StocksResponse>('/dashboard/stocks', {
-      params: { marketplace },
+      params: { marketplace, fulfillment_type: fulfillmentType },
       timeout: timeout ?? 30000,
     });
     return data;
   },
 
-  getStockHistory: async (params?: { date_from?: string; date_to?: string; marketplace?: string; product_id?: string }) => {
+  /**
+   * Проверить наличие FBS данных у пользователя (Progressive Disclosure)
+   */
+  getFulfillmentInfo: async () => {
+    const { data } = await api.get<FulfillmentInfo>('/dashboard/fulfillment-info');
+    return data;
+  },
+
+  getStockHistory: async (params?: { date_from?: string; date_to?: string; marketplace?: string; product_id?: string; fulfillment_type?: string }) => {
     const { data } = await api.get<StockHistoryResponse>('/dashboard/stock-history', {
       params,
     });
@@ -327,6 +336,7 @@ export const exportApi = {
     date_from: string;
     date_to: string;
     marketplace: string;
+    fulfillment_type?: string;
   }): Promise<Blob> => {
     const { data } = await api.get('/export/pdf', {
       params,

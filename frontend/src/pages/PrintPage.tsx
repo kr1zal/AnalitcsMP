@@ -97,43 +97,47 @@ export function PrintPage() {
   const dateFrom = searchParams.get('from') || '';
   const dateTo = searchParams.get('to') || '';
   const marketplace = (searchParams.get('marketplace') || 'all') as 'all' | 'ozon' | 'wb';
+  const fulfillmentType = searchParams.get('fulfillment_type') as 'FBO' | 'FBS' | null;
   const enabled = !!dateFrom && !!dateTo;
 
   // ==================== 8 PARALLEL QUERIES ====================
 
+  // fulfillment_type передаётся во все запросы (кроме ads — account-level)
+  const ft = fulfillmentType ?? undefined;
+
   const { data: summaryWithPrev, isLoading: l1 } = useQuery({
-    queryKey: ['print-summary', dateFrom, dateTo, marketplace],
-    queryFn: () => dashboardApi.getSummaryWithPrev({ date_from: dateFrom, date_to: dateTo, marketplace }),
+    queryKey: ['print-summary', dateFrom, dateTo, marketplace, ft],
+    queryFn: () => dashboardApi.getSummaryWithPrev({ date_from: dateFrom, date_to: dateTo, marketplace, fulfillment_type: ft }),
     enabled,
   });
 
   const { data: ozonTree, isLoading: l2 } = useQuery({
-    queryKey: ['print-ozon-tree', dateFrom, dateTo],
-    queryFn: () => dashboardApi.getCostsTree({ date_from: dateFrom, date_to: dateTo, marketplace: 'ozon', include_children: false }),
+    queryKey: ['print-ozon-tree', dateFrom, dateTo, ft],
+    queryFn: () => dashboardApi.getCostsTree({ date_from: dateFrom, date_to: dateTo, marketplace: 'ozon', include_children: false, fulfillment_type: ft }),
     enabled: enabled && marketplace !== 'wb',
   });
 
   const { data: wbTree, isLoading: l3 } = useQuery({
-    queryKey: ['print-wb-tree', dateFrom, dateTo],
-    queryFn: () => dashboardApi.getCostsTree({ date_from: dateFrom, date_to: dateTo, marketplace: 'wb', include_children: false }),
+    queryKey: ['print-wb-tree', dateFrom, dateTo, ft],
+    queryFn: () => dashboardApi.getCostsTree({ date_from: dateFrom, date_to: dateTo, marketplace: 'wb', include_children: false, fulfillment_type: ft }),
     enabled: enabled && marketplace !== 'ozon',
   });
 
   const { data: salesChart, isLoading: l4 } = useQuery({
-    queryKey: ['print-sales', dateFrom, dateTo, marketplace],
-    queryFn: () => dashboardApi.getSalesChart({ date_from: dateFrom, date_to: dateTo, marketplace }),
+    queryKey: ['print-sales', dateFrom, dateTo, marketplace, ft],
+    queryFn: () => dashboardApi.getSalesChart({ date_from: dateFrom, date_to: dateTo, marketplace, fulfillment_type: ft }),
     enabled,
   });
 
   const { data: unitEconomics, isLoading: l5 } = useQuery({
-    queryKey: ['print-ue', dateFrom, dateTo, marketplace],
-    queryFn: () => dashboardApi.getUnitEconomics({ date_from: dateFrom, date_to: dateTo, marketplace }),
+    queryKey: ['print-ue', dateFrom, dateTo, marketplace, ft],
+    queryFn: () => dashboardApi.getUnitEconomics({ date_from: dateFrom, date_to: dateTo, marketplace, fulfillment_type: ft }),
     enabled,
   });
 
   const { data: stocks, isLoading: l6 } = useQuery({
-    queryKey: ['print-stocks', marketplace],
-    queryFn: () => dashboardApi.getStocks(marketplace === 'all' ? undefined : marketplace, 60000),
+    queryKey: ['print-stocks', marketplace, ft],
+    queryFn: () => dashboardApi.getStocks(marketplace === 'all' ? undefined : marketplace, ft, 60000),
     enabled,
   });
 
@@ -249,7 +253,7 @@ export function PrintPage() {
   return (
     <div className="min-h-screen bg-white text-gray-900 print:bg-white" data-pdf-ready="true">
       {/* 1. Cover (no page number) */}
-      <PrintCoverPage dateFrom={dateFrom} dateTo={dateTo} marketplace={marketplace} />
+      <PrintCoverPage dateFrom={dateFrom} dateTo={dateTo} marketplace={marketplace} fulfillmentType={fulfillmentType} />
 
       {/* 2. Executive Summary */}
       <PrintPageShell page={++pageNum} totalPages={totalPages}>

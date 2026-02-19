@@ -199,15 +199,14 @@ Neutral:   gray-50..900 (backgrounds, text, borders)
 
 ```
 // Dashboard
-profit = total_payout - purchase_adjusted - ads_adjusted
-purchase_adjusted = purchase × costsTreeRatio
-costsTreeRatio = costs_tree_SALES / mp_sales_revenue  // NO credits!
+profit = total_payout - purchase - ads  // NO costsTreeRatio (removed 19.02.2026)
+purchase (COGS) = purchase_price × sales_count  // full amount, no ratio
 
 // Revenue display
 displayed_revenue = costs_tree_sales + credits  // СПП included
 
 // UE (per product)
-profit_i = total_payout × (revenue_i / Σrevenue) - purchase_i×ratio - ad_i×ratio
+profit_i = total_payout × (revenue_i / Σrevenue) - purchase_i - ad_i
 
 // Stock forecast
 days_remaining = total_quantity / avg_daily_sales(30d)

@@ -75,8 +75,6 @@ interface UeTableProps {
   matrixFilter: MatrixQuadrant | null;
   matrixProductIds: Set<string> | null;
   onMatrixClear: () => void;
-  planMonth: string;
-  onPlanSave: (mp: string, productId: string, value: number) => Promise<void>;
   wbPlanMap: Map<string, MpPlanEntry>;
   ozonPlanMap: Map<string, MpPlanEntry>;
 }
@@ -156,7 +154,7 @@ export function UeTable({
   products, abcMap, planMap, mpBreakdown, marketplace,
   hasAds, hasReturns: _hasReturns, hasPlan, totalProfit, totalPlanCompletion,
   planPaceMap, matrixFilter, matrixProductIds, onMatrixClear,
-  planMonth: _planMonth, onPlanSave: _onPlanSave, wbPlanMap, ozonPlanMap,
+  wbPlanMap, ozonPlanMap,
 }: UeTableProps) {
   // State
   const [search, setSearch] = useState('');

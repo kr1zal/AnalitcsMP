@@ -638,11 +638,12 @@ class SyncService:
                     "returns_count": data["returns"],
                     "revenue": data["revenue"],
                     "buyout_percent": buyout_percent,
+                    "fulfillment_type": "FBO",
                 }
                 if self.user_id:
                     row["user_id"] = self.user_id
                 self.supabase.table("mp_sales").upsert(
-                    row, on_conflict="user_id,product_id,marketplace,date"
+                    row, on_conflict="user_id,product_id,marketplace,date,fulfillment_type"
                 ).execute()
                 records_count += 1
 
@@ -747,11 +748,12 @@ class SyncService:
                     "revenue": revenue,
                     "cart_adds": cart_adds,
                     "buyout_percent": round((orders - returns) / orders * 100, 2) if orders > 0 else None,
+                    "fulfillment_type": "FBO",
                 }
                 if self.user_id:
                     upsert_row["user_id"] = self.user_id
                 self.supabase.table("mp_sales").upsert(
-                    upsert_row, on_conflict="user_id,product_id,marketplace,date"
+                    upsert_row, on_conflict="user_id,product_id,marketplace,date,fulfillment_type"
                 ).execute()
                 records_count += 1
 
@@ -852,12 +854,13 @@ class SyncService:
                     "warehouse": wh,
                     "quantity": qty,
                     "updated_at": now_iso,
+                    "fulfillment_type": "FBO",
                 }
                 if self.user_id:
                     upsert_row["user_id"] = self.user_id
                 self.supabase.table("mp_stocks").upsert(
                     upsert_row,
-                    on_conflict="user_id,product_id,marketplace,warehouse",
+                    on_conflict="user_id,product_id,marketplace,warehouse,fulfillment_type",
                 ).execute()
                 records_count += 1
 
@@ -877,22 +880,24 @@ class SyncService:
             return
         try:
             today = datetime.now().strftime("%Y-%m-%d")
-            # Get current stocks for this marketplace
+            # Get current stocks for this marketplace (with fulfillment_type)
             result = self.supabase.table("mp_stocks") \
-                .select("product_id, quantity") \
+                .select("product_id, quantity, fulfillment_type") \
                 .eq("user_id", self.user_id) \
                 .eq("marketplace", marketplace) \
                 .execute()
 
-            # Aggregate by product_id (sum across warehouses)
-            totals: dict[str, int] = {}
+            # Aggregate by (product_id, fulfillment_type) — sum across warehouses
+            totals: dict[tuple[str, str], int] = {}
             for row in result.data:
                 pid = row.get("product_id")
+                ft = row.get("fulfillment_type", "FBO")
                 if pid:
-                    totals[pid] = totals.get(pid, 0) + (row.get("quantity") or 0)
+                    key = (pid, ft)
+                    totals[key] = totals.get(key, 0) + (row.get("quantity") or 0)
 
             # Upsert daily snapshots
-            for pid, qty in totals.items():
+            for (pid, ft), qty in totals.items():
                 self.supabase.table("mp_stock_snapshots").upsert(
                     {
                         "user_id": self.user_id,
@@ -900,11 +905,12 @@ class SyncService:
                         "marketplace": marketplace,
                         "date": today,
                         "total_quantity": qty,
+                        "fulfillment_type": ft,
                     },
-                    on_conflict="user_id,product_id,marketplace,date",
+                    on_conflict="user_id,product_id,marketplace,date,fulfillment_type",
                 ).execute()
 
-            logger.info(f"Stock snapshot saved: {marketplace}, {len(totals)} products")
+            logger.info(f"Stock snapshot saved: {marketplace}, {len(totals)} product×ft combos")
         except Exception as e:
             # Don't fail the sync if snapshot fails
             logger.warning(f"Failed to save stock snapshot ({marketplace}): {e}")
@@ -1172,12 +1178,13 @@ class SyncService:
                             "warehouse": warehouse,
                             "quantity": qty,
                             "updated_at": datetime.now().isoformat(),
+                            "fulfillment_type": "FBO",
                         }
                         if self.user_id:
                             upsert_row["user_id"] = self.user_id
                         self.supabase.table("mp_stocks").upsert(
                             upsert_row,
-                            on_conflict="user_id,product_id,marketplace,warehouse",
+                            on_conflict="user_id,product_id,marketplace,warehouse,fulfillment_type",
                         ).execute()
                         records_count += 1
 
@@ -1209,18 +1216,27 @@ class SyncService:
                     # Ближе к "доступно к продаже": present - reserved (если reserved есть).
                     quantity = max(present - reserved, 0)
 
+                    # Определяем тип фулфилмента по типу склада
+                    wh_type = warehouse_stock.get("type", "")
+                    wh_name_lower = warehouse.lower()
+                    if wh_type == "fbo" or "ozon" in wh_name_lower:
+                        ft = "FBO"
+                    else:
+                        ft = "FBS"
+
                     upsert_row = {
                         "product_id": product_id,
                         "marketplace": "ozon",
                         "warehouse": warehouse,
                         "quantity": quantity,
                         "updated_at": datetime.now().isoformat(),
+                        "fulfillment_type": ft,
                     }
                     if self.user_id:
                         upsert_row["user_id"] = self.user_id
                     self.supabase.table("mp_stocks").upsert(
                         upsert_row,
-                        on_conflict="user_id,product_id,marketplace,warehouse",
+                        on_conflict="user_id,product_id,marketplace,warehouse,fulfillment_type",
                     ).execute()
                     records_count += 1
 
@@ -1370,11 +1386,12 @@ class SyncService:
                     "penalties": round(costs["penalties"], 2),
                     "acquiring": round(costs["acquiring"], 2),
                     "other_costs": round(costs["other"], 2),
+                    "fulfillment_type": "FBO",
                 }
                 if self.user_id:
                     upsert_row["user_id"] = self.user_id
                 self.supabase.table("mp_costs").upsert(
-                    upsert_row, on_conflict="user_id,product_id,marketplace,date"
+                    upsert_row, on_conflict="user_id,product_id,marketplace,date,fulfillment_type"
                 ).execute()
                 records_count += 1
 
@@ -1383,6 +1400,7 @@ class SyncService:
                 self.supabase.table("mp_costs_details")
                 .delete()
                 .eq("marketplace", "wb")
+                .eq("fulfillment_type", "FBO")
                 .gte("date", date_from.strftime("%Y-%m-%d"))
                 .lte("date", date_to.strftime("%Y-%m-%d"))
             )
@@ -1401,6 +1419,7 @@ class SyncService:
                     "amount": round(float(data["amount"] or 0), 2),
                     "operation_type": data.get("operation_type", "WB"),
                     "operation_id": data.get("operation_id", ""),
+                    "fulfillment_type": "FBO",
                 }
                 if self.user_id:
                     insert_row["user_id"] = self.user_id
@@ -1808,11 +1827,12 @@ class SyncService:
                     "penalties": costs["penalties"],
                     "acquiring": costs["acquiring"],
                     "other_costs": costs["other"],
+                    "fulfillment_type": "FBO",
                 }
                 if self.user_id:
                     upsert_row["user_id"] = self.user_id
                 self.supabase.table("mp_costs").upsert(
-                    upsert_row, on_conflict="user_id,product_id,marketplace,date"
+                    upsert_row, on_conflict="user_id,product_id,marketplace,date,fulfillment_type"
                 ).execute()
                 records_count += 1
 
@@ -1911,6 +1931,7 @@ class SyncService:
                 self.supabase.table("mp_costs_details")
                 .delete()
                 .eq("marketplace", "ozon")
+                .eq("fulfillment_type", "FBO")
                 .gte("date", date_from.strftime("%Y-%m-%d"))
                 .lte("date", date_to.strftime("%Y-%m-%d"))
             )
@@ -1929,6 +1950,7 @@ class SyncService:
                     "amount": round(data["amount"], 2),
                     "operation_type": data["operation_type"],
                     "operation_id": data["operation_id"],
+                    "fulfillment_type": "FBO",
                 }
                 if self.user_id:
                     insert_row["user_id"] = self.user_id
@@ -2339,6 +2361,7 @@ class SyncService:
                     "region": order_data.get("region"),
                     "warehouse": order_data.get("warehouse"),
                     "updated_at": datetime.now().isoformat(),
+                    "fulfillment_type": "FBO",
                 }
                 if self.user_id:
                     row["user_id"] = self.user_id
@@ -2493,6 +2516,7 @@ class SyncService:
 
                     settled = our_status == "sold" and payout_val is not None and payout_val > 0
 
+                    fulfillment = posting.get("_fulfillment", "FBO")
                     total_price = price_val * quantity
                     row = {
                         "marketplace": "ozon",
@@ -2511,10 +2535,11 @@ class SyncService:
                         "other_fees": round(other_cost, 2),
                         "payout": payout_val,
                         "settled": settled,
-                        "ozon_posting_status": f"{posting.get('_fulfillment', 'FBO')}:{ozon_status}",
+                        "ozon_posting_status": f"{fulfillment}:{ozon_status}",
                         "region": analytics.get("region"),
                         "warehouse": analytics.get("warehouse_name"),
                         "updated_at": datetime.now().isoformat(),
+                        "fulfillment_type": fulfillment,
                     }
                     if self.user_id:
                         row["user_id"] = self.user_id

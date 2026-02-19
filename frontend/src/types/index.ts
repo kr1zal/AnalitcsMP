@@ -6,6 +6,7 @@
 // ==================== ОБЩИЕ ТИПЫ ====================
 
 export type Marketplace = 'wb' | 'ozon' | 'all';
+export type FulfillmentType = 'all' | 'FBO' | 'FBS';
 export type SyncStatus = 'success' | 'error';
 export type SyncType = 'products' | 'sales' | 'stocks' | 'costs' | 'ads' | 'orders' | 'all';
 
@@ -296,6 +297,8 @@ export interface WarehouseStock {
   marketplace: Marketplace;
   warehouse: string;
   quantity: number;
+  /** FBO или FBS */
+  fulfillment_type?: 'FBO' | 'FBS';
   /**
    * Когда остаток по этому складу последний раз обновлялся (из mp_stocks.updated_at).
    * Может отсутствовать на старых версиях backend.
@@ -438,6 +441,7 @@ export interface SubscriptionFeatures {
   period_comparison: boolean;
   order_monitor: boolean;
   api_access: boolean;
+  fbs_analytics: boolean;
 }
 
 export interface SubscriptionLimits {
@@ -552,6 +556,8 @@ export interface DashboardFilters {
   date_to?: string; // YYYY-MM-DD
   marketplace?: Marketplace;
   product_id?: string;
+  /** FBO / FBS фильтр. undefined = все типы */
+  fulfillment_type?: 'FBO' | 'FBS';
   /**
    * Для /dashboard/costs-tree: если false, backend вернёт только верхние категории без children.
    * Остальные эндпоинты этот параметр игнорируют.
@@ -700,6 +706,8 @@ export interface Order {
   settled: boolean;
   region: string | null;
   warehouse: string | null;
+  /** FBO или FBS */
+  fulfillment_type?: 'FBO' | 'FBS';
   wb_sale_id: string | null;
   ozon_posting_status: string | null;
 }
@@ -760,4 +768,11 @@ export interface StockHistoryResponse {
   products: { id: string; name: string; barcode: string }[];
   series: StockHistorySeriesItem[];
   totals: number[];
+}
+
+// ==================== FBS / FULFILLMENT ====================
+
+export interface FulfillmentInfo {
+  has_fbs_data: boolean;
+  fbs_products_count: number;
 }

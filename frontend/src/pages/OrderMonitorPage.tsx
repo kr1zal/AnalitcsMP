@@ -303,8 +303,9 @@ function OrderMobileCard({ order, expanded, onToggle }: { order: Order; expanded
 type SortField = 'order_date' | 'price' | 'payout' | 'commission' | 'logistics' | 'status' | 'settled';
 
 const OrderMonitorPage = () => {
-  const { datePreset, marketplace, customDateFrom, customDateTo } = useFiltersStore();
+  const { datePreset, marketplace, fulfillmentType, customDateFrom, customDateTo } = useFiltersStore();
   const { from: dateFrom, to: dateTo } = getDateRangeFromPreset(datePreset, customDateFrom, customDateTo);
+  const ftParam = fulfillmentType === 'all' ? undefined : fulfillmentType;
   const isMobile = useIsMobile();
 
   // Filters state
@@ -322,6 +323,7 @@ const OrderMonitorPage = () => {
     date_from: dateFrom,
     date_to: dateTo,
     marketplace: marketplace === 'all' ? undefined : marketplace,
+    fulfillment_type: ftParam,
     status: statusFilter || undefined,
     settled: settledFilter ?? undefined,
     search: searchQuery || undefined,
@@ -329,7 +331,7 @@ const OrderMonitorPage = () => {
     page_size: 50,
     sort_by: sortField,
     sort_dir: sortDir,
-  }), [dateFrom, dateTo, marketplace, statusFilter, settledFilter, searchQuery, page, sortField, sortDir]);
+  }), [dateFrom, dateTo, marketplace, ftParam, statusFilter, settledFilter, searchQuery, page, sortField, sortDir]);
 
   // Data queries
   const funnelFilters = useMemo(() => ({

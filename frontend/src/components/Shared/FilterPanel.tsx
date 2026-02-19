@@ -10,7 +10,7 @@ import { cn, getDateRangeFromPreset, getMaxAvailableDateYmd, normalizeDateRangeY
 import { DateRangePicker } from './DateRangePicker';
 import { useIsMobile } from '../../hooks/useMediaQuery';
 import { FileSpreadsheet, FileText, Loader2 } from 'lucide-react';
-import type { DateRangePreset, Marketplace } from '../../types';
+import type { DateRangePreset, FulfillmentType, Marketplace } from '../../types';
 import type { ExportType } from '../../hooks/useExport';
 
 interface FilterPanelProps {
@@ -31,7 +31,7 @@ export const FilterPanel = ({
   exportType = null,
 }: FilterPanelProps) => {
   const isMobile = useIsMobile();
-  const { datePreset, marketplace, customDateFrom, customDateTo, setDatePreset, setMarketplace, setCustomDates } = useFiltersStore();
+  const { datePreset, marketplace, fulfillmentType, customDateFrom, customDateTo, setDatePreset, setMarketplace, setFulfillmentType, setCustomDates } = useFiltersStore();
   // Максимальная дата: после 10:00 МСК = сегодня, до 10:00 = вчера
   const maxAvailableDate = getMaxAvailableDateYmd();
   const effectiveRange = getDateRangeFromPreset(datePreset, customDateFrom, customDateTo, maxAvailableDate);
@@ -48,6 +48,12 @@ export const FilterPanel = ({
     { value: 'ozon', label: 'Ozon' },
   ];
 
+  const fulfillmentOptions: { value: FulfillmentType; label: string }[] = [
+    { value: 'all', label: 'Все' },
+    { value: 'FBO', label: 'FBO' },
+    { value: 'FBS', label: 'FBS' },
+  ];
+
   // Handler for DateRangePicker
   const handleDateRangeChange = (from: string, to: string) => {
     const normalized = normalizeDateRangeYmd(from, to, { max: maxAvailableDate });
@@ -58,26 +64,45 @@ export const FilterPanel = ({
   if (isMobile) {
     return (
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-3 mb-4 sm:mb-5 lg:mb-6">
-        {/* Первая строка: период */}
-        <div className="flex items-center gap-1.5 mb-2.5">
-          {datePresets.map((preset) => (
-            <button
-              key={preset.value}
-              onClick={() => setDatePreset(preset.value)}
-              className={cn(
-                'h-8 px-3 text-sm font-medium rounded-lg transition-all active:scale-95',
-                datePreset === preset.value
-                  ? 'bg-indigo-600 text-white shadow-sm'
-                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-              )}
-            >
-              {preset.label}
-            </button>
-          ))}
+        {/* Первая строка: период + FBO/FBS */}
+        <div className="flex items-center justify-between mb-2.5">
+          <div className="flex items-center gap-1.5">
+            {datePresets.map((preset) => (
+              <button
+                key={preset.value}
+                onClick={() => setDatePreset(preset.value)}
+                className={cn(
+                  'h-8 px-3 text-sm font-medium rounded-lg transition-all active:scale-95',
+                  datePreset === preset.value
+                    ? 'bg-indigo-600 text-white shadow-sm'
+                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                )}
+              >
+                {preset.label}
+              </button>
+            ))}
+          </div>
+
+          <div className="flex gap-px bg-gray-100 rounded-lg p-0.5">
+            {fulfillmentOptions.map((ft) => (
+              <button
+                key={ft.value}
+                onClick={() => setFulfillmentType(ft.value)}
+                className={cn(
+                  'h-7 px-2 text-xs font-medium rounded-md transition-all',
+                  fulfillmentType === ft.value
+                    ? 'bg-white text-indigo-700 shadow-sm'
+                    : 'text-gray-500'
+                )}
+              >
+                {ft.label}
+              </button>
+            ))}
+          </div>
         </div>
 
-        {/* Вторая строка: календарь + маркетплейс + экспорт */}
-        <div className="flex items-center gap-2">
+        {/* Вторая строка: календарь + МП + экспорт */}
+        <div className="flex items-center gap-1.5">
           <div className="flex-1 min-w-0">
             <DateRangePicker
               from={effectiveRange.from}
@@ -91,7 +116,7 @@ export const FilterPanel = ({
           <select
             value={marketplace}
             onChange={(e) => setMarketplace(e.target.value as Marketplace)}
-            className="h-9 px-2 text-sm font-medium border border-gray-300 rounded-lg bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-colors"
+            className="h-8 px-1.5 text-xs font-medium border border-gray-300 rounded-lg bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
           >
             {marketplaces.map((mp) => (
               <option key={mp.value} value={mp.value}>
@@ -100,23 +125,23 @@ export const FilterPanel = ({
             ))}
           </select>
 
-          {/* Кнопки экспорта (компактные, только иконки) */}
+          {/* Кнопки экспорта */}
           {onExportExcel && (
             <button
               onClick={onExportExcel}
               disabled={isExporting}
               title="Экспорт в Excel"
               className={cn(
-                'flex items-center justify-center h-9 w-9 rounded-lg transition-all active:scale-95',
+                'flex items-center justify-center h-8 w-8 rounded-lg transition-all active:scale-95',
                 isExporting && exportType === 'excel'
                   ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
                   : 'bg-emerald-50 text-emerald-600 hover:bg-emerald-100'
               )}
             >
               {isExporting && exportType === 'excel' ? (
-                <Loader2 className="w-4 h-4 animate-spin" />
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
               ) : (
-                <FileSpreadsheet className="w-4 h-4" />
+                <FileSpreadsheet className="w-3.5 h-3.5" />
               )}
             </button>
           )}
@@ -126,16 +151,16 @@ export const FilterPanel = ({
               disabled={isExporting}
               title="Экспорт в PDF"
               className={cn(
-                'flex items-center justify-center h-9 w-9 rounded-lg transition-all active:scale-95',
+                'flex items-center justify-center h-8 w-8 rounded-lg transition-all active:scale-95',
                 isExporting && exportType === 'pdf'
                   ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
                   : 'bg-rose-50 text-rose-600 hover:bg-rose-100'
               )}
             >
               {isExporting && exportType === 'pdf' ? (
-                <Loader2 className="w-4 h-4 animate-spin" />
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
               ) : (
-                <FileText className="w-4 h-4" />
+                <FileText className="w-3.5 h-3.5" />
               )}
             </button>
           )}
@@ -198,6 +223,28 @@ export const FilterPanel = ({
               </option>
             ))}
           </select>
+        </div>
+
+        {/* FBO/FBS pills */}
+        <div className="h-8 w-px bg-gray-200" />
+        <div className="flex items-center gap-2">
+          <span className="text-sm font-medium text-gray-600">Тип:</span>
+          <div className="flex gap-0.5 bg-gray-100 rounded-lg p-0.5">
+            {fulfillmentOptions.map((ft) => (
+              <button
+                key={ft.value}
+                onClick={() => setFulfillmentType(ft.value)}
+                className={cn(
+                  'h-8 px-3 text-sm font-medium rounded-md transition-all',
+                  fulfillmentType === ft.value
+                    ? 'bg-white text-indigo-700 shadow-sm'
+                    : 'text-gray-600 hover:text-gray-900'
+                )}
+              >
+                {ft.label}
+              </button>
+            ))}
+          </div>
         </div>
 
         {/* Разделитель + Кнопки экспорта */}

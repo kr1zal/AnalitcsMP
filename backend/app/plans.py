@@ -25,6 +25,7 @@ PLANS = {
             "period_comparison": False,
             "order_monitor": False,
             "api_access": False,
+            "fbs_analytics": False,
         },
     },
     "pro": {
@@ -47,6 +48,7 @@ PLANS = {
             "period_comparison": True,
             "order_monitor": False,  # deferred until Order Monitor is polished
             "api_access": False,
+            "fbs_analytics": True,
         },
     },
     "business": {
@@ -70,6 +72,7 @@ PLANS = {
             "period_comparison": True,
             "order_monitor": True,
             "api_access": True,
+            "fbs_analytics": True,
         },
     },
 }

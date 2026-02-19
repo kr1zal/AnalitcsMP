@@ -149,8 +149,7 @@ frontend/src/
 
 **Ключевые вычисления (IIFE, не useMemo):**
 - `revenueForTile` -- выручка из costs-tree (Продажи + Credits)
-- `costsTreeRatio` -- коэффициент проведенных заказов
-- `netProfitForTile` -- прибыль = payout - purchase*ratio - ads
+- `netProfitForTile` -- прибыль = payout - purchase - ads (RAW, costsTreeRatio удалён 19.02.2026)
 - Per-MP profit: `ozonProfitData`, `wbProfitData`
 
 ---

@@ -123,8 +123,10 @@ function describeRequestUrl(err: unknown): string | null {
 }
 
 export const DashboardPage = () => {
-  const { datePreset, marketplace, customDateFrom, customDateTo } = useFiltersStore();
+  const { datePreset, marketplace, fulfillmentType, customDateFrom, customDateTo } = useFiltersStore();
   const dateRange = getDateRangeFromPreset(datePreset, customDateFrom, customDateTo);
+  // fulfillment_type для API: 'all' → undefined (= все типы)
+  const ftParam = fulfillmentType === 'all' ? undefined : fulfillmentType;
 
   // Export hook
   const { isExporting, exportType, exportExcel, exportPdf } = useExport();
@@ -141,6 +143,7 @@ export const DashboardPage = () => {
     date_from: dateRange.from,
     date_to: dateRange.to,
     marketplace,
+    fulfillment_type: ftParam,
   };
 
   // Фильтры для графиков (используют боковой фильтр маркетплейса)
@@ -149,6 +152,7 @@ export const DashboardPage = () => {
     date_to: dateRange.to,
     marketplace: sidebarMarketplace, // Используем боковой фильтр для графиков
     product_id: selectedProduct,
+    fulfillment_type: ftParam,
   };
 
   // Показывать ли карточки сравнения периодов
@@ -195,7 +199,7 @@ export const DashboardPage = () => {
     enabled: chartsEnabled,
   });
 
-  const { data: stocksData, isLoading: stocksLoading } = useStocks(marketplace, {
+  const { data: stocksData, isLoading: stocksLoading } = useStocks(marketplace, fulfillmentType, {
     enabled: stocksEnabled,
   });
 
@@ -421,27 +425,6 @@ export const DashboardPage = () => {
     return undefined;
   })();
 
-  // Коэффициент коррекции: costs-tree ЧИСТЫЕ продажи / mp_sales (аналитика).
-  // Credits (СПП) НЕ входят в ratio — они не от продаж, а компенсация от МП.
-  // Ratio отражает долю проведённых заказов.
-  const summaryRevenue = summary?.revenue ?? 0;
-  const pureSalesForRatio = (() => {
-    // Чистые "Продажи" без credits — для ratio
-    const getSales = (d?: CostsTreeResponse | null) => {
-      const salesItem = d?.tree?.find((t) => t.name === 'Продажи');
-      return salesItem?.amount ?? 0;
-    };
-    if (marketplace === 'ozon') return getSales(ozonCostsTreeData);
-    if (marketplace === 'wb') return getSales(wbCostsTreeData);
-    return getSales(ozonCostsTreeData) + getSales(wbCostsTreeData);
-  })();
-  const costsTreeRatio =
-    summaryRevenue > 0 && pureSalesForRatio > 0 && pureSalesForRatio < summaryRevenue
-      ? pureSalesForRatio / summaryRevenue
-      : 1;
-
-  const adjustedPurchase = purchaseCostsForTile * costsTreeRatio;
-
   const netProfitForTile = (() => {
     if (!summary) return 0;
 
@@ -452,10 +435,10 @@ export const DashboardPage = () => {
       return summary.net_profit;
     }
 
-    return payoutForTile - adjustedPurchase - ad;
+    return payoutForTile - purchaseCostsForTile - ad;
   })();
 
-  const salesCountForTile = Math.round((summary?.sales ?? 0) * costsTreeRatio);
+  const salesCountForTile = summary?.sales ?? 0;
   const returnsCountForTile = summary?.returns ?? 0;
 
   // Margin ratio for ProfitChart (daily profit estimate = daily_revenue × profitMargin)
@@ -469,7 +452,7 @@ export const DashboardPage = () => {
     const wbPS = wbCostsTreeData?.tree?.find((t) => t.name === 'Продажи')?.amount ?? 0;
     const totalPS = ozonPureSales + wbPS;
     const share = totalPS > 0 ? ozonPureSales / totalPS : 1;
-    const purchase = adjustedPurchase * share;
+    const purchase = purchaseCostsForTile * share;
     const ad = (summary.ad_cost ?? 0) * share;
     return { profit: ozonPayout - purchase - ad, purchase, ad };
   })();
@@ -481,7 +464,7 @@ export const DashboardPage = () => {
     const wbPureSales = wbCostsTreeData.tree?.find((t) => t.name === 'Продажи')?.amount ?? 0;
     const totalPS = ozPS + wbPureSales;
     const share = totalPS > 0 ? wbPureSales / totalPS : 1;
-    const purchase = adjustedPurchase * share;
+    const purchase = purchaseCostsForTile * share;
     const ad = (summary.ad_cost ?? 0) * share;
     return { profit: wbPayout - purchase - ad, purchase, ad };
   })();
@@ -492,7 +475,7 @@ export const DashboardPage = () => {
   const buyoutPercent = ordersCountForTile > 0 ? Math.round((salesCountForTile / ordersCountForTile) * 100) : 0;
 
   // Средняя себестоимость за единицу
-  const avgCcPerUnit = salesCountForTile > 0 ? adjustedPurchase / salesCountForTile : 0;
+  const avgCcPerUnit = salesCountForTile > 0 ? purchaseCostsForTile / salesCountForTile : 0;
 
   // Change badges (period comparison integrated into cards)
   const prevRevenue = previousPeriod?.revenue ?? 0;
@@ -525,6 +508,7 @@ export const DashboardPage = () => {
     exportPdf({
       period: dateRange,
       marketplace,
+      fulfillment_type: ftParam,
     });
   };
 
@@ -620,9 +604,6 @@ export const DashboardPage = () => {
             'Выручка из финансового отчёта МП (проведённые).',
             'Может отличаться от «Аналитики» в ЛК —',
             'там учтены все заказы, вкл. непроведённые.',
-            costsTreeRatio < 1
-              ? `Проведено ${(costsTreeRatio * 100).toFixed(0)}% от всех заказов.`
-              : undefined,
             ozonCostsTreeData?.warnings?.length ? `⚠ ${ozonCostsTreeData.warnings[0]}` : undefined,
           ].filter(Boolean).join('\n')}
           tooltipAlign="right"
@@ -636,20 +617,13 @@ export const DashboardPage = () => {
         <SummaryCard
           title="Себестоимость"
           mobileTitle="Закупка"
-          value={adjustedPurchase}
+          value={purchaseCostsForTile}
           format="currency"
           secondaryValue={salesCountForTile > 0 ? `∅ ${formatCurrency(avgCcPerUnit)} / шт` : undefined}
-          subtitle={costsTreeRatio < 1
-            ? `скорр. ${(costsTreeRatio * 100).toFixed(0)}% проведённых`
-            : undefined}
           tooltip={[
             'Себестоимость реализованных товаров (COGS).',
-            `= Закупочная цена × Кол-во выкупов × Коэфф. проведённых`,
-            `= ${formatCurrency(purchaseCostsForTile)} × ${costsTreeRatio.toFixed(2)} = ${formatCurrency(adjustedPurchase)}`,
-            '',
-            costsTreeRatio < 1
-              ? `Коэффициент ${(costsTreeRatio * 100).toFixed(0)}%: не все заказы проведены МП.`
-              : 'Все заказы проведены (коэфф. = 100%).',
+            `= Закупочная цена × Кол-во выкупов`,
+            `= ${formatCurrency(purchaseCostsForTile)}`,
             '',
             'Закупочные цены задаются в Настройки → Товары.',
           ].join('\n')}
@@ -674,16 +648,13 @@ export const DashboardPage = () => {
                   'Чистая прибыль = К перечисл. − Себестоимость − Реклама',
                   '',
                   `К перечисл.: ${payoutForTile === null ? '—' : formatCurrency(payoutForTile)}`,
-                  `Себестоимость: −${formatCurrency(adjustedPurchase)}`,
+                  `Себестоимость: −${formatCurrency(purchaseCostsForTile)}`,
                   `Реклама: −${formatCurrency(summary.ad_cost ?? 0)}`,
                   `─────────────`,
                   `Итого: ${formatCurrency(netProfitForTile)}`,
                   '',
                   'Учтены ВСЕ расходы: удержания МП, закупка, реклама.',
-                  costsTreeRatio < 1
-                    ? `Закупка пропорциональна проведённым (${(costsTreeRatio * 100).toFixed(0)}%).`
-                    : undefined,
-                ].filter(Boolean).join('\n')
+                ].join('\n')
               : undefined
           }
           tooltipAlign="right"
@@ -906,7 +877,7 @@ export const DashboardPage = () => {
         <ProfitWaterfall
           revenue={revenueForTile}
           mpDeductions={mpDeductionsForTile}
-          purchase={adjustedPurchase}
+          purchase={purchaseCostsForTile}
           ads={adCostForTile}
           profit={netProfitForTile}
           loading={isSummaryLoading || isCostsTreeLoading}

@@ -17,9 +17,10 @@
  * - Change badge (+12% / -5%) в правом верхнем углу
  * - Warning badge (⚠️) при наличии
  */
-import { type ReactNode } from 'react';
+import { type ReactNode, useState, useRef, useEffect } from 'react';
 import type { LucideIcon } from 'lucide-react';
 import { HelpCircle, AlertTriangle, TrendingUp, TrendingDown } from 'lucide-react';
+import { createPortal } from 'react-dom';
 import { cn, formatNumber, formatPercent } from '../../lib/utils';
 
 // ── Цветовые схемы для иконок ──
@@ -117,6 +118,78 @@ const ChangeBadge = ({ change, isPositive }: { change: number; isPositive?: bool
   );
 };
 
+// ── Tooltip: desktop hover, mobile tap (Portal) ──
+const CardTooltip = ({ text, align = 'left' }: { text: string; align?: 'left' | 'right' }) => {
+  const [open, setOpen] = useState(false);
+  const iconRef = useRef<HTMLButtonElement>(null);
+  const popRef = useRef<HTMLDivElement>(null);
+  const [pos, setPos] = useState({ top: 0, left: 0 });
+
+  useEffect(() => {
+    if (!open) return;
+    const handleOutside = (e: MouseEvent | TouchEvent) => {
+      if (popRef.current?.contains(e.target as Node)) return;
+      if (iconRef.current?.contains(e.target as Node)) return;
+      setOpen(false);
+    };
+    document.addEventListener('mousedown', handleOutside);
+    document.addEventListener('touchstart', handleOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleOutside);
+      document.removeEventListener('touchstart', handleOutside);
+    };
+  }, [open]);
+
+  const handleTap = () => {
+    if (!iconRef.current) return;
+    const rect = iconRef.current.getBoundingClientRect();
+    const tooltipW = 240;
+    let left = rect.left + rect.width / 2 - tooltipW / 2;
+    if (left < 8) left = 8;
+    if (left + tooltipW > window.innerWidth - 8) left = window.innerWidth - 8 - tooltipW;
+    setPos({ top: rect.bottom + 6, left });
+    setOpen((v) => !v);
+  };
+
+  return (
+    <>
+      {/* Mobile: tap toggle */}
+      <button
+        ref={iconRef}
+        onClick={handleTap}
+        className="sm:hidden flex-shrink-0 p-0.5 -m-0.5"
+        aria-label="Подсказка"
+      >
+        <HelpCircle className="w-3.5 h-3.5 text-gray-300 active:text-gray-500" />
+      </button>
+      {open && createPortal(
+        <div
+          ref={popRef}
+          className="fixed z-[9999] w-60 p-3 bg-gray-900 text-white text-[11px] rounded-xl shadow-2xl leading-relaxed whitespace-pre-line animate-in fade-in duration-150"
+          style={{ top: pos.top, left: pos.left }}
+        >
+          {text}
+        </div>,
+        document.body,
+      )}
+      {/* Desktop: hover */}
+      <div className="hidden sm:block group relative flex-shrink-0">
+        <HelpCircle className="w-3.5 h-3.5 text-gray-300 hover:text-gray-500 cursor-help transition-colors" />
+        <div
+          className={cn(
+            'invisible group-hover:visible opacity-0 group-hover:opacity-100 transition-opacity',
+            'absolute z-50 top-6 w-56 sm:w-72 p-3 bg-gray-900 text-white text-[11px] sm:text-xs rounded-xl shadow-2xl leading-relaxed whitespace-pre-line',
+            align === 'right' ? 'right-0 left-auto' : 'left-0 right-auto',
+          )}
+        >
+          {text}
+          <div className={cn('absolute -top-1 w-2 h-2 bg-gray-900 rotate-45', align === 'right' ? 'right-3' : 'left-3')} />
+        </div>
+      </div>
+    </>
+  );
+};
+
 // ── Main Component ──
 export const SummaryCard = ({
   title,
@@ -198,26 +271,7 @@ export const SummaryCard = ({
             <span className="text-xs sm:text-sm font-medium text-gray-500 truncate">{title}</span>
           )}
           {tooltip && (
-            <div className="hidden sm:block group relative flex-shrink-0">
-              <HelpCircle className="w-3.5 h-3.5 text-gray-300 hover:text-gray-500 cursor-help transition-colors" />
-              <div
-                className={cn(
-                  'invisible group-hover:visible opacity-0 group-hover:opacity-100 transition-opacity',
-                  'absolute z-50 top-6 w-56 sm:w-72 p-3 bg-gray-900 text-white text-[11px] sm:text-xs rounded-xl shadow-2xl leading-relaxed whitespace-pre-line',
-                  tooltipAlign === 'right'
-                    ? 'right-0 left-auto'
-                    : 'left-0 right-auto'
-                )}
-              >
-                {tooltip}
-                <div
-                  className={cn(
-                    'absolute -top-1 w-2 h-2 bg-gray-900 rotate-45',
-                    tooltipAlign === 'right' ? 'right-3' : 'left-3'
-                  )}
-                />
-              </div>
-            </div>
+            <CardTooltip text={tooltip} align={tooltipAlign} />
           )}
         </div>
         {/* Right side: change badge or warning */}

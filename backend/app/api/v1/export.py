@@ -24,6 +24,7 @@ async def export_pdf(
     date_from: str = Query(..., description="Начало периода (YYYY-MM-DD)"),
     date_to: str = Query(..., description="Конец периода (YYYY-MM-DD)"),
     marketplace: str = Query("all", description="Маркетплейс: all, ozon, wb"),
+    fulfillment_type: str = Query(None, description="Тип фулфилмента: FBO, FBS"),
 ):
     """
     Генерация PDF отчёта через Playwright.
@@ -36,6 +37,8 @@ async def export_pdf(
             f"?from={date_from}&to={date_to}&marketplace={marketplace}"
             f"&token={token}"
         )
+        if fulfillment_type:
+            print_url += f"&fulfillment_type={fulfillment_type}"
 
         pdf_bytes = await generate_pdf(print_url)
 

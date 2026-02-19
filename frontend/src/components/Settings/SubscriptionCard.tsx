@@ -14,6 +14,7 @@ const FEATURE_LABELS: Record<keyof SubscriptionFeatures, string> = {
   period_comparison: 'Сравнение периодов',
   order_monitor: 'Монитор заказов',
   api_access: 'API доступ',
+  fbs_analytics: 'FBO/FBS аналитика',
 };
 
 const PLAN_COLORS: Record<string, string> = {
