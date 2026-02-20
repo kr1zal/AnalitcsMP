@@ -78,6 +78,8 @@ Read and follow coding standards: .claude/rules/coding-standards.md
 37. **Stocks независимы от фильтра МП:** StocksTable, StockForecastChart, StockHistoryChart ВСЕГДА показывают все МП (marketplace='all'). StocksTable имеет встроенные фильтры (Все/OOS WB/OOS Ozon). Остатки — текущее состояние склада, НЕ аналитика за период
 38. **FilterPanel sticky:** `sticky top-0 z-30` на обоих layout (mobile + desktop). Панель прилипает при скролле. Паттерн GA/Mixpanel/Shopify. НЕ убирать z-30 (перекрывает контент ниже)
 39. **Sidebar Dashboard:** ТОЛЬКО фильтр товаров (per-product drill-down для графиков). МП-фильтр УДАЛЁН из сайдбара — все секции (карточки, графики, остатки) следуют единому глобальному фильтру из FilterPanel. Причина: два независимых МП-фильтра создавали путаницу (карточки показывали WB, графики — все МП)
+40. **URL state sync:** `useFilterUrlSync` хук — двусторонняя синхронизация Zustand ↔ URL. Params: `?period=30d&mp=wb&ft=FBS&from=YYYY-MM-DD&to=YYYY-MM-DD`. Дефолтные значения (7d, all, all) НЕ пишутся в URL. `replaceState` (НЕ pushState). Сохраняет чужие query params. Хук подключен в FilterPanel (НЕ в каждой странице)
+41. **AdsPage sticky:** Страница рекламы имеет свою панель фильтров (НЕ общий FilterPanel). Sticky классы: mobile `sticky top-0 z-30`, desktop `sticky top-16 z-30`. НЕ заменять на общий FilterPanel — AdsPage использует локальный МП-фильтр (`selectedMarketplace` useState)
 
 ## Формулы (КРИТИЧНО)
 ```

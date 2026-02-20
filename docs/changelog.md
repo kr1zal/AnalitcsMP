@@ -13,12 +13,14 @@
 
 ## 2026-02-20
 
-### Enterprise: Sticky FilterPanel + единый МП-фильтр для всех секций
+### Enterprise: Sticky FilterPanel + URL state + единый МП-фильтр
 - **FilterPanel sticky**: панель фильтров прилипает к верху экрана при скролле (`sticky top-0 z-30`). Паттерн GA/Mixpanel/Shopify — не нужно скроллить вверх для смены фильтров
-- **Убран sidebar МП-фильтр**: графики (SalesChart, ProfitChart, DrrChart, ConversionChart) теперь следуют за глобальным фильтром МП из FilterPanel. Устранена проблема двух независимых МП-фильтров
+- **AdsPage sticky**: фильтры страницы рекламы также прилипают при скролле
+- **URL state sync**: двусторонняя синхронизация фильтров Zustand ↔ URL query params (`useFilterUrlSync` хук). Параметры: `?period=30d&mp=wb&ft=FBS&from=YYYY-MM-DD&to=YYYY-MM-DD`. Дефолтные значения не пишутся в URL. Сохраняет чужие query params (utm_source, ref)
+- **Убран sidebar МП-фильтр**: графики следуют за глобальным фильтром МП из FilterPanel
 - **Sidebar оставлен**: только фильтр товаров (drill-down для графиков)
-- **PlanCompletionCard**: добавлен `fulfillment_type` в API запрос (ранее параметр терялся)
-- **StockHistoryChart**: МП-фильтр синхронизируется с FilterPanel при смене глобального МП
+- **PlanCompletionCard**: добавлен `fulfillment_type` в API запрос
+- **StockHistoryChart**: МП-фильтр синхронизируется с FilterPanel
 
 ### Fix: Отвязка MarketplaceBreakdown и остатков от глобального фильтра МП
 - **MarketplaceBreakdown**: Карточки OZON и WB теперь ВСЕГДА загружают данные, независимо от выбранного МП в фильтре. Ранее при выборе WB карточка OZON была пустой и наоборот

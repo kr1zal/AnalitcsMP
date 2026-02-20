@@ -83,7 +83,7 @@ export const AdsPage = () => {
 
         {/* Filter Panel */}
         {isMobile ? (
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-3 space-y-2.5">
+          <div className="sticky top-0 z-30 bg-white rounded-xl shadow-sm border border-gray-200 p-3 space-y-2.5">
             {/* Row 1: Date presets */}
             <div className="flex items-center gap-1.5">
               {DATE_PRESETS.map((p) => (
@@ -131,7 +131,7 @@ export const AdsPage = () => {
             </div>
           </div>
         ) : (
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 sm:p-5">
+          <div className="sticky top-16 z-30 bg-white rounded-xl shadow-sm border border-gray-200 p-4 sm:p-5">
             <div className="flex flex-wrap items-center gap-3">
               {/* Date presets */}
               <div className="flex items-center gap-2">
