@@ -80,6 +80,7 @@ Read and follow coding standards: .claude/rules/coding-standards.md
 39. **Sidebar Dashboard:** ТОЛЬКО фильтр товаров (per-product drill-down для графиков). МП-фильтр УДАЛЁН из сайдбара — все секции (карточки, графики, остатки) следуют единому глобальному фильтру из FilterPanel. Причина: два независимых МП-фильтра создавали путаницу (карточки показывали WB, графики — все МП)
 40. **URL state sync:** `useFilterUrlSync` хук — двусторонняя синхронизация Zustand ↔ URL. Params: `?period=30d&mp=wb&ft=FBS&from=YYYY-MM-DD&to=YYYY-MM-DD`. Дефолтные значения (7d, all, all) НЕ пишутся в URL. `replaceState` (НЕ pushState). Сохраняет чужие query params. Хук подключен в FilterPanel (НЕ в каждой странице)
 41. **AdsPage sticky:** Страница рекламы имеет свою панель фильтров (НЕ общий FilterPanel). Sticky классы: mobile `sticky top-0 z-30`, desktop `sticky top-16 z-30`. НЕ заменять на общий FilterPanel — AdsPage использует локальный МП-фильтр (`selectedMarketplace` useState)
+42. **Даты ВСЕГДА в МСК TZ:** `getMaxAvailableDateYmd()` и `getTodayYmd()` форматируют через `toLocaleDateString('sv-SE', { timeZone: 'Europe/Moscow' })`. НИКОГДА не использовать `format(new Date(), 'yyyy-MM-dd')` для текущей даты — результат зависит от TZ браузера. Для вычисления дат на основе "сегодня" — только `formatDateMoscow()` из utils.ts
 
 ## Формулы (КРИТИЧНО)
 ```

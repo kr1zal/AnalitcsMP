@@ -813,7 +813,7 @@ const queryClient = new QueryClient({
 | `formatDate(date, format)` | `dd.MM.yyyy` по умолчанию |
 | `formatDateForAPI(date)` | `yyyy-MM-dd` |
 | `getDateRangeFromPreset(preset, from?, to?)` | Диапазон дат по пресету |
-| `getMaxAvailableDateYmd()` | T-0 после 10:00 МСК, иначе T-1 |
+| `getMaxAvailableDateYmd()` | T-0 после 10:00 МСК, иначе T-1. **Всегда в МСК TZ** (не зависит от TZ браузера) |
 | `normalizeDateRangeYmd(from, to, opts?)` | Нормализация + clamp max |
 | `fillDailySeriesYmd(range, data, makeEmpty)` | Заполнение пропусков в дневном ряде |
 | `calculatePercentChange(current, prev)` | Процент изменения |
@@ -823,7 +823,7 @@ const queryClient = new QueryClient({
 | `getMarketplaceName(mp)` | Wildberries / Ozon / Все площадки |
 | `debounce(fn, ms)` | Debounce |
 | `copyToClipboard(text)` | `navigator.clipboard.writeText` |
-| `getTodayYmd()` | Сегодня YYYY-MM-DD |
+| `getTodayYmd()` | Сегодня YYYY-MM-DD (МСК TZ) |
 
 ---
 

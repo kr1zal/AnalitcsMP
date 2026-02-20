@@ -13,6 +13,12 @@
 
 ## 2026-02-20
 
+### Fix: Timezone-independent date calculation
+- **Баг:** `getMaxAvailableDateYmd()` форматировала дату через `format(date, 'yyyy-MM-dd')` (date-fns), которая использует локальную TZ браузера. На ПК с разными часовыми поясами `date_to` мог отличаться на 1 день → сдвиг 7-дневного окна → разные данные costs-tree → драматическая разница в выручке и прибыли
+- **Подтверждено:** Feb 13-19 давал +192₽ прибыли, Feb 14-20 давал -1186₽ (разница в payout 1100₽ из-за разных выплат Ozon по дням)
+- **Исправление:** `formatDateMoscow()` через `toLocaleDateString('sv-SE', { timeZone: 'Europe/Moscow' })` — дата всегда в МСК независимо от TZ браузера
+- **Затронуто:** `getMaxAvailableDateYmd()`, `getTodayYmd()` в `frontend/src/lib/utils.ts`
+
 ### Enterprise: Sticky FilterPanel + URL state + единый МП-фильтр
 - **FilterPanel sticky**: панель фильтров прилипает к верху экрана при скролле (`sticky top-0 z-30`). Паттерн GA/Mixpanel/Shopify — не нужно скроллить вверх для смены фильтров
 - **AdsPage sticky**: фильтры страницы рекламы также прилипают при скролле
