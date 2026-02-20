@@ -10,6 +10,7 @@ import { cn, getDateRangeFromPreset, getMaxAvailableDateYmd, normalizeDateRangeY
 import { DateRangePicker } from './DateRangePicker';
 import { useIsMobile } from '../../hooks/useMediaQuery';
 import { useFulfillmentInfo } from '../../hooks/useDashboard';
+import { useFilterUrlSync } from '../../hooks/useFilterUrlSync';
 import { FileSpreadsheet, FileText, Loader2 } from 'lucide-react';
 import type { DateRangePreset, FulfillmentType, Marketplace } from '../../types';
 import type { ExportType } from '../../hooks/useExport';
@@ -32,6 +33,7 @@ export const FilterPanel = ({
   exportType = null,
 }: FilterPanelProps) => {
   const isMobile = useIsMobile();
+  useFilterUrlSync();
   const { datePreset, marketplace, fulfillmentType, customDateFrom, customDateTo, setDatePreset, setMarketplace, setFulfillmentType, setCustomDates } = useFiltersStore();
   const { data: fulfillmentInfo } = useFulfillmentInfo();
   const hasFbsData = fulfillmentInfo?.has_fbs_data ?? false;
