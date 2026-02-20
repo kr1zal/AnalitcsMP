@@ -445,13 +445,21 @@ export const DashboardPage = () => {
   const profitMargin = revenueForTile > 0 ? netProfitForTile / revenueForTile : 0;
 
   // ── Per-marketplace profit (IIFE, not useMemo — after early returns) ──
+  // When marketplace filter is active, purchaseCostsForTile and ad_cost are already
+  // filtered by that MP — share must be 1 for the matching card, otherwise we
+  // double-discount and overstate profit.
   const ozonProfitData: MpProfitData | null = (() => {
     if (!summary || !ozonCostsTreeData) return null;
     const ozonPayout = ozonCostsTreeData.total_accrued ?? 0;
-    const ozonPureSales = ozonCostsTreeData.tree?.find((t) => t.name === 'Продажи')?.amount ?? 0;
-    const wbPS = wbCostsTreeData?.tree?.find((t) => t.name === 'Продажи')?.amount ?? 0;
-    const totalPS = ozonPureSales + wbPS;
-    const share = totalPS > 0 ? ozonPureSales / totalPS : 1;
+    let share: number;
+    if (marketplace === 'ozon') {
+      share = 1;
+    } else {
+      const ozonPureSales = ozonCostsTreeData.tree?.find((t) => t.name === 'Продажи')?.amount ?? 0;
+      const wbPS = wbCostsTreeData?.tree?.find((t) => t.name === 'Продажи')?.amount ?? 0;
+      const totalPS = ozonPureSales + wbPS;
+      share = totalPS > 0 ? ozonPureSales / totalPS : 1;
+    }
     const purchase = purchaseCostsForTile * share;
     const ad = (summary.ad_cost ?? 0) * share;
     return { profit: ozonPayout - purchase - ad, purchase, ad };
@@ -460,10 +468,15 @@ export const DashboardPage = () => {
   const wbProfitData: MpProfitData | null = (() => {
     if (!summary || !wbCostsTreeData) return null;
     const wbPayout = wbCostsTreeData.total_accrued ?? 0;
-    const ozPS = ozonCostsTreeData?.tree?.find((t) => t.name === 'Продажи')?.amount ?? 0;
-    const wbPureSales = wbCostsTreeData.tree?.find((t) => t.name === 'Продажи')?.amount ?? 0;
-    const totalPS = ozPS + wbPureSales;
-    const share = totalPS > 0 ? wbPureSales / totalPS : 1;
+    let share: number;
+    if (marketplace === 'wb') {
+      share = 1;
+    } else {
+      const ozPS = ozonCostsTreeData?.tree?.find((t) => t.name === 'Продажи')?.amount ?? 0;
+      const wbPureSales = wbCostsTreeData.tree?.find((t) => t.name === 'Продажи')?.amount ?? 0;
+      const totalPS = ozPS + wbPureSales;
+      share = totalPS > 0 ? wbPureSales / totalPS : 1;
+    }
     const purchase = purchaseCostsForTile * share;
     const ad = (summary.ad_cost ?? 0) * share;
     return { profit: wbPayout - purchase - ad, purchase, ad };

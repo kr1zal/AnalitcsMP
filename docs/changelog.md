@@ -13,6 +13,13 @@
 
 ## 2026-02-20
 
+### Bugfix: Costs-tree FBO/FBS merge — корректное суммирование "Все"
+- **Проблема:** WB `reportDetailByPeriod` не содержит полей `isSupply`/`delivery_type_id` → `_determine_wb_fulfillment()` всегда возвращал FBO → `mp_costs_details` имел 0 FBS записей → RPC `get_costs_tree` при "Все" использовал только FBO данные, игнорируя FBS из `mp_costs`/`mp_sales`
+- **Фикс 1:** `_determine_wb_fulfillment()` — добавлена поддержка `delivery_method` ("FBW"→FBO, "FBS"/"DBS"→FBS) и `srv_dbs` (True→FBS), которые реально присутствуют в API
+- **Фикс 2:** Хелперы `_merge_costs_tree_data()` + `_fetch_costs_tree_merged()` — при `fulfillment_type=None` ("Все") делают два RPC вызова (FBO+FBS) и мержат результаты: суммируют `total_accrued`, `total_revenue`, объединяют tree items по category name
+- **Применено к 4 эндпоинтам:** `/dashboard/costs-tree`, `/dashboard/costs-tree-combined`, `/dashboard/unit-economics`, Order Monitor
+- **Верификация:** FBO=7015.93 + FBS=8353.00 = Все=15368.93 ✓, Σ(tree)=total_accrued для всех режимов ✓
+
 ### Bugfix: WB Ads sync — агрегация по appType
 - **Проблема:** WB API `/adv/v2/fullstats` возвращает метрики разбитые по appType (Поиск/Каталог/Карточка). Upsert перезаписывал данные → оставался только последний appType (35₽ вместо 118₽)
 - **Фикс:** агрегация views/clicks/cost/orders по всем appType для одного nmId перед upsert

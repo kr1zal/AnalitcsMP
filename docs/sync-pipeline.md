@@ -268,8 +268,10 @@ WildberriesClient.get_report_detail(date_from, date_to, period="daily")
 **Группировка**: по `(nm_id, rr_dt[:10], fulfillment_type)`
 
 **FBS detection:** `_determine_wb_fulfillment(row)` определяет тип из строки финотчета:
-- `isSupply=true` → FBS, `isSupply=false` → FBO
-- Fallback: `delivery_type_id` (1=FBO, 2=FBS)
+- `isSupply=true` → FBS, `isSupply=false` → FBO (устаревшее, может отсутствовать)
+- `delivery_type_id` (1=FBO, 2=FBS) (устаревшее, может отсутствовать)
+- `delivery_method` — "FBW"→FBO, "FBS"/"DBS"→FBS (основное поле в reportDetailByPeriod)
+- `srv_dbs=true` → FBS (Delivery by Seller)
 - Default: FBO
 
 **Классификация строк:**
@@ -829,12 +831,27 @@ total_costs = commission + logistics + storage + promotion +
 ### `_determine_wb_fulfillment(row)` — приоритет полей
 
 ```python
-1. isSupply = True  → FBS (продавец отгружает сам)
-2. isSupply = False → FBO (склад WB)
-3. delivery_type_id = 2 → FBS
+1. isSupply = True  → FBS (устаревшее, может отсутствовать в API)
+2. isSupply = False → FBO
+3. delivery_type_id = 2 → FBS (устаревшее)
 4. delivery_type_id = 1 → FBO
-5. default → FBO
+5. delivery_method содержит "FBS"/"DBS" → FBS (основное поле в reportDetailByPeriod)
+6. delivery_method содержит "FBW"/"FBO" → FBO
+7. srv_dbs = True → FBS (Delivery by Seller)
+8. default → FBO
 ```
+
+### Costs-tree FBO/FBS merge (20.02.2026)
+
+**Проблема:** WB `reportDetailByPeriod` может не содержать FBS-данные в `mp_costs_details` (поля `isSupply`/`delivery_type_id` отсутствуют). FBS-данные при этом есть в `mp_costs`/`mp_sales`. При `fulfillment_type=NULL` ("Все") RPC видит `mp_costs_details` (только FBO) и игнорирует FBS.
+
+**Решение:** Хелпер `_fetch_costs_tree_merged()` в `dashboard.py`:
+- Когда `fulfillment_type` задан (FBO/FBS) → один вызов RPC
+- Когда `fulfillment_type=None` ("Все") → два вызова RPC (FBO + FBS), merge результатов
+- Merge: суммирование `total_accrued`, `total_revenue`, объединение tree items по category name
+- Если FBS пуст → возвращает FBO as-is (оптимизация для частого случая)
+
+Применено к 4 эндпоинтам: `/dashboard/costs-tree`, `/dashboard/costs-tree-combined`, `/dashboard/unit-economics`, Order Monitor.
 
 ### RPC функции
 

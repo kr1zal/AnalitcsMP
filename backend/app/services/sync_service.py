@@ -1441,21 +1441,39 @@ class SyncService:
     def _determine_wb_fulfillment(row: dict) -> str:
         """
         Определяет тип фулфилмента из строки WB reportDetailByPeriod.
-        Приоритет: isSupply → delivery_type_id → default FBO.
+        Приоритет: isSupply → delivery_type_id → delivery_method → srv_dbs → default FBO.
         WB API: isSupply=true → FBS (продавец отгружает сам).
+
+        Поля по версиям API:
+        - isSupply / delivery_type_id: устаревшие, могут отсутствовать в ответе
+        - delivery_method: "FBW, (МГТ, коробка)" / "FBS, ..." — присутствует в reportDetailByPeriod
+        - srv_dbs: True = Delivery by Seller (≈ FBS) — присутствует в reportDetailByPeriod
         """
+        # Priority 1: isSupply (некоторые версии API)
         is_supply = row.get("isSupply")
         if is_supply is True:
             return "FBS"
         if is_supply is False:
             return "FBO"
 
-        # Fallback: delivery_type_id (1=FBO, 2=FBS)
+        # Priority 2: delivery_type_id (некоторые версии API)
         dt_id = row.get("delivery_type_id")
         if dt_id == 2:
             return "FBS"
         if dt_id == 1:
             return "FBO"
+
+        # Priority 3: delivery_method (reportDetailByPeriod — основное поле)
+        dm = str(row.get("delivery_method") or "").upper()
+        if "FBS" in dm or "DBS" in dm:
+            return "FBS"
+        if "FBW" in dm or "FBO" in dm:
+            return "FBO"
+
+        # Priority 4: srv_dbs — Delivery by Seller (≈ FBS)
+        srv_dbs = row.get("srv_dbs")
+        if srv_dbs is True:
+            return "FBS"
 
         return "FBO"
 

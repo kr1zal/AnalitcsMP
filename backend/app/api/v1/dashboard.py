@@ -13,6 +13,129 @@ from ...plans import has_feature
 router = APIRouter()
 
 
+# ─── Costs-tree FBO/FBS merge helpers ─────────────────────────────────────────
+# WB reportDetailByPeriod может не содержать FBS-данные в mp_costs_details
+# (поля isSupply/delivery_type_id отсутствуют в ряде версий API).
+# FBS-данные при этом могут быть в mp_costs/mp_sales (из других sync-пайплайнов).
+# При fulfillment_type=NULL ("Все") RPC видит mp_costs_details (только FBO) и
+# игнорирует FBS. Для корректного суммирования: FBO из primary + FBS из fallback.
+
+def _merge_costs_tree_data(primary: dict, supplement: dict) -> dict:
+    """
+    Merge two costs-tree RPC responses (primary + supplement).
+    Суммирует total_accrued, total_revenue, объединяет tree items по name.
+    """
+    if not supplement:
+        return primary
+    if not primary:
+        return supplement
+
+    p_accrued = float(primary.get("total_accrued") or 0)
+    s_accrued = float(supplement.get("total_accrued") or 0)
+    p_revenue = float(primary.get("total_revenue") or 0)
+    s_revenue = float(supplement.get("total_revenue") or 0)
+    p_sales = float(primary.get("percent_base_sales") or 0)
+    s_sales = float(supplement.get("percent_base_sales") or 0)
+
+    # Merge tree items by category name
+    tree_map: dict[str, dict] = {}
+    for item in (primary.get("tree") or []):
+        name = item.get("name", "")
+        tree_map[name] = {
+            "name": name,
+            "amount": float(item.get("amount") or 0),
+            "percent": item.get("percent"),
+            "children": list(item.get("children") or []),
+        }
+
+    for item in (supplement.get("tree") or []):
+        name = item.get("name", "")
+        amount = float(item.get("amount") or 0)
+        if abs(amount) < 0.01:
+            continue
+        if name in tree_map:
+            tree_map[name]["amount"] = round(tree_map[name]["amount"] + amount, 2)
+            # Merge children по subcategory name
+            existing_children = tree_map[name].get("children") or []
+            new_children = item.get("children") or []
+            if new_children:
+                child_map = {}
+                for c in existing_children:
+                    cn = c.get("name", "")
+                    child_map[cn] = {**c, "amount": float(c.get("amount") or 0)}
+                for c in new_children:
+                    cn = c.get("name", "")
+                    ca = float(c.get("amount") or 0)
+                    if cn in child_map:
+                        child_map[cn]["amount"] = round(child_map[cn]["amount"] + ca, 2)
+                    else:
+                        child_map[cn] = {**c, "amount": ca}
+                tree_map[name]["children"] = list(child_map.values())
+        else:
+            tree_map[name] = {
+                "name": name,
+                "amount": round(amount, 2),
+                "percent": item.get("percent"),
+                "children": list(item.get("children") or []),
+            }
+
+    return {
+        "status": "success",
+        "period": primary.get("period"),
+        "marketplace": primary.get("marketplace"),
+        "total_accrued": round(p_accrued + s_accrued, 2),
+        "total_revenue": round(p_revenue + s_revenue, 2),
+        "percent_base_sales": round(p_sales + s_sales, 2),
+        "source": "merged",
+        "tree": list(tree_map.values()),
+    }
+
+
+def _fetch_costs_tree_merged(
+    supabase,
+    date_from: str,
+    date_to: str,
+    marketplace: str | None,
+    product_id: str | None,
+    include_children: bool,
+    user_id: str,
+    fulfillment_type: str | None,
+) -> dict:
+    """
+    Fetch costs-tree с автоматическим FBO+FBS merge при fulfillment_type=None.
+    Когда FT задан (FBO/FBS) — один вызов RPC.
+    Когда FT=None ("Все") — два вызова (FBO + FBS), результат объединяется.
+    """
+    params = {
+        "p_date_from": date_from,
+        "p_date_to": date_to,
+        "p_marketplace": marketplace,
+        "p_product_id": product_id,
+        "p_include_children": include_children,
+        "p_user_id": user_id,
+    }
+
+    if fulfillment_type is not None:
+        params["p_fulfillment_type"] = fulfillment_type
+        result = supabase.rpc("get_costs_tree", params).execute()
+        return result.data
+
+    # FT=None → fetch FBO и FBS отдельно, merge
+    fbo_params = {**params, "p_fulfillment_type": "FBO"}
+    fbs_params = {**params, "p_fulfillment_type": "FBS"}
+
+    fbo_data = supabase.rpc("get_costs_tree", fbo_params).execute().data
+    fbs_data = supabase.rpc("get_costs_tree", fbs_params).execute().data
+
+    # Если FBS пуст — возвращаем FBO as-is (частый случай)
+    fbs_accrued = float(fbs_data.get("total_accrued") or 0) if fbs_data else 0
+    fbs_revenue = float(fbs_data.get("total_revenue") or 0) if fbs_data else 0
+    if abs(fbs_accrued) < 0.01 and abs(fbs_revenue) < 0.01:
+        return fbo_data
+
+    return _merge_costs_tree_data(fbo_data, fbs_data)
+
+
 @router.get("/dashboard/summary")
 async def get_summary(
     current_user: CurrentUser = Depends(get_current_user),
@@ -206,20 +329,11 @@ async def get_unit_economics(
         try:
             mp_list = [marketplace] if marketplace and marketplace != "all" else ["ozon", "wb"]
             for mp in mp_list:
-                ct_result = supabase.rpc(
-                    "get_costs_tree",
-                    {
-                        "p_date_from": date_from,
-                        "p_date_to": date_to,
-                        "p_marketplace": mp,
-                        "p_product_id": None,
-                        "p_include_children": False,
-                        "p_user_id": current_user.id,
-                        "p_fulfillment_type": fulfillment_type,
-                    }
-                ).execute()
-                if ct_result.data:
-                    ct_data = ct_result.data
+                ct_data = _fetch_costs_tree_merged(
+                    supabase, date_from, date_to, mp, None,
+                    False, current_user.id, fulfillment_type,
+                )
+                if ct_data:
                     if isinstance(ct_data, list) and len(ct_data) > 0:
                         ct_data = ct_data[0]
                     if isinstance(ct_data, dict):
@@ -699,20 +813,10 @@ async def get_costs_tree(
         date_to = datetime.now().strftime("%Y-%m-%d")
 
     try:
-        result = supabase.rpc(
-            "get_costs_tree",
-            {
-                "p_date_from": date_from,
-                "p_date_to": date_to,
-                "p_marketplace": marketplace,
-                "p_product_id": product_id,
-                "p_include_children": include_children,
-                "p_user_id": current_user.id,
-                "p_fulfillment_type": fulfillment_type,
-            }
-        ).execute()
-
-        return result.data
+        return _fetch_costs_tree_merged(
+            supabase, date_from, date_to, marketplace, product_id,
+            include_children, current_user.id, fulfillment_type,
+        )
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -742,19 +846,19 @@ async def get_costs_tree_combined(
         date_to = datetime.now().strftime("%Y-%m-%d")
 
     try:
-        result = supabase.rpc(
-            "get_costs_tree_combined",
-            {
-                "p_date_from": date_from,
-                "p_date_to": date_to,
-                "p_product_id": product_id,
-                "p_include_children": include_children,
-                "p_user_id": current_user.id,
-                "p_fulfillment_type": fulfillment_type,
-            }
-        ).execute()
-
-        return result.data
+        ozon_data = _fetch_costs_tree_merged(
+            supabase, date_from, date_to, "ozon", product_id,
+            include_children, current_user.id, fulfillment_type,
+        )
+        wb_data = _fetch_costs_tree_merged(
+            supabase, date_from, date_to, "wb", product_id,
+            include_children, current_user.id, fulfillment_type,
+        )
+        return {
+            "ozon": ozon_data,
+            "wb": wb_data,
+            "period": {"from": date_from, "to": date_to},
+        }
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -1070,20 +1174,11 @@ async def get_order_funnel(
             mp_list = [marketplace] if marketplace and marketplace != "all" else ["ozon", "wb"]
             settled_revenue = 0.0
             for mp in mp_list:
-                ct_result = supabase.rpc(
-                    "get_costs_tree",
-                    {
-                        "p_date_from": date_from,
-                        "p_date_to": date_to,
-                        "p_marketplace": mp,
-                        "p_product_id": None,
-                        "p_include_children": False,
-                        "p_user_id": current_user.id,
-                        "p_fulfillment_type": fulfillment_type,
-                    }
-                ).execute()
-                if ct_result.data:
-                    ct_data = ct_result.data
+                ct_data = _fetch_costs_tree_merged(
+                    supabase, date_from, date_to, mp, None,
+                    False, current_user.id, fulfillment_type,
+                )
+                if ct_data:
                     if isinstance(ct_data, dict):
                         settled_revenue += abs(float(ct_data.get("total_revenue", 0) or 0))
                     elif isinstance(ct_data, list) and len(ct_data) > 0:
