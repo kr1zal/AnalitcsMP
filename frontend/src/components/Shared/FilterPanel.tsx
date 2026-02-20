@@ -181,7 +181,7 @@ export const FilterPanel = ({
 
   // Desktop layout: одна строка
   return (
-    <div className="sticky top-0 z-30 bg-white rounded-xl shadow-sm border border-gray-200 p-4 sm:p-5 mb-4 sm:mb-5 lg:mb-6">
+    <div className="sticky top-16 z-30 bg-white rounded-xl shadow-sm border border-gray-200 p-4 sm:p-5 mb-4 sm:mb-5 lg:mb-6">
       <div className="flex flex-wrap items-center gap-3">
         {/* Период - кнопки */}
         <div className="flex items-center gap-2">
