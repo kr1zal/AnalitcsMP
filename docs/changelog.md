@@ -13,6 +13,12 @@
 
 ## 2026-02-20
 
+### Fix: Отвязка MarketplaceBreakdown и остатков от глобального фильтра МП
+- **MarketplaceBreakdown**: Карточки OZON и WB теперь ВСЕГДА загружают данные, независимо от выбранного МП в фильтре. Ранее при выборе WB карточка OZON была пустой и наоборот
+- **Stocks**: StocksTable, StockForecastChart и StockHistoryChart теперь всегда показывают остатки по ВСЕМ маркетплейсам. StocksTable имеет встроенные фильтры (Все/OOS WB/OOS Ozon) для детализации
+- Фильтры, влияющие на MarketplaceBreakdown: только период дат и FBO/FBS
+- Фильтры, влияющие на Stocks: только FBO/FBS (остатки — текущее состояние, не аналитика за период)
+
 ### Bugfix: Costs-tree FBO/FBS merge — корректное суммирование "Все"
 - **Проблема:** WB `reportDetailByPeriod` не содержит полей `isSupply`/`delivery_type_id` → `_determine_wb_fulfillment()` всегда возвращал FBO → `mp_costs_details` имел 0 FBS записей → RPC `get_costs_tree` при "Все" использовал только FBO данные, игнорируя FBS из `mp_costs`/`mp_sales`
 - **Фикс 1:** `_determine_wb_fulfillment()` — добавлена поддержка `delivery_method` ("FBW"→FBO, "FBS"/"DBS"→FBS) и `srv_dbs` (True→FBS), которые реально присутствуют в API

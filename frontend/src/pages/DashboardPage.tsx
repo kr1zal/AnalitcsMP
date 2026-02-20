@@ -171,13 +171,12 @@ export const DashboardPage = () => {
   // - Изоляции ошибок (если один МП упал — остальные работают)
   // - Масштабируемости (при добавлении 3+ маркетплейсов)
   // - Гибкого кэширования React Query
+  // ВСЕГДА загружаем оба МП — MarketplaceBreakdown показывает OZON и WB независимо от фильтра
   const { data: ozonCostsTreeData, isLoading: ozonCostsTreeLoading } = useCostsTree(
     { ...filters, marketplace: 'ozon', include_children: true },
-    { enabled: marketplace === 'ozon' || marketplace === 'all' }
   );
   const { data: wbCostsTreeData, isLoading: wbCostsTreeLoading } = useCostsTree(
     { ...filters, marketplace: 'wb', include_children: true },
-    { enabled: marketplace === 'wb' || marketplace === 'all' }
   );
 
   // Закупка: считаем по unit-economics (purchase_costs = purchase_price * qty).
@@ -199,7 +198,8 @@ export const DashboardPage = () => {
     enabled: chartsEnabled,
   });
 
-  const { data: stocksData, isLoading: stocksLoading } = useStocks(marketplace, fulfillmentType, {
+  // Остатки ВСЕГДА показывают все МП — StocksTable имеет встроенные фильтры (Все/OOS WB/OOS Ozon)
+  const { data: stocksData, isLoading: stocksLoading } = useStocks('all', fulfillmentType, {
     enabled: stocksEnabled,
   });
 
