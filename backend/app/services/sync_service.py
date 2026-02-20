@@ -2042,49 +2042,68 @@ class SyncService:
                 for day in campaign_stat.get("days", []):
                     date = day.get("date")
 
+                    # Aggregate across all appTypes per nmId
+                    # WB returns separate entries per appType (search/catalog/card)
+                    # but our unique key is (user,product,mp,date,campaign) — need totals
+                    nm_totals: dict[int, dict] = {}
                     for app in day.get("apps", []):
                         for nm in app.get("nm", []):
                             nm_id = nm.get("nmId")
-
-                            # Находим товар
-                            product_id = None
-                            for barcode, product in products_map.items():
-                                if product.get("wb_nm_id") == nm_id:
-                                    product_id = product["id"]
-                                    break
-
-                            if not product_id:
+                            if not nm_id:
                                 continue
+                            if nm_id not in nm_totals:
+                                nm_totals[nm_id] = {
+                                    "views": 0, "clicks": 0,
+                                    "cost": 0.0, "orders": 0,
+                                    "orders_sum_rub": 0.0,
+                                }
+                            t = nm_totals[nm_id]
+                            t["views"] += nm.get("views", 0)
+                            t["clicks"] += nm.get("clicks", 0)
+                            t["cost"] += float(nm.get("sum", 0))
+                            t["orders"] += nm.get("orders", 0)
+                            t["orders_sum_rub"] += float(nm.get("ordersSumRub", 0) or 0)
 
-                            views = nm.get("views", 0)
-                            clicks = nm.get("clicks", 0)
-                            cost = float(nm.get("sum", 0))
-                            orders = nm.get("orders", 0)
+                    for nm_id, t in nm_totals.items():
+                        # Находим товар
+                        product_id = None
+                        for barcode, product in products_map.items():
+                            if product.get("wb_nm_id") == nm_id:
+                                product_id = product["id"]
+                                break
 
-                            ctr = round(clicks / views * 100, 2) if views > 0 else 0
-                            cpc = round(cost / clicks, 2) if clicks > 0 else 0
-                            acos = round(cost / float(nm.get("ordersSumRub", 1)) * 100, 2) if nm.get("ordersSumRub") else None
+                        if not product_id:
+                            continue
 
-                            upsert_row = {
-                                "product_id": product_id,
-                                "marketplace": "wb",
-                                "date": date,
-                                "campaign_id": str(campaign_id),
-                                "campaign_name": str(campaign_id),
-                                "impressions": views,
-                                "clicks": clicks,
-                                "cost": cost,
-                                "orders_count": orders,
-                                "ctr": ctr,
-                                "cpc": cpc,
-                                "acos": acos,
-                            }
-                            if self.user_id:
-                                upsert_row["user_id"] = self.user_id
-                            self.supabase.table("mp_ad_costs").upsert(
-                                upsert_row, on_conflict="user_id,product_id,marketplace,date,campaign_id"
-                            ).execute()
-                            records_count += 1
+                        views = t["views"]
+                        clicks = t["clicks"]
+                        cost = t["cost"]
+                        orders = t["orders"]
+
+                        ctr = round(clicks / views * 100, 2) if views > 0 else 0
+                        cpc = round(cost / clicks, 2) if clicks > 0 else 0
+                        acos = round(cost / t["orders_sum_rub"] * 100, 2) if t["orders_sum_rub"] > 0 else None
+
+                        upsert_row = {
+                            "product_id": product_id,
+                            "marketplace": "wb",
+                            "date": date,
+                            "campaign_id": str(campaign_id),
+                            "campaign_name": str(campaign_id),
+                            "impressions": views,
+                            "clicks": clicks,
+                            "cost": cost,
+                            "orders_count": orders,
+                            "ctr": ctr,
+                            "cpc": cpc,
+                            "acos": acos,
+                        }
+                        if self.user_id:
+                            upsert_row["user_id"] = self.user_id
+                        self.supabase.table("mp_ad_costs").upsert(
+                            upsert_row, on_conflict="user_id,product_id,marketplace,date,campaign_id"
+                        ).execute()
+                        records_count += 1
 
             self._log_sync("wb", "ads", "success", records_count, started_at=started_at)
             return {"status": "success", "records": records_count}

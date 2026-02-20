@@ -513,14 +513,20 @@ Delete перед insert удаляет ALL fulfillment_type.
    → sleep(5) между запросами
 ```
 
-**Метрики per nm_id per day:**
-- `impressions = views`
-- `clicks`
-- `cost = sum` (расход в рублях)
-- `orders_count = orders`
+**Агрегация по appType (fix 20.02.2026):**
+WB API возвращает метрики разбитые по `appType` (1=Карточка, 32=Каталог, 64=Поиск).
+Один nmId может иметь данные в нескольких appType за один день.
+Перед upsert метрики **агрегируются** по nmId (views, clicks, cost, orders суммируются).
+Без агрегации upsert перезаписывал предыдущий appType → терялись данные.
+
+**Метрики per nm_id per day (aggregated across appTypes):**
+- `impressions = Σ views`
+- `clicks = Σ clicks`
+- `cost = Σ sum` (расход в рублях)
+- `orders_count = Σ orders`
 - `ctr = clicks / views * 100`
 - `cpc = cost / clicks`
-- `acos = cost / ordersSumRub * 100`
+- `acos = cost / Σ ordersSumRub * 100`
 
 ### 9.2 Ozon Ads
 

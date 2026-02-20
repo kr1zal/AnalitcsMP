@@ -13,6 +13,11 @@
 
 ## 2026-02-20
 
+### Bugfix: WB Ads sync — агрегация по appType
+- **Проблема:** WB API `/adv/v2/fullstats` возвращает метрики разбитые по appType (Поиск/Каталог/Карточка). Upsert перезаписывал данные → оставался только последний appType (35₽ вместо 118₽)
+- **Фикс:** агрегация views/clicks/cost/orders по всем appType для одного nmId перед upsert
+- Очистка orphan-записей с несуществующими product_id
+
 ### UE FBO/FBS Breakdown в MpCard
 - **Backend**: `fulfillment_breakdown` для ВСЕХ товаров с продажами (не только FBS)
 - Feature gate: `fbs_analytics` (Pro+ план). Free план не получает breakdown и ft-фильтрацию
