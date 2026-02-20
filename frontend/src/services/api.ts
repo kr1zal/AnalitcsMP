@@ -514,7 +514,7 @@ export const salesPlanApi = {
     return data;
   },
 
-  getCompletion: async (params?: { date_from?: string; date_to?: string; marketplace?: string }): Promise<SalesPlanCompletionResponse> => {
+  getCompletion: async (params?: { date_from?: string; date_to?: string; marketplace?: string; fulfillment_type?: string }): Promise<SalesPlanCompletionResponse> => {
     const { data } = await api.get<SalesPlanCompletionResponse>('/sales-plan/completion', { params });
     return data;
   },

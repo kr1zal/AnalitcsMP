@@ -13,6 +13,13 @@
 
 ## 2026-02-20
 
+### Enterprise: Sticky FilterPanel + единый МП-фильтр для всех секций
+- **FilterPanel sticky**: панель фильтров прилипает к верху экрана при скролле (`sticky top-0 z-30`). Паттерн GA/Mixpanel/Shopify — не нужно скроллить вверх для смены фильтров
+- **Убран sidebar МП-фильтр**: графики (SalesChart, ProfitChart, DrrChart, ConversionChart) теперь следуют за глобальным фильтром МП из FilterPanel. Устранена проблема двух независимых МП-фильтров
+- **Sidebar оставлен**: только фильтр товаров (drill-down для графиков)
+- **PlanCompletionCard**: добавлен `fulfillment_type` в API запрос (ранее параметр терялся)
+- **StockHistoryChart**: МП-фильтр синхронизируется с FilterPanel при смене глобального МП
+
 ### Fix: Отвязка MarketplaceBreakdown и остатков от глобального фильтра МП
 - **MarketplaceBreakdown**: Карточки OZON и WB теперь ВСЕГДА загружают данные, независимо от выбранного МП в фильтре. Ранее при выборе WB карточка OZON была пустой и наоборот
 - **Stocks**: StocksTable, StockForecastChart и StockHistoryChart теперь всегда показывают остатки по ВСЕМ маркетплейсам. StocksTable имеет встроенные фильтры (Все/OOS WB/OOS Ozon) для детализации

@@ -74,7 +74,7 @@ export const usePreviousPlan = (month: string) => {
 
 /** Fetch plan completion for the current dashboard period */
 export const useSalesPlanCompletion = (
-  filters?: Pick<DashboardFilters, 'date_from' | 'date_to' | 'marketplace'>,
+  filters?: Pick<DashboardFilters, 'date_from' | 'date_to' | 'marketplace' | 'fulfillment_type'>,
   opts?: { enabled?: boolean }
 ) => {
   return useQuery<SalesPlanCompletionResponse>({

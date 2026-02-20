@@ -38,7 +38,7 @@ Read and follow coding standards: .claude/rules/coding-standards.md
 - [ ] UE с разбивкой FBO/FBS
 - [ ] Улучшить PDF экспорт
 
-## Архитектурные решения (НЕ МЕНЯТЬ — 33 правила)
+## Архитектурные решения (НЕ МЕНЯТЬ — 39 правил)
 1. **Costs-tree:** отдельные параллельные запросы per marketplace (НЕ combined)
 2. **AccrualsCards:** данные через props из DashboardPage
 3. **DateRangePicker:** `captionLayout="label"` (НЕ dropdown)
@@ -76,6 +76,8 @@ Read and follow coding standards: .claude/rules/coding-standards.md
 35. **Costs-tree FBO/FBS merge:** При `fulfillment_type=NULL` ("Все") хелпер `_fetch_costs_tree_merged()` делает 2 RPC (FBO+FBS) и мержит. WB `mp_costs_details` может не иметь FBS (reportDetailByPeriod не отдаёт `isSupply`). FBS берётся из fallback (mp_sales+mp_costs). Merge суммирует `total_accrued`, `total_revenue`, объединяет tree items по name. Применено: costs-tree, costs-tree-combined, UE, Order Monitor
 36. **MarketplaceBreakdown независим от фильтра МП:** Карточки OZON/WB ВСЕГДА загружают costs-tree данные (enabled: true). Глобальный фильтр МП НЕ скрывает карточки. Фильтры карточек: только период дат + FBO/FBS
 37. **Stocks независимы от фильтра МП:** StocksTable, StockForecastChart, StockHistoryChart ВСЕГДА показывают все МП (marketplace='all'). StocksTable имеет встроенные фильтры (Все/OOS WB/OOS Ozon). Остатки — текущее состояние склада, НЕ аналитика за период
+38. **FilterPanel sticky:** `sticky top-0 z-30` на обоих layout (mobile + desktop). Панель прилипает при скролле. Паттерн GA/Mixpanel/Shopify. НЕ убирать z-30 (перекрывает контент ниже)
+39. **Sidebar Dashboard:** ТОЛЬКО фильтр товаров (per-product drill-down для графиков). МП-фильтр УДАЛЁН из сайдбара — все секции (карточки, графики, остатки) следуют единому глобальному фильтру из FilterPanel. Причина: два независимых МП-фильтра создавали путаницу (карточки показывали WB, графики — все МП)
 
 ## Формулы (КРИТИЧНО)
 ```

@@ -132,9 +132,8 @@ export const DashboardPage = () => {
   const { isExporting, exportType, exportExcel, exportPdf } = useExport();
   const { data: subscription } = useSubscription();
 
-  // Фильтр товаров (боковая панель)
+  // Фильтр товаров (боковая панель — только товары, МП из FilterPanel)
   const [selectedProduct, setSelectedProduct] = useState<string | undefined>(undefined);
-  const [sidebarMarketplace, setSidebarMarketplace] = useState<Marketplace>('all');
 
   // ОПТИМИЗАЦИЯ: visibility gating убран, т.к. RPC запросы теперь быстрые
   // и нет смысла откладывать загрузку графиков/остатков
@@ -146,11 +145,11 @@ export const DashboardPage = () => {
     fulfillment_type: ftParam,
   };
 
-  // Фильтры для графиков (используют боковой фильтр маркетплейса)
+  // Фильтры для графиков (глобальный МП из FilterPanel + drill-down по товару)
   const chartFilters = {
     date_from: dateRange.from,
     date_to: dateRange.to,
-    marketplace: sidebarMarketplace, // Используем боковой фильтр для графиков
+    marketplace,
     product_id: selectedProduct,
     fulfillment_type: ftParam,
   };
@@ -209,8 +208,8 @@ export const DashboardPage = () => {
   // План продаж — completion
   const { data: planCompletionData, isLoading: planCompletionLoading } = useSalesPlanCompletion(filters);
 
-  // Товары для бокового фильтра (используем sidebarMarketplace)
-  const { data: productsData } = useProducts(sidebarMarketplace);
+  // Товары для бокового фильтра (используем глобальный marketplace)
+  const { data: productsData } = useProducts(marketplace);
   const sidebarProducts = useMemo(() => {
     // Системный WB_ACCOUNT — это не товар; убираем из пользовательского списка.
     return (productsData?.products ?? []).filter((p) => p.barcode !== 'WB_ACCOUNT');
@@ -798,30 +797,8 @@ export const DashboardPage = () => {
 
       {/* 4. Графики с боковыми фильтрами */}
       <div className="flex flex-row gap-2 sm:gap-3 mb-4 sm:mb-5 lg:mb-6">
-        {/* Боковая панель фильтров - всегда слева (как на десктопе) */}
-        <div className="w-28 sm:w-32 lg:w-36 flex-shrink-0 space-y-2 sm:space-y-3">
-          {/* Фильтр маркетплейса */}
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-2 sm:p-3">
-            <h4 className="text-[9px] sm:text-[10px] font-semibold text-gray-400 uppercase mb-1.5 sm:mb-2">МП</h4>
-            <div className="space-y-1 sm:space-y-1.5">
-              {(['all', 'wb', 'ozon'] as Marketplace[]).map((mp) => (
-                <label key={mp} className="flex items-center gap-1.5 sm:gap-2 cursor-pointer">
-                  <input
-                    type="radio"
-                    name="sidebar-mp"
-                    checked={sidebarMarketplace === mp}
-                    onChange={() => setSidebarMarketplace(mp)}
-                    className="w-3 h-3 text-indigo-600"
-                  />
-                  <span className="text-[11px] sm:text-xs text-gray-700">
-                    {mp === 'all' ? 'все' : mp === 'wb' ? 'WB' : 'OZON'}
-                  </span>
-                </label>
-              ))}
-            </div>
-          </div>
-
-          {/* Фильтр товаров */}
+        {/* Боковая панель — только фильтр товаров (МП из FilterPanel, sticky) */}
+        <div className="w-28 sm:w-32 lg:w-36 flex-shrink-0">
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-2 sm:p-3">
             <h4 className="text-[9px] sm:text-[10px] font-semibold text-gray-400 uppercase mb-1.5 sm:mb-2">Товары</h4>
             <div className="space-y-1 sm:space-y-1.5 max-h-32 sm:max-h-48 overflow-y-auto">

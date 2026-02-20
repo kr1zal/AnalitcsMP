@@ -4,7 +4,7 @@
  * Фильтры: МП (Все/WB/Ozon) + Линии (Итого/Критичные/Per-product)
  * Данные: mp_stock_snapshots → /dashboard/stock-history
  */
-import { Suspense, lazy, useCallback, useMemo, useState } from 'react';
+import { Suspense, lazy, useCallback, useEffect, useMemo, useState } from 'react';
 import { formatNumber } from '../../lib/utils';
 import { useStockHistory } from '../../hooks/useDashboard';
 import { useFiltersStore } from '../../store/useFiltersStore';
@@ -41,9 +41,15 @@ const MP_OPTIONS: { value: MpFilter; label: string }[] = [
 export const StockHistoryChart = ({ dateFrom, dateTo, enabled = true }: StockHistoryChartProps) => {
   const [filterMode, setFilterMode] = useState<FilterMode>('all-products');
   const [selectedProducts, setSelectedProducts] = useState<Set<string>>(new Set());
-  const [mpFilter, setMpFilter] = useState<MpFilter>('all');
 
-  const { fulfillmentType } = useFiltersStore();
+  const { marketplace, fulfillmentType } = useFiltersStore();
+  // Инициализируем локальный МП-фильтр из глобального, сбрасываем при смене FilterPanel
+  const globalMp: MpFilter = marketplace === 'wb' || marketplace === 'ozon' ? marketplace : 'all';
+  const [mpFilter, setMpFilter] = useState<MpFilter>(globalMp);
+
+  useEffect(() => {
+    setMpFilter(globalMp);
+  }, [globalMp]);
   const ftParam = fulfillmentType === 'all' ? undefined : fulfillmentType;
 
   const { data, isLoading } = useStockHistory(
