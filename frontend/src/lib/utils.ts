@@ -5,10 +5,18 @@ import { format, subDays } from 'date-fns';
 import type { DateRangePreset } from '../types';
 
 /**
- * Сегодняшний день в формате YYYY-MM-DD (локальная TZ)
+ * Форматирование даты в YYYY-MM-DD по московскому часовому поясу.
+ * ВАЖНО: используйте эту функцию вместо formatDateForAPI(new Date())
+ * для любых "текущая дата" вычислений — иначе результат зависит от TZ браузера.
+ */
+const formatDateMoscow = (date: Date): string =>
+  date.toLocaleDateString('sv-SE', { timeZone: 'Europe/Moscow' });
+
+/**
+ * Сегодняшний день в формате YYYY-MM-DD (московская TZ)
  */
 export const getTodayYmd = (): string => {
-  return formatDateForAPI(new Date());
+  return formatDateMoscow(new Date());
 };
 
 /**
@@ -16,6 +24,8 @@ export const getTodayYmd = (): string => {
  * Данные WB/Ozon за текущий день появляются после 10:00 МСК.
  * - До 10:00 МСК → max = вчера (T-1)
  * - После 10:00 МСК → max = сегодня (T-0)
+ *
+ * Форматирует дату в МСК — результат одинаков вне зависимости от TZ браузера.
  */
 export const getMaxAvailableDateYmd = (): string => {
   const now = new Date();
@@ -27,10 +37,11 @@ export const getMaxAvailableDateYmd = (): string => {
 
   // Если до 10:00 МСК — данные за сегодня ещё не доступны
   if (moscowHour < 10) {
-    return formatDateForAPI(subDays(now, 1));
+    const yesterday = new Date(now.getTime() - 86_400_000);
+    return formatDateMoscow(yesterday);
   }
 
-  return formatDateForAPI(now);
+  return formatDateMoscow(now);
 };
 
 /**
