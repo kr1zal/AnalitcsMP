@@ -291,6 +291,7 @@ async def get_unit_economics(
         settled_qty_by_product: dict[str, int] = {}
         ft_settled_qty: dict[str, dict[str, int]] = {}  # {product_id: {FBO: qty, FBS: qty}}
         has_ozon_settled = False
+        ozon_product_ids: set[str] = set()  # product_id's с Ozon costs (для settlement purchase)
 
         for sale in sales_result.data:
             product_id = sale["product_id"]
@@ -319,6 +320,7 @@ async def get_unit_economics(
             # Ozon settled_qty: количество проданных единиц по дате расчёта
             cost_mp = cost.get("marketplace", "")
             if cost_mp == "ozon":
+                ozon_product_ids.add(product_id)
                 qty = int(cost.get("settled_qty", 0) or 0)
                 if qty > 0:
                     has_ozon_settled = True
@@ -401,8 +403,8 @@ async def get_unit_economics(
             purchase_price = float(product.get("purchase_price", 0))
             # Settlement-based purchase для Ozon: settled_qty из mp_costs (дата расчёта)
             # WB: order-based (sales_count из mp_sales) — работает корректно
-            product_mp = product.get("marketplace", "")
-            if product_mp == "ozon" and has_ozon_settled and product_id in settled_qty_by_product:
+            is_ozon = product_id in ozon_product_ids or bool(product.get("ozon_product_id"))
+            if is_ozon and has_ozon_settled and product_id in settled_qty_by_product:
                 raw_purchase = purchase_price * settled_qty_by_product[product_id]
             else:
                 raw_purchase = purchase_price * sales_count
@@ -442,7 +444,7 @@ async def get_unit_economics(
                         continue
                     c = ft_costs.get(product_id, {}).get(ft_key, 0)
                     # Ozon: settlement-based purchase per FBO/FBS
-                    if product_mp == "ozon" and has_ozon_settled and product_id in ft_settled_qty:
+                    if is_ozon and has_ozon_settled and product_id in ft_settled_qty:
                         ft_purchase = purchase_price * ft_settled_qty.get(product_id, {}).get(ft_key, 0)
                     else:
                         ft_purchase = purchase_price * ft_cnt

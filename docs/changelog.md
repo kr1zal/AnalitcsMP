@@ -13,13 +13,23 @@
 
 ## 2026-02-21
 
-### Fix P0: Ozon — Settlement-based purchase (миграция 019)
-- **Корневая проблема:** Dashboard смешивал оси дат — payout/revenue из costs-tree (дата РАСЧЁТА), purchase из mp_sales (дата ЗАКАЗА). Ozon рассчитывается через 1-3 недели → profit мог быть > revenue (абсурд)
-- **Fix 1:** Новая колонка `mp_costs.settled_qty INTEGER DEFAULT 0` — количество единиц, проданных по дате расчёта (из `OperationAgentDeliveredToCustomer`)
-- **Fix 2:** `sync_costs_ozon` теперь подсчитывает `item.quantity` для каждой settled-продажи и записывает в `mp_costs.settled_qty`
-- **Fix 3:** RPC `get_dashboard_summary` — для Ozon purchase = `purchase_price × settled_qty` (если данные есть), fallback на `mp_sales.sales_count` (backward-compatible)
-- **Fix 4:** UE endpoint — аналогично: Ozon purchase по `settled_qty`, WB — по `sales_count`
-- **Результат:** profit Ozon на дашборде и в UE корректен — все метрики на одной оси дат (settlement)
+### Fix P0: Purchase date axis mismatch (миграции 019 + 020)
+- **Корневая проблема:** RPC `get_dashboard_summary` смешивал оси дат — revenue из mp_sales (дата ЗАКАЗА), но Ozon purchase из mp_costs.settled_qty (дата РАСЧЁТА). На 15 фев: 1 заказ 863₽, но 4 settled товара → purchase=1360₽ → profit < 0
+- **Миграция 019:** Добавила `mp_costs.settled_qty`, settlement-based purchase в RPC (неверный подход — смешивает оси)
+- **Миграция 020:** Откатила RPC на order-based purchase для ВСЕХ МП (`purchase_price × sales_count` из mp_sales). Settlement-based purchase оставлен ТОЛЬКО в UE Python endpoint (где revenue тоже settlement-based из costs-tree)
+- **Принцип:** revenue и purchase ВСЕГДА на одной оси. RPC: обе order-based. UE: обе settlement-based
+- **Результат:** 15 фев Ozon FBO: purchase 1360₽ → 404₽ (1 × Тестобустер), profit корректен
+
+### Fix: Ozon UE product marketplace detection (dashboard.py)
+- **Баг:** `product.get("marketplace")` на mp_products всегда возвращал "" → settlement-based purchase для Ozon в UE никогда не срабатывал
+- **Fix:** Определение Ozon через `ozon_product_ids` set (из mp_costs) + fallback `product.get("ozon_product_id")`
+
+### Fix: Ozon sales pagination (sync_service.py)
+- **Баг:** `sync_sales_ozon()` не имел пагинации — при >1000 строк терялись данные
+- **Fix:** Пагинационный цикл с `offset += page_limit`, safety limit 10000
+
+### Fix: Deprecated Ozon endpoint
+- **`/v1/warehouse/list` → `/v2/warehouse/list`** в ozon_client.py (dead code, но обновлён для совместимости)
 
 ### Fix P0: Ozon реклама — дупликация mp_ad_costs (миграция 019)
 - **Проблема:** `mp_ad_costs` для Ozon имеет `product_id=NULL` (реклама account-level). PostgreSQL: `NULL != NULL` в UNIQUE constraints → UPSERT при каждом sync INSERT вместо UPDATE → расходы умножались кратно числу синхронизаций

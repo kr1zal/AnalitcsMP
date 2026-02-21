@@ -261,7 +261,7 @@ class OzonClient:
 
     async def get_warehouse_list(self) -> dict:
         """Получить список складов"""
-        return await self._request("POST", "/v1/warehouse/list", json={})
+        return await self._request("POST", "/v2/warehouse/list", json={})
 
     # ==================== ЗАКАЗЫ И ПРОДАЖИ ====================
 
@@ -328,7 +328,7 @@ class OzonClient:
 
     # ==================== АНАЛИТИКА ====================
 
-    async def get_analytics_data(self, date_from: datetime, date_to: datetime, dimensions: list[str] = None, metrics: list[str] = None) -> dict:
+    async def get_analytics_data(self, date_from: datetime, date_to: datetime, dimensions: list[str] = None, metrics: list[str] = None, limit: int = 1000, offset: int = 0) -> dict:
         """
         Получить аналитику
         dimensions: ["sku"], ["sku", "day"], ["day"], ["week"], ["month"]
@@ -344,8 +344,8 @@ class OzonClient:
             "date_to": date_to.strftime("%Y-%m-%d"),
             "dimension": dimensions,
             "metrics": metrics,
-            "limit": 1000,
-            "offset": 0
+            "limit": limit,
+            "offset": offset
         }
         return await self._request("POST", "/v1/analytics/data", json=payload)
 

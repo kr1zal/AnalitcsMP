@@ -693,14 +693,28 @@ class SyncService:
         try:
             products_map = self._get_products_map()
 
-            # Получаем аналитику с разбивкой по SKU и дням
-            analytics = await self.ozon_client.get_analytics_data(
-                date_from, date_to,
-                dimensions=["sku", "day"],
-                metrics=["ordered_units", "revenue", "returns", "session_view", "hits_tocart"]
-            )
+            # Получаем аналитику с разбивкой по SKU и дням (с пагинацией)
+            all_rows = []
+            offset = 0
+            page_limit = 1000
+            while True:
+                analytics = await self.ozon_client.get_analytics_data(
+                    date_from, date_to,
+                    dimensions=["sku", "day"],
+                    metrics=["ordered_units", "revenue", "returns", "session_view", "hits_tocart"],
+                    limit=page_limit,
+                    offset=offset
+                )
+                page_data = analytics.get("result", {}).get("data", [])
+                all_rows.extend(page_data)
+                if len(page_data) < page_limit:
+                    break
+                offset += page_limit
+                if offset > 10000:  # safety limit
+                    logger.warning(f"sync_sales_ozon: достигнут лимит пагинации offset={offset}")
+                    break
 
-            for row in analytics.get("result", {}).get("data", []):
+            for row in all_rows:
                 dimensions = row.get("dimensions", [])
                 metrics = row.get("metrics", [])
 
