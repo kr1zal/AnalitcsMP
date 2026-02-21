@@ -70,16 +70,53 @@ api.interceptors.request.use(async (config) => {
   return config;
 });
 
-// 401 → redirect to /login
+// 401 → try refresh token once, then redirect to /login
+let isRefreshing = false;
+let refreshPromise: Promise<boolean> | null = null;
+
+async function tryRefreshSession(): Promise<boolean> {
+  const { data, error } = await supabase.auth.refreshSession();
+  return !error && !!data.session;
+}
+
 api.interceptors.response.use(
   (response) => response,
-  (error) => {
-    if (error.response?.status === 401 && !window.__PDF_TOKEN) {
-      // Не редиректим если уже на /login
+  async (error) => {
+    const originalRequest = error.config;
+
+    if (
+      error.response?.status === 401 &&
+      !window.__PDF_TOKEN &&
+      !originalRequest._retried
+    ) {
+      originalRequest._retried = true;
+
+      // Deduplicate: if already refreshing, wait for the same promise
+      if (!isRefreshing) {
+        isRefreshing = true;
+        refreshPromise = tryRefreshSession().finally(() => {
+          isRefreshing = false;
+          refreshPromise = null;
+        });
+      }
+
+      const refreshed = await refreshPromise;
+
+      if (refreshed) {
+        // Re-attach fresh token and retry
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session?.access_token) {
+          originalRequest.headers.Authorization = `Bearer ${session.access_token}`;
+        }
+        return api(originalRequest);
+      }
+
+      // Refresh failed — redirect to login
       if (window.location.pathname !== '/login') {
         window.location.href = '/login';
       }
     }
+
     return Promise.reject(error);
   }
 );

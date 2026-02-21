@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
+import { useAuthStore } from '../store/useAuthStore';
 import { BarChart3, Eye, EyeOff, ArrowLeft, Mail, CheckCircle } from 'lucide-react';
 
 type AuthMode = 'login' | 'signup' | 'forgot';
@@ -40,8 +41,13 @@ export function LoginPage() {
         if (error) throw error;
         setEmailSent(true);
       } else {
-        const { error } = await supabase.auth.signInWithPassword({ email, password });
+        const { data, error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) throw error;
+        // Синхронно обновляем auth store ДО навигации, иначе RootLayout
+        // увидит user=null и покажет лендинг вместо дашборда (race condition).
+        if (data.session) {
+          useAuthStore.getState().setAuth(data.session.user, data.session);
+        }
         navigate('/', { replace: true });
       }
     } catch (err: any) {

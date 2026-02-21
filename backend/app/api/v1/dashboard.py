@@ -209,7 +209,7 @@ async def get_unit_economics(
     Unit-экономика по товарам.
     Методология ИДЕНТИЧНА дашборду:
     - Payout (total_accrued) берётся из costs-tree и распределяется по товарам пропорционально выручке
-    - Закупка = purchase_price × sales_count (без коэффициентов)
+    - Закупка: WB = purchase_price × sales_count (order-based), Ozon = purchase_price × settled_qty (settlement-based)
     - Реклама учитывается по товарам (mp_ad_costs)
     - Формула: Прибыль = PayoutShare − Закупка − Реклама
     - Гарантия: SUM(profit) = Dashboard profit
@@ -287,6 +287,11 @@ async def get_unit_economics(
         ft_sales: dict[str, dict[str, dict]] = {}  # {product_id: {FBO: {sales, revenue}, FBS: {...}}}
         ft_costs: dict[str, dict[str, float]] = {}  # {product_id: {FBO: costs, FBS: costs}}
 
+        # 5b. Ozon settlement-based purchase: settled_qty из mp_costs (дата расчёта, а не заказа)
+        settled_qty_by_product: dict[str, int] = {}
+        ft_settled_qty: dict[str, dict[str, int]] = {}  # {product_id: {FBO: qty, FBS: qty}}
+        has_ozon_settled = False
+
         for sale in sales_result.data:
             product_id = sale["product_id"]
             if product_id not in product_metrics:
@@ -310,6 +315,20 @@ async def get_unit_economics(
             if product_id not in product_metrics:
                 continue
             product_metrics[product_id]["costs"] += float(cost.get("total_costs", 0))
+
+            # Ozon settled_qty: количество проданных единиц по дате расчёта
+            cost_mp = cost.get("marketplace", "")
+            if cost_mp == "ozon":
+                qty = int(cost.get("settled_qty", 0) or 0)
+                if qty > 0:
+                    has_ozon_settled = True
+                settled_qty_by_product[product_id] = settled_qty_by_product.get(product_id, 0) + qty
+                # Per FBO/FBS settled_qty
+                if include_ft_breakdown and not fulfillment_type:
+                    ft = cost.get("fulfillment_type", "FBO") or "FBO"
+                    if product_id not in ft_settled_qty:
+                        ft_settled_qty[product_id] = {}
+                    ft_settled_qty[product_id][ft] = ft_settled_qty[product_id].get(ft, 0) + qty
 
             # Track per fulfillment_type (only for Pro+ with fbs_analytics)
             if include_ft_breakdown and not fulfillment_type:
@@ -380,7 +399,13 @@ async def get_unit_economics(
             mp_sales_revenue = metrics["revenue"]  # из mp_sales (аналитика)
             costs = metrics["costs"]  # из mp_costs (fallback)
             purchase_price = float(product.get("purchase_price", 0))
-            raw_purchase = purchase_price * sales_count
+            # Settlement-based purchase для Ozon: settled_qty из mp_costs (дата расчёта)
+            # WB: order-based (sales_count из mp_sales) — работает корректно
+            product_mp = product.get("marketplace", "")
+            if product_mp == "ozon" and has_ozon_settled and product_id in settled_qty_by_product:
+                raw_purchase = purchase_price * settled_qty_by_product[product_id]
+            else:
+                raw_purchase = purchase_price * sales_count
             ad_cost = ad_by_product.get(product_id, 0)
 
             if use_payout and total_mp_sales_revenue > 0 and costs_tree_revenue > 0:
@@ -416,7 +441,11 @@ async def get_unit_economics(
                     if ft_cnt <= 0 and ft_rev <= 0:
                         continue
                     c = ft_costs.get(product_id, {}).get(ft_key, 0)
-                    ft_purchase = purchase_price * ft_cnt
+                    # Ozon: settlement-based purchase per FBO/FBS
+                    if product_mp == "ozon" and has_ozon_settled and product_id in ft_settled_qty:
+                        ft_purchase = purchase_price * ft_settled_qty.get(product_id, {}).get(ft_key, 0)
+                    else:
+                        ft_purchase = purchase_price * ft_cnt
                     # Proportional ad: ad_ft = ad × (ft_revenue / total_revenue)
                     ft_ad = ad_cost * (ft_rev / mp_sales_revenue) if mp_sales_revenue > 0 else 0
                     # Profit: payout_share - purchase - ads (same payout distribution)

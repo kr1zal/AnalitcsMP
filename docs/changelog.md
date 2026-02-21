@@ -11,6 +11,24 @@
 
 ---
 
+## 2026-02-21
+
+### Fix P0: Ozon — Settlement-based purchase (миграция 019)
+- **Корневая проблема:** Dashboard смешивал оси дат — payout/revenue из costs-tree (дата РАСЧЁТА), purchase из mp_sales (дата ЗАКАЗА). Ozon рассчитывается через 1-3 недели → profit мог быть > revenue (абсурд)
+- **Fix 1:** Новая колонка `mp_costs.settled_qty INTEGER DEFAULT 0` — количество единиц, проданных по дате расчёта (из `OperationAgentDeliveredToCustomer`)
+- **Fix 2:** `sync_costs_ozon` теперь подсчитывает `item.quantity` для каждой settled-продажи и записывает в `mp_costs.settled_qty`
+- **Fix 3:** RPC `get_dashboard_summary` — для Ozon purchase = `purchase_price × settled_qty` (если данные есть), fallback на `mp_sales.sales_count` (backward-compatible)
+- **Fix 4:** UE endpoint — аналогично: Ozon purchase по `settled_qty`, WB — по `sales_count`
+- **Результат:** profit Ozon на дашборде и в UE корректен — все метрики на одной оси дат (settlement)
+
+### Fix P0: Ozon реклама — дупликация mp_ad_costs (миграция 019)
+- **Проблема:** `mp_ad_costs` для Ozon имеет `product_id=NULL` (реклама account-level). PostgreSQL: `NULL != NULL` в UNIQUE constraints → UPSERT при каждом sync INSERT вместо UPDATE → расходы умножались кратно числу синхронизаций
+- **Fix:** `sync_ads_ozon` теперь делает DELETE за период перед INSERT (паттерн как у `mp_costs_details`)
+- **Очистка:** миграция 019 PART 2 удалила существующие дубликаты через ROW_NUMBER()
+- **Затронуто:** `sync_service.py` `sync_ads_ozon()`
+
+---
+
 ## 2026-02-20
 
 ### Fix: Timezone-independent date calculation

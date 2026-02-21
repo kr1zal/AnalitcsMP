@@ -1833,10 +1833,20 @@ class SyncService:
                     if key not in costs_agg:
                         costs_agg[key] = {
                             "commission": 0, "logistics": 0, "storage": 0,
-                            "promotion": 0, "penalties": 0, "acquiring": 0, "other": 0
+                            "promotion": 0, "penalties": 0, "acquiring": 0, "other": 0,
+                            "settled_qty": 0,
                         }
 
                     if op_type == "OperationAgentDeliveredToCustomer":
+                        # Считаем settled_qty — количество единиц, проданных по дате расчёта
+                        try:
+                            item_qty = int(item.get("quantity", 1) or 1)
+                        except Exception:
+                            item_qty = 1
+                        if item_qty <= 0:
+                            item_qty = 1
+                        costs_agg[key]["settled_qty"] += item_qty
+
                         costs_agg[key]["commission"] += abs(sale_commission)
                         for svc in services:
                             svc_name = svc.get("name", "")
@@ -1875,6 +1885,7 @@ class SyncService:
                     "acquiring": costs["acquiring"],
                     "other_costs": costs["other"],
                     "fulfillment_type": ft,
+                    "settled_qty": costs.get("settled_qty", 0),
                 }
                 if self.user_id:
                     upsert_row["user_id"] = self.user_id
@@ -2153,6 +2164,20 @@ class SyncService:
                 self._log_sync("ozon", "ads", "success", 0, started_at=started_at)
                 return {"status": "success", "records": 0}
 
+            # DELETE перед INSERT: Ozon ads имеют product_id=None (account-level).
+            # PostgreSQL: NULL != NULL в UNIQUE constraints → UPSERT всегда INSERT → дупликация.
+            # Решение: удаляем старые записи за период, затем вставляем новые.
+            delete_query = (
+                self.supabase.table("mp_ad_costs")
+                .delete()
+                .eq("marketplace", "ozon")
+                .gte("date", date_from.strftime("%Y-%m-%d"))
+                .lte("date", date_to.strftime("%Y-%m-%d"))
+            )
+            if self.user_id:
+                delete_query = delete_query.eq("user_id", self.user_id)
+            delete_query.execute()
+
             # Обрабатываем по одной кампании (ограничение API: 1 запрос одновременно)
             for campaign in sku_campaigns:
                 campaign_id = str(campaign["id"])
@@ -2178,7 +2203,7 @@ class SyncService:
                         ctr = round(clicks / views * 100, 2) if views > 0 else 0
                         cpc = round(cost / clicks, 2) if clicks > 0 else 0
 
-                        upsert_row = {
+                        insert_row = {
                             "product_id": None,
                             "marketplace": "ozon",
                             "date": date,
@@ -2192,10 +2217,8 @@ class SyncService:
                             "cpc": cpc,
                         }
                         if self.user_id:
-                            upsert_row["user_id"] = self.user_id
-                        self.supabase.table("mp_ad_costs").upsert(
-                            upsert_row, on_conflict="user_id,product_id,marketplace,date,campaign_id"
-                        ).execute()
+                            insert_row["user_id"] = self.user_id
+                        self.supabase.table("mp_ad_costs").insert(insert_row).execute()
                         records_count += 1
 
                 except Exception as e:

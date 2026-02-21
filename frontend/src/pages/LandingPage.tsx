@@ -236,13 +236,6 @@ function useSpotlight() {
 
 function NavBar() {
   const [mobileOpen, setMobileOpen] = useState(false);
-  const [scrolled, setScrolled] = useState(false);
-
-  useEffect(() => {
-    const onScroll = () => setScrolled(window.scrollY > 20);
-    window.addEventListener('scroll', onScroll, { passive: true });
-    return () => window.removeEventListener('scroll', onScroll);
-  }, []);
 
   const scrollTo = (id: string) => {
     document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' });
@@ -250,13 +243,7 @@ function NavBar() {
   };
 
   return (
-    <header
-      className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 ${
-        scrolled
-          ? 'bg-white/95 backdrop-blur-md'
-          : 'bg-transparent'
-      }`}
-    >
+    <header className="bg-white">
       <div className="max-w-6xl mx-auto px-4 sm:px-6 border-b border-gray-200">
         <div className="flex items-center justify-between h-16">
           <div className="flex items-center gap-2.5">
@@ -315,7 +302,7 @@ function NavBar() {
 
       {/* Mobile dropdown */}
       {mobileOpen && (
-        <div className="md:hidden bg-white/95 backdrop-blur-md border-t border-gray-100 px-4 py-4 space-y-1 animate-fade-in">
+        <div className="md:hidden bg-white border-t border-gray-100 px-4 py-4 space-y-1 animate-fade-in">
           {[
             { label: 'Возможности', id: 'features' },
             { label: 'Тарифы', id: 'pricing' },
@@ -352,7 +339,7 @@ function NavBar() {
 
 function HeroSection() {
   return (
-    <section className="relative pt-28 pb-16 sm:pt-36 sm:pb-24 overflow-hidden">
+    <section className="relative pt-12 pb-16 sm:pt-16 sm:pb-24 overflow-hidden">
       {/* Background gradient */}
       <div className="absolute inset-0 bg-gradient-to-b from-indigo-50/80 via-white to-white" />
 
