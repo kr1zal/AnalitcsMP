@@ -6,7 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 
 from .config import get_settings
-from .api.v1 import products, dashboard, sync, export, tokens, subscription, payment, sync_queue, admin, account, sales_plan
+from .api.v1 import products, dashboard, dashboard_config, sync, export, tokens, subscription, payment, sync_queue, admin, account, sales_plan
 
 settings = get_settings()
 
@@ -46,6 +46,7 @@ app.add_middleware(
 # Подключаем роутеры
 app.include_router(products.router, prefix="/api/v1", tags=["Products"])
 app.include_router(dashboard.router, prefix="/api/v1", tags=["Dashboard"])
+app.include_router(dashboard_config.router, prefix="/api/v1", tags=["Dashboard Config"])
 app.include_router(sync.router, prefix="/api/v1", tags=["Sync"])
 app.include_router(export.router, prefix="/api/v1", tags=["Export"])
 app.include_router(tokens.router, prefix="/api/v1", tags=["Tokens"])

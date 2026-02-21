@@ -34,6 +34,8 @@ import type {
   SalesPlanCompletionResponse,
   SalesPlanSummaryResponse,
   PreviousPlanResponse,
+  DashboardConfigResponse,
+  DashboardConfigPayload,
 } from '../types';
 
 // Создаём axios instance с базовыми настройками
@@ -576,6 +578,26 @@ export const salesPlanApi = {
     return data;
   },
 
+};
+
+// ==================== DASHBOARD CONFIG (Widget Dashboard) ====================
+
+export const dashboardConfigApi = {
+  /**
+   * Получить конфигурацию дашборда пользователя (включённые виджеты, layout)
+   */
+  getConfig: async (): Promise<DashboardConfigResponse> => {
+    const { data } = await api.get<DashboardConfigResponse>('/dashboard/config');
+    return data;
+  },
+
+  /**
+   * Сохранить конфигурацию дашборда пользователя
+   */
+  saveConfig: async (payload: DashboardConfigPayload): Promise<{ status: string }> => {
+    const { data } = await api.put<{ status: string }>('/dashboard/config', payload);
+    return data;
+  },
 };
 
 export default api;

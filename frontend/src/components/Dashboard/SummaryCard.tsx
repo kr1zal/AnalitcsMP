@@ -213,7 +213,7 @@ export const SummaryCard = ({
   // ── Loading skeleton ──
   if (loading) {
     return (
-      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 sm:p-5">
+      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 sm:p-5 h-full">
         <div className="animate-pulse">
           <div className="flex items-center gap-2 mb-3">
             <div className="w-8 h-8 sm:w-9 sm:h-9 bg-gray-100 rounded-xl" />
@@ -253,7 +253,7 @@ export const SummaryCard = ({
   };
 
   return (
-    <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 sm:p-5 transition-shadow hover:shadow-md">
+    <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 sm:p-5 transition-shadow hover:shadow-md h-full flex flex-col">
       {/* ── Header: icon + title + tooltip + change badge ── */}
       <div className="flex items-center justify-between mb-3 sm:mb-4">
         <div className="flex items-center gap-1.5 sm:gap-2 min-w-0 flex-1">
@@ -292,7 +292,7 @@ export const SummaryCard = ({
       </div>
 
       {/* ── Value ── */}
-      <div className="min-w-0">
+      <div className="min-w-0 flex-1 flex flex-col justify-center">
         <div className="flex items-baseline gap-1 overflow-hidden">
           {renderValue()}
         </div>

@@ -15,11 +15,14 @@
 import { Suspense, lazy, useCallback, useEffect, useMemo, useState } from 'react';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
-import { DollarSign, ShoppingCart, ShoppingBag, TrendingUp, Megaphone, Banknote, Receipt, Package, AlertTriangle, X } from 'lucide-react';
+import { AlertTriangle, X } from 'lucide-react';
 import { useExport } from '../hooks/useExport';
 import { useSubscription } from '../hooks/useSubscription';
 import type { ExcelExportData } from '../lib/exportExcel';
-import { SummaryCard } from '../components/Dashboard/SummaryCard';
+import { WidgetGrid } from '../components/Dashboard/WidgetGrid';
+import { useDashboardConfig } from '../hooks/useDashboardConfig';
+import type { WidgetValue, CardAccent, WidgetDataDep } from '../components/Dashboard/widgets/registry';
+import { WIDGET_DEFINITIONS } from '../components/Dashboard/widgets/definitions';
 import { MarketplaceBreakdown } from '../components/Dashboard/MarketplaceBreakdown';
 import { StocksTable } from '../components/Dashboard/StocksTable';
 import { ProfitWaterfall } from '../components/Dashboard/ProfitWaterfall';
@@ -135,6 +138,9 @@ export const DashboardPage = () => {
   // Фильтр товаров (боковая панель — только товары, МП из FilterPanel)
   const [selectedProduct, setSelectedProduct] = useState<string | undefined>(undefined);
 
+  // Widget settings panel (controlled from FilterPanel → WidgetGrid)
+  const [widgetSettingsOpen, setWidgetSettingsOpen] = useState(false);
+
   // ОПТИМИЗАЦИЯ: visibility gating убран, т.к. RPC запросы теперь быстрые
   // и нет смысла откладывать загрузку графиков/остатков
 
@@ -207,6 +213,9 @@ export const DashboardPage = () => {
 
   // План продаж — completion
   const { data: planCompletionData, isLoading: planCompletionLoading } = useSalesPlanCompletion(filters);
+
+  // Widget Dashboard config (DnD layout, enabled widgets)
+  useDashboardConfig();
 
   // Товары для бокового фильтра (используем глобальный marketplace)
   const { data: productsData } = useProducts(marketplace);
@@ -500,6 +509,180 @@ export const DashboardPage = () => {
     ? Math.round(((ordersCountForTile - prevOrders) / prevOrders) * 1000) / 10
     : undefined;
 
+  // ── Costs-tree item extractor (for mp_commission, mp_logistics, mp_storage widgets) ──
+  const extractCostsTreeAmount = (names: string[]): number => {
+    let total = 0;
+    const trees = [ozonCostsTreeData, wbCostsTreeData].filter(Boolean);
+    for (const tree of trees) {
+      if (!tree?.tree) continue;
+      for (const item of tree.tree) {
+        if (names.some((n) => item.name?.includes(n))) {
+          total += Math.abs(item.amount ?? 0);
+        }
+      }
+    }
+    return total;
+  };
+
+  // ── Widget values for WidgetGrid ──
+  const widgetValues: Record<string, WidgetValue> = (() => {
+    const marginPct = revenueForTile > 0 ? ((netProfitForTile / revenueForTile) * 100).toFixed(1) : '0';
+    const profitAccent: CardAccent = netProfitForTile >= 0 ? 'emerald' : 'red';
+
+    // Stocks aggregates
+    const stockItems = (stocksData?.stocks ?? []).filter((s) => s.barcode !== 'WB_ACCOUNT');
+    const stockTotal = stockItems.reduce((acc, s) => acc + (s.total_quantity ?? 0), 0);
+    const stockWithForecast = stockItems.filter((s) => s.days_remaining !== null && s.days_remaining !== undefined);
+    const stockForecastAvg = stockWithForecast.length > 0
+      ? Math.round(stockWithForecast.reduce((acc, s) => acc + (s.days_remaining ?? 0), 0) / stockWithForecast.length)
+      : 0;
+    const oosCount = stockItems.filter((s) => (s.total_quantity ?? 0) === 0).length;
+
+    // Plan completion
+    const planPct = planCompletionData?.completion_percent ?? 0;
+
+    // Period delta
+    const deltaAccent: CardAccent = revenueChangeForTile >= 0 ? 'emerald' : 'red';
+
+    return {
+      // ── Sales (ORDER-based) ──
+      orders_count: {
+        value: ordersCountForTile,
+        secondaryValue: formatCurrency(ordersRevenueForTile),
+        subtitle: returnsCountForTile > 0 ? `${returnsCountForTile} возвр.` : undefined,
+        change: ordersChangePct,
+      },
+      orders_revenue: {
+        value: ordersRevenueForTile,
+        secondaryValue: `${ordersCountForTile} шт`,
+      },
+      sales_count: {
+        value: salesCountForTile,
+        secondaryValue: `выкуп ${buyoutPercent}%`,
+      },
+      returns_count: {
+        value: returnsCountForTile,
+      },
+      buyout_percent: {
+        value: `${buyoutPercent}%`,
+      },
+      avg_check: {
+        value: summary?.avg_check ?? 0,
+      },
+      purchase_costs: {
+        value: purchaseCostsForTile,
+        secondaryValue: salesCountForTile > 0 ? `\u2205 ${formatCurrency(avgCcPerUnit)} / \u0448\u0442` : undefined,
+        warning: ccWarning,
+      },
+
+      // ── Finance (SETTLEMENT-based) ──
+      revenue_settled: {
+        value: revenueForTile,
+        secondaryValue: `${salesCountForTile} \u0448\u0442 \u00B7 \u0432\u044B\u043A\u0443\u043F ${buyoutPercent}%`,
+        subtitle: (() => {
+          if (marketplace === 'all') {
+            const oz = getSalesTotalFromCostsTree(ozonCostsTreeData);
+            const wb = getSalesTotalFromCostsTree(wbCostsTreeData);
+            if (oz !== null && wb !== null) return `Ozon ${formatNumber(Math.round(oz))} \u00B7 WB ${formatNumber(Math.round(wb))}`;
+          }
+          return undefined;
+        })(),
+        change: revenueChangePct,
+      },
+      payout: {
+        value: payoutForTile ?? 0,
+        subtitle: marketplace === 'all' && ozonCostsTreeData && wbCostsTreeData
+          ? `Ozon ${formatNumber(Math.round(ozonCostsTreeData.total_accrued ?? 0))} \u00B7 WB ${formatNumber(Math.round(wbCostsTreeData.total_accrued ?? 0))}`
+          : undefined,
+      },
+      mp_deductions: {
+        value: mpDeductionsForTile,
+        subtitle: mpDeductionsSubtitle,
+      },
+      net_profit: {
+        value: netProfitForTile,
+        secondaryValue: `\u043C\u0430\u0440\u0436\u0430 ${marginPct}%`,
+        accentOverride: profitAccent,
+      },
+      profit_margin: {
+        value: `${marginPct}%`,
+        accentOverride: profitAccent,
+      },
+      mp_commission: {
+        value: extractCostsTreeAmount(['\u041A\u043E\u043C\u0438\u0441\u0441\u0438', '\u0412\u043E\u0437\u043D\u0430\u0433\u0440\u0430\u0436\u0434\u0435\u043D\u0438\u0435']),
+      },
+      mp_logistics: {
+        value: extractCostsTreeAmount(['\u0434\u043E\u0441\u0442\u0430\u0432\u043A', '\u043B\u043E\u0433\u0438\u0441\u0442\u0438\u043A']),
+      },
+      mp_storage: {
+        value: extractCostsTreeAmount(['\u0445\u0440\u0430\u043D\u0435\u043D\u0438', '\u0425\u0440\u0430\u043D\u0435\u043D\u0438']),
+      },
+
+      // ── Ads ──
+      ad_cost: {
+        value: adCostForTile,
+        secondaryValue: `\u0414\u0420\u0420 ${drrForTile}%`,
+      },
+      drr: {
+        value: `${drrForTile}%`,
+        secondaryValue: formatCurrency(adCostForTile),
+      },
+      acos: {
+        value: '0%',
+      },
+      cpo: {
+        value: 0,
+      },
+
+      // ── Stocks ──
+      stock_total: {
+        value: stockTotal,
+      },
+      stock_forecast_avg: {
+        value: stockForecastAvg,
+        secondaryValue: `${stockForecastAvg} \u0434\u043D.`,
+      },
+      oos_count: {
+        value: oosCount,
+        accentOverride: oosCount > 0 ? 'red' : 'emerald',
+      },
+
+      // ── Plan ──
+      plan_completion: {
+        value: `${Math.round(planPct)}%`,
+      },
+
+      // ── Delta ──
+      period_delta: {
+        value: `${revenueChangeForTile > 0 ? '+' : ''}${revenueChangeForTile}%`,
+        secondaryValue: `\u0431\u044B\u043B\u043E ${formatCurrency(prevRevenueForTile)}`,
+        subtitle: prevOrders > 0 ? `${prevOrders} \u0437\u0430\u043A\u0430\u0437\u043E\u0432` : undefined,
+        isPositive: revenueChangeForTile >= 0,
+        accentOverride: deltaAccent,
+      },
+    };
+  })();
+
+  // ── Loading states per data dependency ──
+  const loadingStates: Record<string, boolean> = (() => {
+    const depLoading: Record<WidgetDataDep, boolean> = {
+      summary: isSummaryLoading,
+      costsTreeOzon: ozonCostsTreeLoading,
+      costsTreeWb: wbCostsTreeLoading,
+      unitEconomics: ueLoading,
+      adCosts: adCostsLoading,
+      stocks: stocksLoading,
+      planCompletion: planCompletionLoading,
+      products: false,
+    };
+
+    const result: Record<string, boolean> = {};
+    for (const def of WIDGET_DEFINITIONS) {
+      result[def.id] = def.dataDeps.some((dep) => depLoading[dep] ?? false);
+    }
+    return result;
+  })();
+
   // ==================== EXPORT HANDLERS ====================
   const handleExportExcel = () => {
     const exportData: ExcelExportData = {
@@ -568,214 +751,20 @@ export const DashboardPage = () => {
       <FilterPanel
         onExportExcel={handleExportExcel}
         onExportPdf={subscription?.features?.pdf_export ? handleExportPdf : undefined}
+        onWidgetSettings={() => setWidgetSettingsOpen(true)}
         isExporting={isExporting}
         exportType={exportType}
       />
 
-      {/* 2. Карточки метрик — Enterprise 4×2 grid */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-3 mb-4 sm:mb-5 lg:mb-6">
-
-        {/* ── Row 1: Воронка продаж ── */}
-
-        {/* 1. Заказы — все заказы за период */}
-        <SummaryCard
-          title="Заказы"
-          value={ordersCountForTile}
-          format="number"
-          secondaryValue={formatCurrency(ordersRevenueForTile)}
-          subtitle={returnsCountForTile > 0 ? `${returnsCountForTile} возвр.` : undefined}
-          tooltip={[
-            'Все заказы за период (вкл. непроведённые).',
-            'Источник: mp_sales (аналитика МП).',
-            `Заказов: ${ordersCountForTile} шт на ${formatCurrency(ordersRevenueForTile)}`,
-            returnsCountForTile > 0
-              ? `Возвраты: ${returnsCountForTile} шт (${Math.round((returnsCountForTile / ordersCountForTile) * 100)}%)`
-              : undefined,
-          ].filter(Boolean).join('\n')}
-          icon={ShoppingBag}
-          accent="indigo"
-          change={ordersChangePct}
-          loading={isSummaryLoading}
+      {/* 2. Карточки метрик — Widget Dashboard с DnD */}
+      <div className="mb-4 sm:mb-5 lg:mb-6">
+        <WidgetGrid
+          widgetValues={widgetValues}
+          loadingStates={loadingStates}
+          settingsOpen={widgetSettingsOpen}
+          onOpenSettings={() => setWidgetSettingsOpen(true)}
+          onCloseSettings={() => setWidgetSettingsOpen(false)}
         />
-
-        {/* 2. Выкупы — проведённые (из финотчёта) */}
-        <SummaryCard
-          title="Выкупы"
-          value={revenueForTile}
-          format="currency"
-          secondaryValue={`${salesCountForTile} шт · выкуп ${buyoutPercent}%`}
-          subtitle={(() => {
-            if (marketplace === 'all') {
-              const oz = getSalesTotalFromCostsTree(ozonCostsTreeData);
-              const wb = getSalesTotalFromCostsTree(wbCostsTreeData);
-              if (oz !== null && wb !== null) return `Ozon ${formatNumber(Math.round(oz))} · WB ${formatNumber(Math.round(wb))}`;
-            }
-            return undefined;
-          })()}
-          tooltip={[
-            'Выручка из финансового отчёта МП (проведённые).',
-            'Может отличаться от «Аналитики» в ЛК —',
-            'там учтены все заказы, вкл. непроведённые.',
-            ozonCostsTreeData?.warnings?.length ? `⚠ ${ozonCostsTreeData.warnings[0]}` : undefined,
-          ].filter(Boolean).join('\n')}
-          tooltipAlign="right"
-          icon={ShoppingCart}
-          accent="emerald"
-          change={revenueChangePct}
-          loading={isSummaryLoading || isCostsTreeLoading}
-        />
-
-        {/* 3. Себестоимость — COGS */}
-        <SummaryCard
-          title="Себестоимость"
-          mobileTitle="Закупка"
-          value={purchaseCostsForTile}
-          format="currency"
-          secondaryValue={salesCountForTile > 0 ? `∅ ${formatCurrency(avgCcPerUnit)} / шт` : undefined}
-          tooltip={[
-            'Себестоимость реализованных товаров (COGS).',
-            `= Закупочная цена × Кол-во выкупов`,
-            `= ${formatCurrency(purchaseCostsForTile)}`,
-            '',
-            'Закупочные цены задаются в Настройки → Товары.',
-          ].join('\n')}
-          icon={Package}
-          accent="amber"
-          loading={isSummaryLoading || ueLoading}
-          warning={ccWarning}
-        />
-
-        {/* 4. Чистая прибыль */}
-        <SummaryCard
-          title="Чистая прибыль"
-          mobileTitle="Прибыль"
-          value={netProfitForTile}
-          format="currency"
-          secondaryValue={revenueForTile > 0
-            ? `маржа ${((netProfitForTile / revenueForTile) * 100).toFixed(1)}%`
-            : 'маржа 0%'}
-          tooltip={
-            summary
-              ? [
-                  'Чистая прибыль = К перечисл. − Себестоимость − Реклама',
-                  '',
-                  `К перечисл.: ${payoutForTile === null ? '—' : formatCurrency(payoutForTile)}`,
-                  `Себестоимость: −${formatCurrency(purchaseCostsForTile)}`,
-                  `Реклама: −${formatCurrency(summary.ad_cost ?? 0)}`,
-                  `─────────────`,
-                  `Итого: ${formatCurrency(netProfitForTile)}`,
-                  '',
-                  'Учтены ВСЕ расходы: удержания МП, закупка, реклама.',
-                ].join('\n')
-              : undefined
-          }
-          tooltipAlign="right"
-          icon={DollarSign}
-          accent={netProfitForTile >= 0 ? 'emerald' : 'red'}
-          loading={isSummaryLoading}
-        />
-
-        {/* ── Row 2: Финансы ── */}
-
-        {/* 5. Удержания МП */}
-        <SummaryCard
-          title="Удержания МП"
-          mobileTitle="Удержания"
-          value={mpDeductionsForTile}
-          format="currency"
-          subtitle={mpDeductionsSubtitle}
-          tooltip={[
-            'Удержания маркетплейса из финотчёта:',
-            'Комиссия + Логистика + Хранение + Эквайринг + ...',
-            '',
-            'Совпадает с «Удержания» в карточках OZON/WB ниже.',
-          ].join('\n')}
-          icon={Receipt}
-          accent="slate"
-          loading={isSummaryLoading}
-        />
-
-        {/* 6. Реклама + ДРР (merged) */}
-        <SummaryCard
-          title="Реклама"
-          value={adCostForTile}
-          format="currency"
-          secondaryValue={`ДРР ${drrForTile}%`}
-          tooltip={[
-            'Расходы на рекламу (все кампании суммарно):',
-            'WB Продвижение + Ozon Performance.',
-            '',
-            `ДРР = Реклама / Выкупы × 100%`,
-            `= ${formatCurrency(adCostForTile)} / ${formatCurrency(revenueForTile)} × 100%`,
-            `= ${drrForTile}%`,
-            '',
-            'Не путать с «Бонусами продавца» в удержаниях МП.',
-          ].join('\n')}
-          tooltipAlign="right"
-          icon={Megaphone}
-          accent="violet"
-          loading={isSummaryLoading}
-        />
-
-        {/* 7. К перечислению */}
-        <SummaryCard
-          title="К перечислению"
-          mobileTitle="Выплата"
-          value={payoutForTile ?? 0}
-          format="currency"
-          subtitle={
-            marketplace === 'all' && ozonCostsTreeData && wbCostsTreeData
-              ? `Ozon ${formatNumber(Math.round(ozonCostsTreeData.total_accrued ?? 0))} · WB ${formatNumber(Math.round(wbCostsTreeData.total_accrued ?? 0))}`
-              : undefined
-          }
-          tooltip={[
-            'Сумма к перечислению от маркетплейсов.',
-            `= Выкупы − Удержания МП`,
-            `= ${formatCurrency(revenueForTile)} − ${formatCurrency(mpDeductionsForTile)}`,
-          ].join('\n')}
-          icon={Banknote}
-          accent="sky"
-          loading={isSummaryLoading}
-        />
-
-        {/* 8. Δ к предыдущему / Рентабельность */}
-        {canShowChange ? (
-          <SummaryCard
-            title="Δ к пред. периоду"
-            mobileTitle="Динамика"
-            value={`${revenueChangeForTile > 0 ? '+' : ''}${revenueChangeForTile}%`}
-            secondaryValue={`было ${formatCurrency(prevRevenueForTile)}`}
-            subtitle={prevOrders > 0 ? `${prevOrders} заказов` : undefined}
-            tooltip={[
-              'Изменение выкупов относительно предыдущего периода.',
-              `Текущий: ${formatCurrency(revenueForTile)}`,
-              `Предыдущий: ${formatCurrency(prevRevenueForTile)}`,
-              `Изменение: ${revenueChangeForTile > 0 ? '+' : ''}${revenueChangeForTile}%`,
-            ].join('\n')}
-            tooltipAlign="right"
-            icon={TrendingUp}
-            accent={revenueChangeForTile >= 0 ? 'emerald' : 'red'}
-            isPositive={revenueChangeForTile >= 0}
-            loading={isSummaryLoading}
-          />
-        ) : (
-          <SummaryCard
-            title="Рентабельность"
-            value={revenueForTile > 0
-              ? `${((netProfitForTile / revenueForTile) * 100).toFixed(1)}%`
-              : '0%'}
-            secondaryValue={`на ${formatCurrency(revenueForTile)} выручки`}
-            tooltip={[
-              'Рентабельность по чистой прибыли.',
-              `= Чистая прибыль / Выкупы × 100%`,
-              `= ${formatCurrency(netProfitForTile)} / ${formatCurrency(revenueForTile)} × 100%`,
-            ].join('\n')}
-            tooltipAlign="right"
-            icon={TrendingUp}
-            accent={netProfitForTile >= 0 ? 'emerald' : 'red'}
-            loading={isSummaryLoading}
-          />
-        )}
       </div>
 
       {/* 2.5. План продаж (если задан, только Pro+) */}

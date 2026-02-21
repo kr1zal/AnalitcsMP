@@ -788,3 +788,17 @@ export interface FulfillmentInfo {
   has_fbs_data: boolean;
   fbs_products_count: number;
 }
+
+// ==================== DASHBOARD CONFIG (Widget Dashboard) ====================
+
+export interface DashboardConfigPayload {
+  enabled_widgets: string[];
+  column_count: number;
+  show_axis_badges: boolean;
+  compact_mode: boolean;
+}
+
+export interface DashboardConfigResponse {
+  status: 'success';
+  config: DashboardConfigPayload;
+}

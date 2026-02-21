@@ -11,7 +11,7 @@ import { DateRangePicker } from './DateRangePicker';
 import { useIsMobile } from '../../hooks/useMediaQuery';
 import { useFulfillmentInfo } from '../../hooks/useDashboard';
 import { useFilterUrlSync } from '../../hooks/useFilterUrlSync';
-import { FileSpreadsheet, FileText, Loader2 } from 'lucide-react';
+import { FileSpreadsheet, FileText, Loader2, Settings2 } from 'lucide-react';
 import type { DateRangePreset, FulfillmentType, Marketplace } from '../../types';
 import type { ExportType } from '../../hooks/useExport';
 
@@ -20,6 +20,8 @@ interface FilterPanelProps {
   onExportExcel?: () => void;
   /** Callback для экспорта в PDF */
   onExportPdf?: () => void;
+  /** Callback для открытия настроек виджетов */
+  onWidgetSettings?: () => void;
   /** Идёт ли экспорт */
   isExporting?: boolean;
   /** Тип текущего экспорта */
@@ -29,6 +31,7 @@ interface FilterPanelProps {
 export const FilterPanel = ({
   onExportExcel,
   onExportPdf,
+  onWidgetSettings,
   isExporting = false,
   exportType = null,
 }: FilterPanelProps) => {
@@ -176,6 +179,18 @@ export const FilterPanel = ({
               )}
             </button>
           )}
+
+          {/* Настройки виджетов */}
+          {onWidgetSettings && (
+            <button
+              onClick={onWidgetSettings}
+              title="Настройки виджетов"
+              aria-label="Настройки виджетов"
+              className="flex items-center justify-center h-8 w-8 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-all active:scale-95"
+            >
+              <Settings2 className="w-3.5 h-3.5" />
+            </button>
+          )}
         </div>
       </div>
     );
@@ -312,6 +327,22 @@ export const FilterPanel = ({
                 </button>
               )}
             </div>
+          </>
+        )}
+
+        {/* Настройки виджетов */}
+        {onWidgetSettings && (
+          <>
+            <div className="h-8 w-px bg-gray-200" />
+            <button
+              onClick={onWidgetSettings}
+              title="Настройки виджетов"
+              aria-label="Настройки виджетов"
+              className="flex items-center gap-1.5 h-9 px-3 text-sm font-medium rounded-lg text-gray-500 hover:text-gray-700 hover:bg-gray-100 transition-colors"
+            >
+              <Settings2 className="w-4 h-4" />
+              <span>Виджеты</span>
+            </button>
           </>
         )}
       </div>
