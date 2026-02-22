@@ -6,12 +6,13 @@
  * Адаптивный: компактный вид на мобильных
  */
 import { useFiltersStore } from '../../store/useFiltersStore';
+import { useDashboardLayoutStore } from '../../store/useDashboardLayoutStore';
 import { cn, getDateRangeFromPreset, getMaxAvailableDateYmd, normalizeDateRangeYmd } from '../../lib/utils';
 import { DateRangePicker } from './DateRangePicker';
 import { useIsMobile } from '../../hooks/useMediaQuery';
 import { useFulfillmentInfo } from '../../hooks/useDashboard';
 import { useFilterUrlSync } from '../../hooks/useFilterUrlSync';
-import { FileSpreadsheet, FileText, Loader2, Settings2 } from 'lucide-react';
+import { FileSpreadsheet, FileText, Loader2, Settings2, Lock, LockOpen } from 'lucide-react';
 import type { DateRangePreset, FulfillmentType, Marketplace } from '../../types';
 import type { ExportType } from '../../hooks/useExport';
 
@@ -36,6 +37,8 @@ export const FilterPanel = ({
   exportType = null,
 }: FilterPanelProps) => {
   const isMobile = useIsMobile();
+  const locked = useDashboardLayoutStore((s) => s.locked);
+  const toggleLocked = useDashboardLayoutStore((s) => s.toggleLocked);
   useFilterUrlSync();
   const { datePreset, marketplace, fulfillmentType, customDateFrom, customDateTo, setDatePreset, setMarketplace, setFulfillmentType, setCustomDates } = useFiltersStore();
   const { data: fulfillmentInfo } = useFulfillmentInfo();
@@ -68,11 +71,13 @@ export const FilterPanel = ({
     setCustomDates(normalized.from, normalized.to);
   };
 
-  // Mobile layout: 2 строки
+  // Mobile layout: 2 строки (Variant B — semantic grouping)
+  // Row 1: фильтры (период + МП + FBO/FBS) — "какие данные показать"
+  // Row 2: действия (календарь + экспорт + замочек + настройки) — "что с ними сделать"
   if (isMobile) {
     return (
       <div className="sticky top-0 z-30 bg-white rounded-xl shadow-sm border border-gray-200 p-3 mb-4 sm:mb-5 lg:mb-6">
-        {/* Первая строка: период + FBO/FBS */}
+        {/* Row 1: Фильтры — период (left) + МП select + FBO/FBS pills (right) */}
         <div className="flex items-center justify-between mb-2.5">
           <div className="flex items-center gap-1.5">
             {datePresets.map((preset) => (
@@ -80,7 +85,7 @@ export const FilterPanel = ({
                 key={preset.value}
                 onClick={() => setDatePreset(preset.value)}
                 className={cn(
-                  'h-8 px-3 text-sm font-medium rounded-lg transition-all active:scale-95',
+                  'h-8 px-2.5 text-sm font-medium rounded-lg transition-all active:scale-95',
                   datePreset === preset.value
                     ? 'bg-indigo-600 text-white shadow-sm'
                     : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
@@ -91,33 +96,47 @@ export const FilterPanel = ({
             ))}
           </div>
 
-          <div className="flex gap-px bg-gray-100 rounded-lg p-0.5">
-            {fulfillmentOptions.map((ft) => {
-              const disabled = ft.value === 'FBS' && !hasFbsData;
-              return (
-                <button
-                  key={ft.value}
-                  onClick={() => !disabled && setFulfillmentType(ft.value)}
-                  disabled={disabled}
-                  title={disabled ? 'Нет FBS-данных' : undefined}
-                  className={cn(
-                    'h-7 px-2 text-xs font-medium rounded-md transition-all',
-                    disabled
-                      ? 'text-gray-300 cursor-not-allowed'
-                      : fulfillmentType === ft.value
-                        ? 'bg-white text-indigo-700 shadow-sm'
-                        : 'text-gray-500'
-                  )}
-                >
-                  {ft.label}
-                </button>
-              );
-            })}
+          <div className="flex items-center gap-1.5">
+            <select
+              value={marketplace}
+              onChange={(e) => setMarketplace(e.target.value as Marketplace)}
+              className="h-7 px-1 text-xs font-medium border border-gray-300 rounded-md bg-white text-gray-700 shrink-0 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+            >
+              {marketplaces.map((mp) => (
+                <option key={mp.value} value={mp.value}>
+                  {mp.label}
+                </option>
+              ))}
+            </select>
+
+            <div className="flex gap-px bg-gray-100 rounded-lg p-0.5">
+              {fulfillmentOptions.map((ft) => {
+                const disabled = ft.value === 'FBS' && !hasFbsData;
+                return (
+                  <button
+                    key={ft.value}
+                    onClick={() => !disabled && setFulfillmentType(ft.value)}
+                    disabled={disabled}
+                    title={disabled ? 'Нет FBS-данных' : undefined}
+                    className={cn(
+                      'h-7 px-2 text-xs font-medium rounded-md transition-all',
+                      disabled
+                        ? 'text-gray-300 cursor-not-allowed'
+                        : fulfillmentType === ft.value
+                          ? 'bg-white text-indigo-700 shadow-sm'
+                          : 'text-gray-500'
+                    )}
+                  >
+                    {ft.label}
+                  </button>
+                );
+              })}
+            </div>
           </div>
         </div>
 
-        {/* Вторая строка: календарь + МП + экспорт */}
-        <div className="flex items-center gap-1.5">
+        {/* Row 2: Действия — календарь (flex-1) + action icons */}
+        <div className="flex items-center gap-1">
           <div className="flex-1 min-w-0">
             <DateRangePicker
               from={effectiveRange.from}
@@ -128,69 +147,71 @@ export const FilterPanel = ({
             />
           </div>
 
-          <select
-            value={marketplace}
-            onChange={(e) => setMarketplace(e.target.value as Marketplace)}
-            className="h-8 px-1.5 text-xs font-medium border border-gray-300 rounded-lg bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-          >
-            {marketplaces.map((mp) => (
-              <option key={mp.value} value={mp.value}>
-                {mp.label}
-              </option>
-            ))}
-          </select>
-
-          {/* Кнопки экспорта */}
-          {onExportExcel && (
-            <button
-              onClick={onExportExcel}
-              disabled={isExporting}
-              title="Экспорт в Excel"
-              className={cn(
-                'flex items-center justify-center h-8 w-8 rounded-lg transition-all active:scale-95',
-                isExporting && exportType === 'excel'
-                  ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                  : 'bg-emerald-50 text-emerald-600 hover:bg-emerald-100'
-              )}
-            >
-              {isExporting && exportType === 'excel' ? (
-                <Loader2 className="w-3.5 h-3.5 animate-spin" />
-              ) : (
-                <FileSpreadsheet className="w-3.5 h-3.5" />
-              )}
-            </button>
-          )}
-          {onExportPdf && (
-            <button
-              onClick={onExportPdf}
-              disabled={isExporting}
-              title="Экспорт в PDF"
-              className={cn(
-                'flex items-center justify-center h-8 w-8 rounded-lg transition-all active:scale-95',
-                isExporting && exportType === 'pdf'
-                  ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                  : 'bg-rose-50 text-rose-600 hover:bg-rose-100'
-              )}
-            >
-              {isExporting && exportType === 'pdf' ? (
-                <Loader2 className="w-3.5 h-3.5 animate-spin" />
-              ) : (
-                <FileText className="w-3.5 h-3.5" />
-              )}
-            </button>
-          )}
-
-          {/* Настройки виджетов */}
-          {onWidgetSettings && (
-            <button
-              onClick={onWidgetSettings}
-              title="Настройки виджетов"
-              aria-label="Настройки виджетов"
-              className="flex items-center justify-center h-8 w-8 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-all active:scale-95"
-            >
-              <Settings2 className="w-3.5 h-3.5" />
-            </button>
-          )}
+          {/* Action icon group — export, lock, settings */}
+          <div className="flex items-center gap-0.5 shrink-0">
+            {onExportExcel && (
+              <button
+                onClick={onExportExcel}
+                disabled={isExporting}
+                aria-label="Экспорт в Excel"
+                className={cn(
+                  'flex items-center justify-center h-8 w-8 rounded-lg transition-all active:scale-95',
+                  isExporting && exportType === 'excel'
+                    ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                    : 'text-emerald-600 hover:bg-emerald-50'
+                )}
+              >
+                {isExporting && exportType === 'excel' ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <FileSpreadsheet className="w-3.5 h-3.5" />
+                )}
+              </button>
+            )}
+            {onExportPdf && (
+              <button
+                onClick={onExportPdf}
+                disabled={isExporting}
+                aria-label="Экспорт в PDF"
+                className={cn(
+                  'flex items-center justify-center h-8 w-8 rounded-lg transition-all active:scale-95',
+                  isExporting && exportType === 'pdf'
+                    ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                    : 'text-rose-600 hover:bg-rose-50'
+                )}
+              >
+                {isExporting && exportType === 'pdf' ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <FileText className="w-3.5 h-3.5" />
+                )}
+              </button>
+            )}
+            {onWidgetSettings && (
+              <>
+                <button
+                  onClick={toggleLocked}
+                  aria-label={locked ? 'Разблокировать карточки' : 'Зафиксировать карточки'}
+                  aria-pressed={locked}
+                  className={cn(
+                    'flex items-center justify-center h-8 w-8 rounded-lg transition-all active:scale-95',
+                    locked
+                      ? 'text-indigo-600 bg-indigo-50'
+                      : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100'
+                  )}
+                >
+                  {locked ? <Lock className="w-3.5 h-3.5" /> : <LockOpen className="w-3.5 h-3.5" />}
+                </button>
+                <button
+                  onClick={onWidgetSettings}
+                  aria-label="Настройки виджетов"
+                  className="flex items-center justify-center h-8 w-8 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-all active:scale-95"
+                >
+                  <Settings2 className="w-3.5 h-3.5" />
+                </button>
+              </>
+            )}
+          </div>
         </div>
       </div>
     );
@@ -330,10 +351,23 @@ export const FilterPanel = ({
           </>
         )}
 
-        {/* Настройки виджетов */}
+        {/* Замочек + настройки виджетов */}
         {onWidgetSettings && (
           <>
             <div className="h-8 w-px bg-gray-200" />
+            <button
+              onClick={toggleLocked}
+              title={locked ? 'Разблокировать карточки' : 'Зафиксировать карточки'}
+              aria-label={locked ? 'Разблокировать карточки' : 'Зафиксировать карточки'}
+              className={cn(
+                'flex items-center gap-1.5 h-9 px-3 text-sm font-medium rounded-lg transition-colors',
+                locked
+                  ? 'text-indigo-600 bg-indigo-50 hover:bg-indigo-100'
+                  : 'text-gray-500 hover:text-gray-700 hover:bg-gray-100'
+              )}
+            >
+              {locked ? <Lock className="w-4 h-4" /> : <LockOpen className="w-4 h-4" />}
+            </button>
             <button
               onClick={onWidgetSettings}
               title="Настройки виджетов"

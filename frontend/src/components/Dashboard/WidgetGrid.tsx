@@ -74,6 +74,7 @@ export const WidgetGrid = ({
   const columnCount = useDashboardLayoutStore((s) => s.columnCount);
   const showAxisBadges = useDashboardLayoutStore((s) => s.showAxisBadges);
   const compactMode = useDashboardLayoutStore((s) => s.compactMode);
+  const locked = useDashboardLayoutStore((s) => s.locked);
   const reorderWidgets = useDashboardLayoutStore((s) => s.reorderWidgets);
 
   // ── Local state ──
@@ -89,7 +90,9 @@ export const WidgetGrid = ({
   const keyboardSensor = useSensor(KeyboardSensor, {
     coordinateGetter: sortableKeyboardCoordinates,
   });
-  const sensors = useSensors(pointerSensor, touchSensor, keyboardSensor);
+  const activeSensors = useSensors(pointerSensor, touchSensor, keyboardSensor);
+  const noSensors = useSensors();
+  const sensors = locked ? noSensors : activeSensors;
 
   // ── DnD handlers ──
   const handleDragStart = useCallback((event: DragStartEvent) => {
@@ -167,6 +170,7 @@ export const WidgetGrid = ({
                 loading={loadingStates[widgetId] ?? false}
                 showAxisBadge={showAxisBadges}
                 compact={compactMode}
+                locked={locked}
               />
             ))}
           </div>

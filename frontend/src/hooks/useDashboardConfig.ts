@@ -54,6 +54,7 @@ export const useDashboardConfig = () => {
   const columnCount = useDashboardLayoutStore((s) => s.columnCount);
   const showAxisBadges = useDashboardLayoutStore((s) => s.showAxisBadges);
   const compactMode = useDashboardLayoutStore((s) => s.compactMode);
+  const locked = useDashboardLayoutStore((s) => s.locked);
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -65,6 +66,7 @@ export const useDashboardConfig = () => {
         columnCount: data.config.column_count,
         showAxisBadges: data.config.show_axis_badges,
         compactMode: data.config.compact_mode,
+        locked: data.config.locked ?? false,
       });
     }
   }, [data, isLoaded, setConfig]);
@@ -83,6 +85,7 @@ export const useDashboardConfig = () => {
         column_count: columnCount,
         show_axis_badges: showAxisBadges,
         compact_mode: compactMode,
+        locked,
       };
       mutation.mutate(payload, {
         onSuccess: () => {
@@ -97,7 +100,7 @@ export const useDashboardConfig = () => {
       }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isDirty, enabledWidgets, columnCount, showAxisBadges, compactMode, isLoaded]);
+  }, [isDirty, enabledWidgets, columnCount, showAxisBadges, compactMode, locked, isLoaded]);
 
   return {
     isLoading,

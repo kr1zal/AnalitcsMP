@@ -17,6 +17,8 @@ interface DashboardLayoutState {
   showAxisBadges: boolean;
   /** Компактный режим (меньше padding) */
   compactMode: boolean;
+  /** Блокировка перетаскивания карточек */
+  locked: boolean;
   /** Конфиг загружен с сервера */
   isLoaded: boolean;
   /** Есть несохранённые изменения */
@@ -28,12 +30,14 @@ interface DashboardLayoutState {
     columnCount: number;
     showAxisBadges: boolean;
     compactMode: boolean;
+    locked: boolean;
   }) => void;
   toggleWidget: (id: string) => void;
   reorderWidgets: (fromIndex: number, toIndex: number) => void;
   setColumnCount: (n: number) => void;
   toggleAxisBadges: () => void;
   toggleCompactMode: () => void;
+  toggleLocked: () => void;
   resetToDefaults: () => void;
   markClean: () => void;
 }
@@ -43,6 +47,7 @@ const defaultState = {
   columnCount: 4,
   showAxisBadges: false,
   compactMode: false,
+  locked: false,
   isLoaded: false,
   isDirty: false,
 };
@@ -56,6 +61,7 @@ export const useDashboardLayoutStore = create<DashboardLayoutState>((set) => ({
       columnCount: config.columnCount,
       showAxisBadges: config.showAxisBadges,
       compactMode: config.compactMode,
+      locked: config.locked,
       isLoaded: true,
       isDirty: false,
     }),
@@ -87,12 +93,16 @@ export const useDashboardLayoutStore = create<DashboardLayoutState>((set) => ({
   toggleCompactMode: () =>
     set((state) => ({ compactMode: !state.compactMode, isDirty: true })),
 
+  toggleLocked: () =>
+    set((state) => ({ locked: !state.locked, isDirty: true })),
+
   resetToDefaults: () =>
     set({
       enabledWidgets: DEFAULT_ENABLED_WIDGETS,
       columnCount: 4,
       showAxisBadges: false,
       compactMode: false,
+      locked: false,
       isDirty: true,
     }),
 

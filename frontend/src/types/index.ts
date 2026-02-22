@@ -796,6 +796,7 @@ export interface DashboardConfigPayload {
   column_count: number;
   show_axis_badges: boolean;
   compact_mode: boolean;
+  locked: boolean;
 }
 
 export interface DashboardConfigResponse {

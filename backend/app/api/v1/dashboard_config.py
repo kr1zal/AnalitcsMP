@@ -43,6 +43,7 @@ class DashboardConfigPayload(BaseModel):
     column_count: Optional[int] = None
     show_axis_badges: Optional[bool] = None
     compact_mode: Optional[bool] = None
+    locked: Optional[bool] = None
 
     @field_validator("enabled_widgets")
     @classmethod
@@ -97,6 +98,7 @@ async def get_dashboard_config(
                     "column_count": row.get("column_count", DEFAULT_COLUMN_COUNT),
                     "show_axis_badges": row.get("show_axis_badges", False),
                     "compact_mode": row.get("compact_mode", False),
+                    "locked": row.get("locked", False),
                 },
             }
 
@@ -109,6 +111,7 @@ async def get_dashboard_config(
                 "column_count": DEFAULT_COLUMN_COUNT,
                 "show_axis_badges": False,
                 "compact_mode": False,
+                "locked": False,
             },
         }
 
@@ -144,6 +147,8 @@ async def update_dashboard_config(
             upsert_data["show_axis_badges"] = payload.show_axis_badges
         if payload.compact_mode is not None:
             upsert_data["compact_mode"] = payload.compact_mode
+        if payload.locked is not None:
+            upsert_data["locked"] = payload.locked
 
         result = (
             supabase.table("user_dashboard_config")
@@ -161,6 +166,7 @@ async def update_dashboard_config(
                     "column_count": row.get("column_count", DEFAULT_COLUMN_COUNT),
                     "show_axis_badges": row.get("show_axis_badges", False),
                     "compact_mode": row.get("compact_mode", False),
+                    "locked": row.get("locked", False),
                 },
             }
 
@@ -172,6 +178,7 @@ async def update_dashboard_config(
                 "column_count": payload.column_count if payload.column_count is not None else DEFAULT_COLUMN_COUNT,
                 "show_axis_badges": payload.show_axis_badges if payload.show_axis_badges is not None else False,
                 "compact_mode": payload.compact_mode if payload.compact_mode is not None else False,
+                "locked": payload.locked if payload.locked is not None else False,
             },
         }
 

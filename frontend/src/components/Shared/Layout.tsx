@@ -95,7 +95,7 @@ export const Layout = () => {
   }, []);
 
   return (
-    <div className="min-h-screen bg-gray-50 overflow-x-hidden">
+    <div className="min-h-screen bg-gray-50 [overflow-x:clip]">
       {/* Header только на десктопе; на мобиле — только боковая плашка */}
       {!isMobile && (
       <header className="bg-white border-b border-gray-200 sticky top-0 z-40">

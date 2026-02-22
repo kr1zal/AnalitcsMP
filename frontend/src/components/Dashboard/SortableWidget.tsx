@@ -18,6 +18,7 @@ interface SortableWidgetProps {
   loading: boolean;
   showAxisBadge: boolean;
   compact: boolean;
+  locked: boolean;
 }
 
 export const SortableWidget = ({
@@ -26,6 +27,7 @@ export const SortableWidget = ({
   loading,
   showAxisBadge,
   compact,
+  locked,
 }: SortableWidgetProps) => {
   const {
     attributes,
@@ -53,11 +55,14 @@ export const SortableWidget = ({
       ref={setNodeRef}
       style={style}
       className={cn(
-        'relative group cursor-grab active:cursor-grabbing touch-none h-full',
+        'relative group h-full',
+        locked
+          ? 'cursor-default'
+          : 'cursor-grab active:cursor-grabbing touch-none',
         compact && '[&>div]:p-3 [&>div]:sm:p-4',
       )}
       {...attributes}
-      {...listeners}
+      {...(locked ? {} : listeners)}
       aria-roledescription="sortable widget"
     >
       <SummaryCard
