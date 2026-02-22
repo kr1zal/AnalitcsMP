@@ -367,6 +367,8 @@ iOS Safari: `navigator.share()` и `<a download>` не работают посл
 3. Клик на "Сохранить" = свежий user gesture → `navigator.share({ files: [file] })` → iOS share sheet
 4. Fallback: если share не поддерживается — `<a download>` через `downloadDesktop()`
 
+**ВАЖНО:** `navigator.share()` вызывается БЕЗ `title` — иначе мессенджеры (Telegram, WhatsApp) отправляют title как отдельное текстовое сообщение рядом с файлом.
+
 Desktop: стандартный `<a download>` через `URL.createObjectURL()`.
 
 Детекция мобильного: `IS_MOBILE = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent)`.
