@@ -17,6 +17,8 @@
 | 06 | Analytics | [dashboard/06-analytics-widgets.md](dashboard/06-analytics-widgets.md) | Waterfall, Donut, TopProducts, StockForecast |
 | 07 | Stock History | [dashboard/07-stock-history.md](dashboard/07-stock-history.md) | Динамика остатков (line chart, self-contained) |
 | 08 | Stocks Table | [dashboard/08-stocks-table.md](dashboard/08-stocks-table.md) | Таблица остатков: search, sort, pagination, expand |
+| -- | Widget Dashboard (arch) | [widget-dashboard-architecture.md](widget-dashboard-architecture.md) | Архитектура виджетов: DnD, store, config API, lock |
+| -- | Widget Dashboard (design) | [widget-dashboard-design.md](widget-dashboard-design.md) | UI/UX спека: mobile Variant B, lock states, responsive |
 
 ### Unit Economics (`/unit-economics`)
 
@@ -54,7 +56,7 @@
 |---|------|------|----------|
 | 01 | Layout | [shared/01-layout.md](shared/01-layout.md) | Layout + nav + ProtectedRoute + FeatureGate |
 | 02 | Data Layer | [shared/02-data-layer.md](shared/02-data-layer.md) | api.ts + interceptors + React Query |
-| 03 | State | [shared/03-state-management.md](shared/03-state-management.md) | useFiltersStore + URL sync |
+| 03 | State | [shared/03-state-management.md](shared/03-state-management.md) | useFiltersStore + useAuthStore + useDashboardLayoutStore + URL sync |
 
 ## Как использовать
 

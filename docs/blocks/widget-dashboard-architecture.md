@@ -2,7 +2,7 @@
 
 > Архитектурный документ: замена фиксированного grid 4x2 на кастомизируемую систему виджетов с drag & drop.
 >
-> Дата: 2026-02-21 | Статус: ПРОЕКТ (не реализовано)
+> Дата: 2026-02-21 | Обновлено: 2026-02-22 | Статус: **РЕАЛИЗОВАНО** (Phase 1 MVP + Lock feature)
 
 ---
 
@@ -230,6 +230,11 @@ CREATE TABLE IF NOT EXISTS user_dashboard_config (
 
     CONSTRAINT user_dashboard_config_user_unique UNIQUE (user_id)
 );
+
+-- Миграция 022_dashboard_config_locked.sql
+-- Блокировка перетаскивания виджетов (Lock feature)
+ALTER TABLE user_dashboard_config
+ADD COLUMN IF NOT EXISTS locked BOOLEAN NOT NULL DEFAULT FALSE;
 
 -- RLS
 ALTER TABLE user_dashboard_config ENABLE ROW LEVEL SECURITY;
@@ -844,40 +849,37 @@ export interface WidgetPosition {
 interface DashboardLayoutState {
   /** Ordered list of enabled widget IDs */
   enabledWidgets: string[];
-  /** Grid positions (optional — if empty, auto-layout from enabledWidgets order) */
-  layout: WidgetPosition[];
   /** Number of columns (desktop) */
   columnCount: number;
   /** Show data-axis badges on widgets */
   showAxisBadges: boolean;
   /** Compact mode (smaller cards) */
   compactMode: boolean;
+  /** Lock widget positions (disable DnD) — migrация 022 */
+  locked: boolean;
   /** Whether config has been loaded from server */
   isLoaded: boolean;
   /** Whether there are unsaved changes */
   isDirty: boolean;
 
   // Actions
-  setConfig: (config: Partial<DashboardLayoutState>) => void;
-  toggleWidget: (widgetId: string) => void;
+  setConfig: (config: { enabledWidgets; columnCount; showAxisBadges; compactMode; locked }) => void;
+  toggleWidget: (id: string) => void;
   reorderWidgets: (fromIndex: number, toIndex: number) => void;
-  setLayout: (layout: WidgetPosition[]) => void;
-  setColumnCount: (count: number) => void;
+  setColumnCount: (n: number) => void;
   toggleAxisBadges: () => void;
   toggleCompactMode: () => void;
+  toggleLocked: () => void;
+  resetToDefaults: () => void;
   markClean: () => void;
 }
 
-const DEFAULTS = {
-  enabledWidgets: [
-    'orders_count', 'orders_revenue', 'revenue_settled', 'purchase_costs',
-    'net_profit', 'mp_deductions', 'ad_cost', 'payout',
-    'drr', 'profit_margin', 'period_delta',
-  ],
-  layout: [] as WidgetPosition[],
+const defaultState = {
+  enabledWidgets: DEFAULT_ENABLED_WIDGETS, // from definitions.ts
   columnCount: 4,
   showAxisBadges: false,
   compactMode: false,
+  locked: false,        // миграция 022
   isLoaded: false,
   isDirty: false,
 };
@@ -929,107 +931,102 @@ export const useDashboardLayoutStore = create<DashboardLayoutState>((set) => ({
 ```tsx
 // frontend/src/hooks/useDashboardConfig.ts
 
-import { useEffect, useRef, useCallback } from 'react';
+import { useEffect, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { dashboardConfigApi } from '../services/api';
 import { useDashboardLayoutStore } from '../store/useDashboardLayoutStore';
-import { dashboardApi } from '../services/api';
+import type { DashboardConfigPayload } from '../types';
 
-const SAVE_DEBOUNCE_MS = 1500;
+const STALE_TIME = 1000 * 60 * 30; // 30 мин
+const DEBOUNCE_MS = 1500;
 
-export function useDashboardConfig() {
-  const store = useDashboardLayoutStore();
+// Отдельные hooks для гибкости (query/mutation можно использовать по отдельности)
+export const useDashboardConfigQuery = () =>
+  useQuery({
+    queryKey: ['dashboard', 'config'],
+    queryFn: () => dashboardConfigApi.getConfig(),
+    staleTime: STALE_TIME,
+  });
+
+export const useDashboardConfigMutation = () => {
   const queryClient = useQueryClient();
-  const saveTimerRef = useRef<ReturnType<typeof setTimeout>>();
-
-  // 1. Load config from server on mount
-  const { data: serverConfig, isLoading } = useQuery({
-    queryKey: ['dashboard-config'],
-    queryFn: () => dashboardApi.getDashboardConfig(),
-    staleTime: 1000 * 60 * 30, // 30 min
+  return useMutation({
+    mutationFn: (payload: DashboardConfigPayload) => dashboardConfigApi.saveConfig(payload),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['dashboard', 'config'] }),
   });
+};
 
-  // 2. Apply server config to Zustand store (once)
+// Основной hook: load → Zustand + debounced auto-save
+export const useDashboardConfig = () => {
+  const { data, isLoading, error } = useDashboardConfigQuery();
+  const mutation = useDashboardConfigMutation();
+
+  // Zustand selectors (per-field для минимальных ререндеров)
+  const setConfig = useDashboardLayoutStore((s) => s.setConfig);
+  const markClean = useDashboardLayoutStore((s) => s.markClean);
+  const isLoaded = useDashboardLayoutStore((s) => s.isLoaded);
+  const isDirty = useDashboardLayoutStore((s) => s.isDirty);
+  const enabledWidgets = useDashboardLayoutStore((s) => s.enabledWidgets);
+  const columnCount = useDashboardLayoutStore((s) => s.columnCount);
+  const showAxisBadges = useDashboardLayoutStore((s) => s.showAxisBadges);
+  const compactMode = useDashboardLayoutStore((s) => s.compactMode);
+  const locked = useDashboardLayoutStore((s) => s.locked);
+
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // 1. Sync server → Zustand (once)
   useEffect(() => {
-    if (serverConfig && !store.isLoaded) {
-      store.setConfig({
-        enabledWidgets: serverConfig.enabled_widgets,
-        layout: serverConfig.layout,
-        columnCount: serverConfig.column_count,
-        showAxisBadges: serverConfig.show_axis_badges,
-        compactMode: serverConfig.compact_mode,
+    if (data?.config && !isLoaded) {
+      setConfig({
+        enabledWidgets: data.config.enabled_widgets,
+        columnCount: data.config.column_count,
+        showAxisBadges: data.config.show_axis_badges,
+        compactMode: data.config.compact_mode,
+        locked: data.config.locked ?? false,
       });
     }
-  }, [serverConfig, store.isLoaded]);
+  }, [data, isLoaded, setConfig]);
 
-  // 3. Mutation to save config
-  const saveMutation = useMutation({
-    mutationFn: (config: {
-      enabled_widgets: string[];
-      layout: unknown[];
-      column_count: number;
-      show_axis_badges: boolean;
-      compact_mode: boolean;
-    }) => dashboardApi.saveDashboardConfig(config),
-    onSuccess: () => {
-      store.markClean();
-      queryClient.invalidateQueries({ queryKey: ['dashboard-config'] });
-    },
-  });
-
-  // 4. Debounced auto-save on store changes
-  const debouncedSave = useCallback(() => {
-    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
-    saveTimerRef.current = setTimeout(() => {
-      const state = useDashboardLayoutStore.getState();
-      if (!state.isDirty || !state.isLoaded) return;
-      saveMutation.mutate({
-        enabled_widgets: state.enabledWidgets,
-        layout: state.layout,
-        column_count: state.columnCount,
-        show_axis_badges: state.showAxisBadges,
-        compact_mode: state.compactMode,
-      });
-    }, SAVE_DEBOUNCE_MS);
-  }, [saveMutation]);
-
-  // Watch for dirty state
+  // 2. Debounced auto-save
   useEffect(() => {
-    if (store.isDirty && store.isLoaded) {
-      debouncedSave();
-    }
-  }, [store.isDirty, store.enabledWidgets, store.layout, store.columnCount, debouncedSave]);
+    if (!isDirty || !isLoaded) return;
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => {
+      mutation.mutate(
+        { enabled_widgets: enabledWidgets, column_count: columnCount,
+          show_axis_badges: showAxisBadges, compact_mode: compactMode, locked },
+        { onSuccess: () => markClean() },
+      );
+    }, DEBOUNCE_MS);
+    return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
+  }, [isDirty, enabledWidgets, columnCount, showAxisBadges, compactMode, locked, isLoaded]);
 
-  // Cleanup
-  useEffect(() => {
-    return () => {
-      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
-    };
-  }, []);
-
-  return {
-    isLoading,
-    isSaving: saveMutation.isPending,
-  };
-}
+  return { isLoading, error, isSaving: mutation.isPending, saveError: mutation.error };
+};
 ```
 
 ### 4.6 Component Hierarchy
 
 ```
 DashboardPage.tsx
-├── FilterPanel (sticky, unchanged)
-├── WidgetGrid                              ← NEW: replaces hardcoded 8 cards
+├── FilterPanel (sticky, Variant B mobile)
+│   ├── Lock toggle (Lock/LockOpen icon, aria-pressed)    ← NEW: управляет locked state
+│   └── Widget Settings button (Settings2 icon)           ← NEW: открывает WidgetSettingsPanel
+├── WidgetGrid                              ← replaces hardcoded 8 cards
 │   ├── DndContext (@dnd-kit/core)
+│   │   ├── sensors = locked ? [] : [PointerSensor, TouchSensor]  ← Lock disables DnD
 │   │   └── SortableContext (@dnd-kit/sortable)
-│   │       └── WidgetCard[]                ← wraps SummaryCard + data resolver
-│   │           ├── SortableItem (drag handle + dnd wrapper)
+│   │       └── SortableWidget[]             ← wraps SummaryCard + drag handle
+│   │           ├── drag handle (grip dots, hidden when locked)
+│   │           ├── cursor: locked ? 'default' : 'grab'
 │   │           └── SummaryCard (existing, unchanged)
-│   └── WidgetSettingsPanel                 ← slide-out or modal
+│   └── WidgetSettingsPanel                 ← slide-out (desktop) / full-screen (mobile)
 │       ├── CategoryGroup[]
-│       │   └── WidgetToggle[] (checkbox + preview)
+│       │   └── WidgetToggle[] (toggle switches, NOT checkboxes)
 │       ├── AxisBadgeToggle
-│       ├── ColumnCountSlider
-│       └── CompactModeToggle
+│       ├── ColumnCountSelector (2/3/4/5 buttons)
+│       ├── CompactModeToggle
+│       └── ResetToDefaults button
 ├── PlanCompletionCard (unchanged)
 ├── MarketplaceBreakdown (unchanged)
 ├── Charts section (unchanged)
@@ -1413,11 +1410,12 @@ from ...auth import get_current_user_id
 router = APIRouter()
 
 class DashboardConfigPayload(BaseModel):
-    enabled_widgets: list[str]
-    layout: list[dict] = []
-    column_count: int = 4
-    show_axis_badges: bool = False
-    compact_mode: bool = False
+    enabled_widgets: Optional[list[str]] = None   # partial update support
+    layout: Optional[list[dict]] = None
+    column_count: Optional[int] = None             # validated 1-6
+    show_axis_badges: Optional[bool] = None
+    compact_mode: Optional[bool] = None
+    locked: Optional[bool] = None                  # миграция 022
 
 DEFAULT_ENABLED = [
     "orders_count", "orders_revenue", "revenue_settled", "purchase_costs",
@@ -1439,20 +1437,28 @@ async def get_dashboard_config(
     if result.data:
         row = result.data[0]
         return {
-            "enabled_widgets": row.get("enabled_widgets", DEFAULT_ENABLED),
-            "layout": row.get("layout", []),
-            "column_count": row.get("column_count", 4),
-            "show_axis_badges": row.get("show_axis_badges", False),
-            "compact_mode": row.get("compact_mode", False),
+            "status": "success",
+            "config": {
+                "enabled_widgets": row.get("enabled_widgets", DEFAULT_ENABLED),
+                "layout": row.get("layout", []),
+                "column_count": row.get("column_count", 4),
+                "show_axis_badges": row.get("show_axis_badges", False),
+                "compact_mode": row.get("compact_mode", False),
+                "locked": row.get("locked", False),   # миграция 022
+            },
         }
 
     # Return defaults for new users
     return {
-        "enabled_widgets": DEFAULT_ENABLED,
-        "layout": [],
-        "column_count": 4,
-        "show_axis_badges": False,
-        "compact_mode": False,
+        "status": "success",
+        "config": {
+            "enabled_widgets": DEFAULT_ENABLED,
+            "layout": [],
+            "column_count": 4,
+            "show_axis_badges": False,
+            "compact_mode": False,
+            "locked": False,
+        },
     }
 
 
@@ -1463,21 +1469,24 @@ async def save_dashboard_config(
 ):
     """Save/update user's dashboard widget configuration."""
     supabase = get_supabase_client()
-    data = {
-        "user_id": user_id,
-        "enabled_widgets": payload.enabled_widgets,
-        "layout": payload.layout,
-        "column_count": payload.column_count,
-        "show_axis_badges": payload.show_axis_badges,
-        "compact_mode": payload.compact_mode,
-    }
+    # Partial update: только переданные поля
+    upsert_data = {"user_id": user_id}
+    if payload.enabled_widgets is not None:
+        upsert_data["enabled_widgets"] = payload.enabled_widgets
+    if payload.column_count is not None:
+        upsert_data["column_count"] = payload.column_count
+    if payload.show_axis_badges is not None:
+        upsert_data["show_axis_badges"] = payload.show_axis_badges
+    if payload.compact_mode is not None:
+        upsert_data["compact_mode"] = payload.compact_mode
+    if payload.locked is not None:
+        upsert_data["locked"] = payload.locked
 
-    # Upsert (user_id is UNIQUE)
-    supabase.table("user_dashboard_config") \
-        .upsert(data, on_conflict="user_id") \
+    result = supabase.table("user_dashboard_config") \
+        .upsert(upsert_data, on_conflict="user_id") \
         .execute()
 
-    return {"status": "success"}
+    return {"status": "success", "config": result.data[0]}
 ```
 
 ### 4.10 Widget Settings Panel
@@ -1650,31 +1659,42 @@ const { data: stocksData } = useStocks('all', fulfillmentType, {
 
 ## 7. Реализация по фазам
 
-### Phase 1: MVP (2-3 дня)
+### Phase 1: MVP — **DONE** (2026-02-21)
 - [x] Миграция 021: `user_dashboard_config` таблица
-- [x] Backend: `GET/PUT /dashboard/config`
+- [x] Backend: `GET/PUT /dashboard/config` (partial update, validation regex)
 - [x] Widget registry + definitions (24 виджета)
 - [x] Zustand store: `useDashboardLayoutStore`
-- [x] `useDashboardConfig` hook (load/save)
-- [x] `WidgetGrid` component с DnD
+- [x] `useDashboardConfig` hook (load/save, debounced 1.5s)
+- [x] `WidgetGrid` component с DnD (@dnd-kit/sortable)
+- [x] `SortableWidget` component (grip dots, drag states)
 - [x] Widget value resolver в DashboardPage
 - [x] Default layout = текущие 8+ карточек
-- [ ] Замена hardcoded grid на `<WidgetGrid />`
+- [x] Замена hardcoded grid на `<WidgetGrid />`
 
-### Phase 2: Settings Panel (1-2 дня)
-- [ ] `WidgetSettingsPanel` slide-out
-- [ ] Category grouping + checkboxes
-- [ ] Column count picker
-- [ ] Compact mode toggle
-- [ ] Axis badge toggle
-- [ ] FeatureGate для Pro-only виджетов
-- [ ] "Сбросить по умолчанию" button
+### Phase 1.5: Lock Feature — **DONE** (2026-02-22)
+- [x] Миграция 022: `locked BOOLEAN` column
+- [x] Backend: `locked` в GET/PUT response
+- [x] Zustand: `locked`, `toggleLocked()`, `resetToDefaults()`
+- [x] `useDashboardConfig`: locked в auto-save payload
+- [x] `WidgetGrid`: conditional sensors (empty when locked)
+- [x] `SortableWidget`: cursor-default, hide grip dots when locked
+- [x] FilterPanel: Lock/Unlock toggle button (Lock/LockOpen icons)
+- [x] FilterPanel mobile Variant B: lock icon в Row 2 actions
 
-### Phase 3: Cross-Axis Transparency (1 день)
-- [ ] Axis badge component на каждом виджете
-- [ ] Ozon-specific info banner
-- [ ] Axis legend в Settings Panel
-- [ ] Tooltip enhancement с data source info
+### Phase 2: Settings Panel — **DONE** (2026-02-21)
+- [x] `WidgetSettingsPanel` slide-out (desktop) / full-screen (mobile)
+- [x] Category grouping + toggle switches (NOT checkboxes)
+- [x] Column count picker (2/3/4/5 buttons)
+- [x] Compact mode toggle
+- [x] Axis badge toggle
+- [x] FeatureGate для Pro-only виджетов
+- [x] "Сбросить по умолчанию" button
+
+### Phase 3: Cross-Axis Transparency — **DONE** (2026-02-21)
+- [x] Axis badge component на каждом виджете
+- [ ] Ozon-specific info banner (будет при необходимости)
+- [x] Axis legend в Settings Panel (category descriptions)
+- [x] Tooltip enhancement с data source info
 
 ### Phase 4: Advanced Sizes (future)
 - [ ] 2x1 (wide) widget support
@@ -1686,13 +1706,14 @@ const { data: stocksData } = useStocks('all', fulfillmentType, {
 ## Приложение A: Полная ER-связь
 
 ```
-user_dashboard_config (NEW)
+user_dashboard_config (миграции 021 + 022)
 ├── user_id FK → auth.users(id)
 ├── enabled_widgets JSONB [widget_id, ...]
 ├── layout JSONB [{id, x, y, w, h}, ...]
-├── column_count INT
+├── column_count INT (1-6)
 ├── show_axis_badges BOOL
-└── compact_mode BOOL
+├── compact_mode BOOL
+└── locked BOOL (миграция 022 — блокировка DnD)
 
 Widget Registry (frontend-only, static)
 ├── id → matches enabled_widgets entries
@@ -1708,10 +1729,12 @@ Widget Registry (frontend-only, static)
 
 ```
 45. **Widget Dashboard:** Registry pattern — WIDGET_DEFINITIONS (frontend-only, static).
-    Supabase: user_dashboard_config (JSONB layout). DnD: @dnd-kit/sortable (rectSortingStrategy).
+    Supabase: user_dashboard_config (JSONB layout, миграции 021+022). DnD: @dnd-kit/sortable (rectSortingStrategy).
     SummaryCard НЕ меняется — оборачивается в SortableWidget.
     Value resolver — в DashboardPage (НЕ в отдельных widget components).
-    Persistence: Zustand + debounced save (1.5s) через PUT /dashboard/config.
+    Persistence: Zustand + debounced save (1.5s) через PUT /dashboard/config (partial update).
     Default layout = 11 виджетов (текущие 8 карточек + drr + profit_margin + period_delta).
     Cross-axis badges: опциональны (show_axis_badges toggle), off по умолчанию.
+    **Lock feature** (миграция 022): `locked` boolean в store/DB. When locked: sensors=[] (DnD disabled),
+    cursor-default, grip dots hidden. Toggle в FilterPanel (Lock/LockOpen icons). Auto-save с debounce.
 ```

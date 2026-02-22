@@ -33,6 +33,7 @@ React Component
 | Sync hooks | `frontend/src/hooks/useSync.ts` | 6 hooks (2 query + 4 mutation) |
 | Subscription hooks | `frontend/src/hooks/useSubscription.ts` | 5 hooks (2 query + 3 mutation) |
 | Export hook | `frontend/src/hooks/useExport.ts` | 1 hook (Excel + PDF export) |
+| Dashboard config hooks | `frontend/src/hooks/useDashboardConfig.ts` | 3 hooks (query + mutation + combined) |
 | Types | `frontend/src/types/index.ts` | Все TypeScript типы для API responses |
 
 ## Supabase Client
@@ -206,6 +207,17 @@ api.interceptors.request.use(async (config) => {
 | `reset` | DELETE | `/sales-plan/reset` | `?month` |
 | `getPrevious` | GET | `/sales-plan/previous` | `?month` |
 
+### dashboardConfigApi (строки 582-598)
+
+| Метод | HTTP | Путь | Параметры |
+|-------|------|------|-----------|
+| `getConfig` | GET | `/dashboard/config` | нет |
+| `saveConfig` | PUT | `/dashboard/config` | body: `DashboardConfigPayload` (все поля Optional) |
+
+`DashboardConfigPayload`: `{ enabled_widgets?, column_count?, show_axis_badges?, compact_mode?, locked? }`
+
+Backend: `backend/app/api/v1/dashboard_config.py` — partial update (PATCH-like PUT). Валидация: `column_count` 2-6, `enabled_widgets` regex `^[a-z0-9_-]+$`.
+
 ### accountApi (строки 534-539)
 
 | Метод | HTTP | Путь | Параметры |
@@ -273,6 +285,7 @@ const queryClient = new QueryClient({
 | `usePlans` | useSubscription.ts:12 | `['subscription', 'plans']` | 1hr | -- | `GET /subscription/plans` |
 | `useSyncLogs` | useSync.ts:11 | `['sync', 'logs', limit]` | 30s | -- | `GET /sync/logs` |
 | `useSyncStatus` | useSync.ts:96 | `['sync', 'status']` | 10s | 30s | `GET /sync/status` |
+| `useDashboardConfigQuery` | useDashboardConfig.ts:15 | `['dashboard', 'config']` | 10min | -- | `GET /dashboard/config` |
 
 ### Mutations (хуки с побочными эффектами)
 
@@ -295,6 +308,7 @@ const queryClient = new QueryClient({
 | `useUpgrade` | useSubscription.ts:20 | `POST /subscription/upgrade` | -- |
 | `useCancelSubscription` | useSubscription.ts:26 | `POST /subscription/cancel` | `['subscription']` |
 | `useEnableAutoRenew` | useSubscription.ts:35 | `POST /subscription/enable-auto-renew` | `['subscription']` |
+| `useDashboardConfigMutation` | useDashboardConfig.ts:32 | `PUT /dashboard/config` | `['dashboard', 'config']` |
 
 ## Паттерн staleTime по категориям
 
@@ -306,6 +320,7 @@ const queryClient = new QueryClient({
 | Товары (products) | 30min | Редко меняются |
 | Подписка | 10min | Меняется только при оплате |
 | Список планов | 1hr | Статические данные |
+| Dashboard config | 10min | Меняется редко (layout/lock) |
 | Логи синхронизации | 30s | Нужна актуальность при мониторинге |
 | Статус синхронизации | 10s | Polling для отображения прогресса |
 

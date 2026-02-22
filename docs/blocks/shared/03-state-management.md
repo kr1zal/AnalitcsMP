@@ -32,8 +32,10 @@ URL: /?period=30d&mp=wb&ft=FBS&from=2026-01-01&to=2026-01-31
 |-----------|------|------------|
 | useFiltersStore | `frontend/src/store/useFiltersStore.ts` | Глобальные фильтры дашборда |
 | useAuthStore | `frontend/src/store/useAuthStore.ts` | Auth state (user, session) |
+| useDashboardLayoutStore | `frontend/src/store/useDashboardLayoutStore.ts` | Widget Dashboard layout + lock |
 | useFilterUrlSync | `frontend/src/hooks/useFilterUrlSync.ts` | Sync Zustand ↔ URL |
 | useAuth | `frontend/src/hooks/useAuth.ts` | Инициализация auth listener |
+| useDashboardConfig | `frontend/src/hooks/useDashboardConfig.ts` | Load/save dashboard config (debounced) |
 
 ## useFiltersStore — Глобальные фильтры
 
@@ -240,11 +242,67 @@ useResetSalesPlan (onSuccess)
   └─ invalidate ['sales-plan']     // ВСЕ sales-plan queries
 ```
 
+## useDashboardLayoutStore — Widget Dashboard
+
+Файл: `frontend/src/store/useDashboardLayoutStore.ts` (111 строк)
+
+### Interface
+
+```ts
+interface DashboardLayoutState {
+  enabledWidgets: string[];     // ordered list of widget IDs
+  columnCount: number;          // 2-6 columns
+  showAxisBadges: boolean;      // data axis badges on cards
+  compactMode: boolean;         // smaller padding
+  locked: boolean;              // disable DnD (миграция 022)
+  isLoaded: boolean;            // config loaded from server
+  isDirty: boolean;             // unsaved changes
+
+  setConfig: (config) => void;
+  toggleWidget: (id) => void;
+  reorderWidgets: (from, to) => void;
+  setColumnCount: (n) => void;
+  toggleAxisBadges: () => void;
+  toggleCompactMode: () => void;
+  toggleLocked: () => void;     // Lock/Unlock DnD
+  resetToDefaults: () => void;
+  markClean: () => void;
+}
+```
+
+### Persistence
+
+Store НЕ персистится в localStorage. Вместо этого — React Query:
+
+```
+Mount → GET /dashboard/config → setConfig(serverData) → isLoaded=true
+Change → isDirty=true → debounce 1.5s → PUT /dashboard/config → markClean()
+```
+
+Hook `useDashboardConfig` в `DashboardPage.tsx` связывает Zustand ↔ Backend.
+
+### Lock Feature
+
+`locked: boolean` контролирует DnD в `WidgetGrid`:
+- `locked=false` → sensors=[PointerSensor, TouchSensor], grip dots visible
+- `locked=true` → sensors=[] (empty), cursor-default, grip dots hidden
+
+Toggle в `FilterPanel` (Lock/LockOpen icons). State автоматически сохраняется на сервер через debounced auto-save.
+
+### Где используется
+
+- `WidgetGrid.tsx` — читает enabledWidgets, columnCount, locked
+- `SortableWidget.tsx` — получает locked как prop
+- `WidgetSettingsPanel.tsx` — toggleWidget, setColumnCount, toggleAxisBadges, toggleCompactMode, resetToDefaults
+- `FilterPanel.tsx` — читает locked, вызывает toggleLocked
+- `useDashboardConfig.ts` — sync server ↔ store
+
 ### Store НЕ содержит серверные данные
 
 Zustand хранит ТОЛЬКО UI-состояние:
 - `useFiltersStore` — выбранные фильтры
 - `useAuthStore` — auth session
+- `useDashboardLayoutStore` — widget layout + lock
 
 Серверные данные ВСЕГДА в React Query. Это соответствует правилу из coding-standards.md:
 

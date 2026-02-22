@@ -2,10 +2,14 @@
 
 > Детальная спецификация UI/UX для кастомизируемой системы виджетов дашборда.
 >
-> Дата: 2026-02-21 | Статус: Design spec
+> Дата: 2026-02-21 | Обновлено: 2026-02-22 | Статус: **РЕАЛИЗОВАНО**
 > Связан: [widget-dashboard-architecture.md](./widget-dashboard-architecture.md) (техническая архитектура)
 
 **Правила CLAUDE.md:** #12 (@dnd-kit), #28 (Dashboard Cards grid), #38 (FilterPanel sticky)
+
+> **ВАЖНО (2026-02-22):** Mobile FilterPanel обновлён на **Variant B** (семантическая группировка,
+> 2 строки). Gear icon и Lock toggle теперь внутри FilterPanel. Desktop gear и lock — в FilterPanel
+> после экспорт-кнопок. Подробности → [01-filter-panel.md](./dashboard/01-filter-panel.md)
 
 ---
 
@@ -20,6 +24,7 @@
 7. [Drag & Drop Visual Specs](#7-drag--drop-visual-specs)
 8. [Axis Badge Design](#8-axis-badge-design)
 9. [Settings Panel Interaction Flow](#9-settings-panel-interaction-flow)
+10. [Lock Feature (миграция 022)](#10-lock-feature)
 
 ---
 
@@ -41,15 +46,20 @@ Desktop (lg+):
 └──────────────┘ └──────────────┘ └──────────────┘ └──────────────┘
 
 
-Mobile (<640px):
-┌──────────────────────────────────┐
-│  [7д][30д][90д]  FBO|FBS         │
-│  01.02—21.02  [Все▼]  xlsx  ⚙   │  ← gear в строке экспорта
-└──────────────────────────────────┘
+Mobile (<640px) — Variant B (semantic grouping):
+┌──────────────────────────────────────┐
+│ Row 1: [7д][30д][90д]   [Все▼] FBO|FBS│  ← фильтры
+│ Row 2: [01.02—21.02 ▾]  xlsx pdf 🔒⚙│  ← действия
+└──────────────────────────────────────┘
 ┌───────┐ ┌───────┐
 │Заказы │ │Выкупы │
 │  42   │ │38500₽ │
 └───────┘ └───────┘
+
+Row 1: "какие данные показать" — период (left) + МП + FBO/FBS (right)
+Row 2: "что с данными сделать" — DateRangePicker (flex-1) + actions (shrink-0)
+🔒 = Lock/Unlock toggle (Lock/LockOpen icon, aria-pressed)
+⚙ = Widget Settings button
 ```
 
 **Tailwind классы кнопки:**
@@ -1338,15 +1348,87 @@ frontend/src/
 
 ---
 
-## Приложение D: Checklist перед реализацией
+## 10. Lock Feature
 
-- [ ] SummaryCard.tsx: НЕ МЕНЯТЬ (only wrap in SortableWidget)
-- [ ] FilterPanel.tsx: добавить gear icon в mobile layout (row 2)
-- [ ] DashboardPage: заменить `<div className="grid grid-cols-2 lg:grid-cols-4">` на `<WidgetGrid />`
-- [ ] DashboardPage: добавить `widgetValues` и `loadingStates` useMemo
-- [ ] @dnd-kit: уже в проекте (Product Management), packages installed
-- [ ] Supabase: migration 021_user_dashboard_config.sql
-- [ ] Backend: GET/PUT /dashboard/config endpoints
-- [ ] CLAUDE.md: добавить правило #45 (Widget Dashboard)
-- [ ] Mobile testing: 375px width, long-press drag, full-screen settings
-- [ ] Accessibility: keyboard DnD, ARIA attributes, focus management
+### 10.1 Назначение
+
+Фиксация позиций виджетов — предотвращает случайное перемещение карточек drag & drop. Особенно важно на мобильных (long-press может сработать случайно).
+
+### 10.2 Lock Toggle Button
+
+**Desktop (в FilterPanel, после export buttons):**
+```
+... | [Excel] [PDF] | 🔒 | ⚙ Виджеты |
+                      ↑
+                  Lock toggle
+```
+
+**Mobile (в FilterPanel Row 2, action icons):**
+```
+[01.02—21.02 ▾]     [xlsx][pdf][🔒][⚙]
+                               ↑
+                           Lock toggle (h-8 w-8)
+```
+
+### 10.3 Visual States
+
+```
+  UNLOCKED:
+  [🔓]  text-gray-400 hover:text-gray-600 hover:bg-gray-100
+        LockOpen icon, aria-pressed="false"
+
+  LOCKED:
+  [🔒]  text-indigo-600 bg-indigo-50 hover:bg-indigo-100
+        Lock icon, aria-pressed="true"
+```
+
+### 10.4 Effect on WidgetGrid
+
+```
+  locked=false (default):
+  - DnD sensors active (PointerSensor + TouchSensor)
+  - Grip dots visible on hover (desktop)
+  - cursor: grab on handle, cursor: grabbing during drag
+  - Long-press drag on mobile
+
+  locked=true:
+  - DnD sensors = [] (empty array — no drag possible)
+  - Grip dots hidden (listeners not spread)
+  - cursor: default on all cards
+  - Long-press does nothing (no haptic)
+  - Cards still show data, tooltips work, links work
+```
+
+### 10.5 Data Flow
+
+```
+FilterPanel: toggleLocked()
+  └─ useDashboardLayoutStore.toggleLocked()
+       └─ locked = !locked, isDirty = true
+            └─ useDashboardConfig (debounce 1.5s)
+                 └─ PUT /dashboard/config { locked: true/false }
+                      └─ user_dashboard_config.locked (миграция 022)
+```
+
+### 10.6 Миграция
+
+```sql
+-- 022_dashboard_config_locked.sql
+ALTER TABLE user_dashboard_config
+ADD COLUMN IF NOT EXISTS locked BOOLEAN NOT NULL DEFAULT FALSE;
+```
+
+---
+
+## Приложение D: Implementation Checklist
+
+- [x] SummaryCard.tsx: НЕ менять (wrapped в SortableWidget)
+- [x] FilterPanel.tsx: Lock toggle + gear icon (desktop & mobile Variant B)
+- [x] DashboardPage: hardcoded grid → `<WidgetGrid />`
+- [x] DashboardPage: `widgetValues` и `loadingStates` useMemo
+- [x] @dnd-kit: уже в проекте (Product Management)
+- [x] Supabase: миграция 021 + 022
+- [x] Backend: GET/PUT /dashboard/config (partial update, validation)
+- [x] Lock feature: миграция 022, Zustand, FilterPanel, WidgetGrid
+- [x] Mobile: Variant B layout (2 rows, all controls visible)
+- [x] Accessibility: aria-pressed (lock), aria-label (icon buttons), role=switch (settings toggles)

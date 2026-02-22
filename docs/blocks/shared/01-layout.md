@@ -127,7 +127,7 @@ function RootLayout() {
 
 ## Layout.tsx — Навигация
 
-Файл: `frontend/src/components/Shared/Layout.tsx` (287 строк)
+Файл: `frontend/src/components/Shared/Layout.tsx` (288 строк)
 
 ### Навигационные пункты (строки 15-26)
 
@@ -171,16 +171,17 @@ navigation.filter((item) => !item.feature || subscription?.features?.[item.featu
 ### Вертикальные рассечения
 
 ```
-Layout.tsx (287 строк)
+Layout.tsx (288 строк)
 ├── строки 1-14:    imports
 ├── строки 15-26:   navigation config
 ├── строки 28-29:   SWIPE_THRESHOLD = 60
 ├── строки 31-48:   state + route change listener
 ├── строки 50-66:   ESC handler + scroll lock
 ├── строки 68-95:   touch handlers (start/move/end)
-├── строки 97-163:  desktop header render
-├── строки 165-280: mobile panel render
-└── строки 282-286: main content (<Outlet />)
+├── строка 98:      root div с [overflow-x:clip]
+├── строки 100-163: desktop header render
+├── строки 166-280: mobile panel render
+└── строки 282-284: main content (<Outlet />)
 ```
 
 ## ProtectedRoute — Защита маршрутов
@@ -392,6 +393,26 @@ const { ref, inView } = useInView<HTMLDivElement>({ once: true });
 - **Зависит от:** useAuthStore (auth state), useSubscription (тариф), useTokensStatus (onboarding), react-router-dom (routing)
 - **Используется в:** Все защищённые страницы рендерятся внутри Layout через `<Outlet />`
 - **Feature gate:** Навигация фильтрует пункты по `subscription.features`. FeatureGate используется внутри страниц для блокировки секций
+
+## CSS: overflow-x:clip
+
+Файл: `frontend/src/components/Shared/Layout.tsx` (строка 98)
+
+Корневой `<div>` контейнер Layout использует `[overflow-x:clip]` (Tailwind arbitrary value) вместо `overflow-x-hidden`.
+
+**Причина:** `overflow-x-hidden` создаёт scroll container, что ломает `position: sticky` у FilterPanel. `overflow-x: clip` обрезает контент без создания scroll container — FilterPanel корректно прилипает к верху.
+
+```tsx
+// Layout.tsx — root wrapper (строка 98)
+<div className="min-h-screen bg-gray-50 [overflow-x:clip]">
+  {/* header (desktop) | mobile panel */}
+  <main>
+    <Outlet />
+  </main>
+</div>
+```
+
+**Правило:** НИКОГДА не менять на `overflow-x-hidden` или `overflow-hidden` — это сломает sticky FilterPanel.
 
 ## Известные проблемы
 

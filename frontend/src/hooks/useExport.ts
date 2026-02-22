@@ -39,16 +39,41 @@ export function useExport(): UseExportReturn {
 
   /**
    * Скачать Blob как файл
+   * На мобильных (iOS Safari) <a download> не работает с blob URLs —
+   * используем navigator.share() (нативный share sheet) с fallback на window.open
    */
-  const downloadBlob = useCallback((blob: Blob, filename: string) => {
+  const downloadBlob = useCallback(async (blob: Blob, filename: string) => {
+    // Mobile: try Web Share API (best UX on iOS/Android)
+    const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+    if (isMobile && navigator.share) {
+      try {
+        const file = new File([blob], filename, { type: blob.type });
+        if (navigator.canShare?.({ files: [file] })) {
+          await navigator.share({ files: [file], title: filename });
+          return;
+        }
+      } catch (e) {
+        // User cancelled share or share failed — fall through to link approach
+        if ((e as DOMException).name === 'AbortError') return;
+      }
+    }
+
+    // Desktop (and mobile fallback): blob URL + <a download>
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
     link.download = filename;
+    link.style.display = 'none';
     document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
+
+    // setTimeout for iOS Safari compatibility
+    setTimeout(() => {
+      link.click();
+      setTimeout(() => {
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+      }, 200);
+    }, 0);
   }, []);
 
   /**
@@ -77,7 +102,7 @@ export function useExport(): UseExportReturn {
       try {
         const blob = await generateExcelReport(data);
         const filename = generateFilename(data.period.from, data.period.to, 'xlsx');
-        downloadBlob(blob, filename);
+        await downloadBlob(blob, filename);
 
         toast.success('Excel отчёт сохранён', {
           id: loadingToastId, // Заменяем loading toast на success
@@ -120,7 +145,7 @@ export function useExport(): UseExportReturn {
           fulfillment_type: params.fulfillment_type,
         });
         const filename = generateFilename(params.period.from, params.period.to, 'pdf');
-        downloadBlob(blob, filename);
+        await downloadBlob(blob, filename);
 
         toast.success('PDF отчёт сохранён', {
           id: loadingToastId,
