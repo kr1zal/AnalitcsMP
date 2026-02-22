@@ -4,6 +4,10 @@
  *
  * PDF экспорт: через Playwright на backend (идеальное качество)
  * Excel экспорт: через xlsx на frontend
+ *
+ * Mobile (iOS Safari): <a download> и navigator.share() не работают после async —
+ * iOS требует свежий user gesture. Решение: показываем toast с кнопкой "Сохранить",
+ * клик на неё = свежий gesture → navigator.share() открывает нативный share sheet.
  */
 import { useState, useCallback } from 'react';
 import { toast } from 'sonner';
@@ -31,51 +35,42 @@ export interface UseExportReturn {
   exportPdf: (params: PdfExportParams) => Promise<void>;
 }
 
+// ==================== CONSTANTS ====================
+
+/** MIME types by extension — axios blob responses often have empty type */
+const MIME_MAP: Record<string, string> = {
+  pdf: 'application/pdf',
+  xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+};
+
+const IS_MOBILE = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+
 // ==================== HOOK ====================
 
 export function useExport(): UseExportReturn {
   const [isExporting, setIsExporting] = useState(false);
   const [exportType, setExportType] = useState<ExportType>(null);
 
-  /** MIME types by extension — axios blob responses often have empty type */
-  const MIME_MAP: Record<string, string> = {
-    pdf: 'application/pdf',
-    xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-  };
-
   /**
-   * Скачать Blob как файл
-   * На мобильных (iOS Safari) <a download> не работает с blob URLs —
-   * используем navigator.share() (нативный share sheet) с fallback
+   * Ensure blob has correct MIME type (axios blob often comes without type)
    */
-  const downloadBlob = useCallback(async (blob: Blob, filename: string) => {
-    // Ensure correct MIME type (axios blob often comes without type)
+  const ensureMime = useCallback((blob: Blob, filename: string) => {
     const ext = filename.split('.').pop()?.toLowerCase() || '';
     const mimeType = MIME_MAP[ext] || blob.type || 'application/octet-stream';
     const typedBlob = blob.type === mimeType ? blob : new Blob([blob], { type: mimeType });
+    return { typedBlob, mimeType };
+  }, []);
 
-    // Mobile: try Web Share API (native share sheet — best UX on iOS/Android)
-    const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
-    if (isMobile && navigator.share) {
-      try {
-        const file = new File([typedBlob], filename, { type: mimeType });
-        await navigator.share({ files: [file], title: filename });
-        return;
-      } catch (e) {
-        // AbortError = user cancelled share → done
-        if ((e as DOMException).name === 'AbortError') return;
-        // Other errors → fall through to link approach
-      }
-    }
-
-    // Desktop (and mobile fallback): blob URL + <a download>
-    const url = URL.createObjectURL(typedBlob);
+  /**
+   * Desktop: стандартный blob download через <a download>
+   */
+  const downloadDesktop = useCallback((blob: Blob, filename: string) => {
+    const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
     link.download = filename;
     link.style.display = 'none';
     document.body.appendChild(link);
-
     setTimeout(() => {
       link.click();
       setTimeout(() => {
@@ -84,6 +79,37 @@ export function useExport(): UseExportReturn {
       }, 200);
     }, 0);
   }, []);
+
+  /**
+   * Mobile: показать toast с кнопкой "Сохранить"
+   * Клик на кнопку = свежий user gesture → navigator.share() работает
+   * Returns false = pending (mobile), true = auto-downloaded (desktop)
+   */
+  const downloadBlob = useCallback((blob: Blob, filename: string): boolean => {
+    const { typedBlob, mimeType } = ensureMime(blob, filename);
+
+    if (IS_MOBILE && navigator.share) {
+      const file = new File([typedBlob], filename, { type: mimeType });
+      toast('Файл готов', {
+        description: filename,
+        duration: 60000,
+        action: {
+          label: 'Сохранить',
+          onClick: () => {
+            navigator.share({ files: [file], title: filename }).catch(() => {
+              // Last resort fallback
+              downloadDesktop(typedBlob, filename);
+            });
+          },
+        },
+      });
+      return false; // pending user action
+    }
+
+    // Desktop: auto-download
+    downloadDesktop(typedBlob, filename);
+    return true;
+  }, [ensureMime, downloadDesktop]);
 
   /**
    * Генерация имени файла
@@ -105,22 +131,25 @@ export function useExport(): UseExportReturn {
       setIsExporting(true);
       setExportType('excel');
 
-      // Показываем toast о начале экспорта
       const loadingToastId = toast.loading('Формируем Excel отчёт...');
 
       try {
         const blob = await generateExcelReport(data);
         const filename = generateFilename(data.period.from, data.period.to, 'xlsx');
-        await downloadBlob(blob, filename);
+        const autoDownloaded = downloadBlob(blob, filename);
 
-        toast.success('Excel отчёт сохранён', {
-          id: loadingToastId, // Заменяем loading toast на success
-          description: filename,
-        });
+        if (autoDownloaded) {
+          toast.success('Excel отчёт сохранён', {
+            id: loadingToastId,
+            description: filename,
+          });
+        } else {
+          toast.dismiss(loadingToastId);
+        }
       } catch (error) {
         console.error('Excel export error:', error);
         toast.error('Ошибка экспорта в Excel', {
-          id: loadingToastId, // Заменяем loading toast на error
+          id: loadingToastId,
           description: error instanceof Error ? error.message : 'Неизвестная ошибка',
         });
       } finally {
@@ -141,7 +170,6 @@ export function useExport(): UseExportReturn {
       setIsExporting(true);
       setExportType('pdf');
 
-      // Показываем toast о начале экспорта
       const loadingToastId = toast.loading('Формируем PDF отчёт...', {
         description: 'Это может занять 10-20 секунд',
       });
@@ -154,12 +182,17 @@ export function useExport(): UseExportReturn {
           fulfillment_type: params.fulfillment_type,
         });
         const filename = generateFilename(params.period.from, params.period.to, 'pdf');
-        await downloadBlob(blob, filename);
+        const autoDownloaded = downloadBlob(blob, filename);
 
-        toast.success('PDF отчёт сохранён', {
-          id: loadingToastId,
-          description: filename,
-        });
+        if (autoDownloaded) {
+          toast.success('PDF отчёт сохранён', {
+            id: loadingToastId,
+            description: filename,
+          });
+        } else {
+          // Mobile: dismiss loading, downloadBlob showed save prompt
+          toast.dismiss(loadingToastId);
+        }
       } catch (error) {
         console.error('PDF export error:', error);
         toast.error('Ошибка экспорта в PDF', {

@@ -13,8 +13,8 @@
 │ Период: [7д] [30д] [90д] │ 📅 01.02–21.02 │ МП: [Все ▾] │ Тип: Все|FBO|FBS │ Excel PDF │ 🔒 ⚙️ │
 └────────────────────────────────────────────────────────────────────────────────────────┘
      ↑ indigo-600           ↑ DateRangePicker   ↑ <select>   ↑ pill-кнопки     ↑ экспорт   ↑ замочек + настройки
-     active = bg-indigo-600   isActive при       value из     bg-gray-100        emerald/     locked: indigo-50
-     text-white               custom preset      Zustand      rounded-lg p-0.5   rose         unlocked: gray-500
+     active = bg-indigo-600   isActive при       value из     bg-gray-100        bg-emerald-100/  locked: indigo-50
+     text-white               custom preset      Zustand      rounded-lg p-0.5   bg-rose-100      unlocked: gray-500
 ```
 
 `sticky top-16` -- 16 = высота навбара (64px = 4rem). Desktop ниже навбара.
@@ -346,6 +346,32 @@ getDateRangeFromPreset(preset, customFrom, customTo, maxDate?)
 8. **Переход между страницами** -- useFilterUrlSync подключен в FilterPanel, который присутствует на DashboardPage. AdsPage имеет свою локальную панель фильтров (правило #41).
 9. **Lock/unlock без onWidgetSettings** -- замочек и настройки показываются ТОЛЬКО когда передан `onWidgetSettings` callback. На страницах без виджетов -- скрыты.
 10. **Lock persist failure** -- при ошибке сети locked state остаётся в Zustand (UX не ломается), retry при следующем изменении через isDirty.
+
+## Кнопки экспорта
+
+### Стилизация
+
+| Кнопка | Обычное состояние | Hover | Disabled (isExporting) |
+|--------|-------------------|-------|------------------------|
+| Excel (📊) | `bg-emerald-100 text-emerald-700` | `hover:bg-emerald-200` | `opacity-50 cursor-not-allowed` |
+| PDF (📄) | `bg-rose-100 text-rose-700` | `hover:bg-rose-200` | `opacity-50 cursor-not-allowed` |
+
+Размеры: mobile `p-1.5 rounded-lg`, desktop `px-3 py-1.5 text-sm rounded-lg`.
+
+### Mobile download (useExport.ts)
+
+iOS Safari: `navigator.share()` и `<a download>` не работают после async (user gesture expires за 10-20 сек формирования PDF). Решение:
+
+1. Файл формируется (toast.loading)
+2. После готовности: toast с кнопкой "Сохранить" (`duration: 60000`)
+3. Клик на "Сохранить" = свежий user gesture → `navigator.share({ files: [file] })` → iOS share sheet
+4. Fallback: если share не поддерживается — `<a download>` через `downloadDesktop()`
+
+Desktop: стандартный `<a download>` через `URL.createObjectURL()`.
+
+Детекция мобильного: `IS_MOBILE = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent)`.
+
+MIME fix: axios blob responses часто приходят без type — `ensureMime()` устанавливает тип по расширению файла через `MIME_MAP`.
 
 ## Зависимости
 
