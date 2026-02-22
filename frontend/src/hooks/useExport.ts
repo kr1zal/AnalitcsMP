@@ -96,7 +96,7 @@ export function useExport(): UseExportReturn {
         action: {
           label: 'Сохранить',
           onClick: () => {
-            navigator.share({ files: [file], title: filename }).catch(() => {
+            navigator.share({ files: [file] }).catch(() => {
               // Last resort fallback
               downloadDesktop(typedBlob, filename);
             });
