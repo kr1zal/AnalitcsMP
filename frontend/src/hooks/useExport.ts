@@ -37,36 +37,45 @@ export function useExport(): UseExportReturn {
   const [isExporting, setIsExporting] = useState(false);
   const [exportType, setExportType] = useState<ExportType>(null);
 
+  /** MIME types by extension — axios blob responses often have empty type */
+  const MIME_MAP: Record<string, string> = {
+    pdf: 'application/pdf',
+    xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  };
+
   /**
    * Скачать Blob как файл
    * На мобильных (iOS Safari) <a download> не работает с blob URLs —
-   * используем navigator.share() (нативный share sheet) с fallback на window.open
+   * используем navigator.share() (нативный share sheet) с fallback
    */
   const downloadBlob = useCallback(async (blob: Blob, filename: string) => {
-    // Mobile: try Web Share API (best UX on iOS/Android)
+    // Ensure correct MIME type (axios blob often comes without type)
+    const ext = filename.split('.').pop()?.toLowerCase() || '';
+    const mimeType = MIME_MAP[ext] || blob.type || 'application/octet-stream';
+    const typedBlob = blob.type === mimeType ? blob : new Blob([blob], { type: mimeType });
+
+    // Mobile: try Web Share API (native share sheet — best UX on iOS/Android)
     const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
     if (isMobile && navigator.share) {
       try {
-        const file = new File([blob], filename, { type: blob.type });
-        if (navigator.canShare?.({ files: [file] })) {
-          await navigator.share({ files: [file], title: filename });
-          return;
-        }
+        const file = new File([typedBlob], filename, { type: mimeType });
+        await navigator.share({ files: [file], title: filename });
+        return;
       } catch (e) {
-        // User cancelled share or share failed — fall through to link approach
+        // AbortError = user cancelled share → done
         if ((e as DOMException).name === 'AbortError') return;
+        // Other errors → fall through to link approach
       }
     }
 
     // Desktop (and mobile fallback): blob URL + <a download>
-    const url = URL.createObjectURL(blob);
+    const url = URL.createObjectURL(typedBlob);
     const link = document.createElement('a');
     link.href = url;
     link.download = filename;
     link.style.display = 'none';
     document.body.appendChild(link);
 
-    // setTimeout for iOS Safari compatibility
     setTimeout(() => {
       link.click();
       setTimeout(() => {

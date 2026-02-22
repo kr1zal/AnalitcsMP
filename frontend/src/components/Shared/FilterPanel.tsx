@@ -158,7 +158,7 @@ export const FilterPanel = ({
                   'flex items-center justify-center h-8 w-8 rounded-lg transition-all active:scale-95',
                   isExporting && exportType === 'excel'
                     ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                    : 'text-emerald-600 hover:bg-emerald-50 shadow-[0_0_8px_rgba(16,185,129,0.35)]'
+                    : 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200'
                 )}
               >
                 {isExporting && exportType === 'excel' ? (
@@ -177,7 +177,7 @@ export const FilterPanel = ({
                   'flex items-center justify-center h-8 w-8 rounded-lg transition-all active:scale-95',
                   isExporting && exportType === 'pdf'
                     ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                    : 'text-rose-600 hover:bg-rose-50 shadow-[0_0_8px_rgba(244,63,94,0.35)]'
+                    : 'bg-rose-100 text-rose-700 hover:bg-rose-200'
                 )}
               >
                 {isExporting && exportType === 'pdf' ? (
@@ -316,7 +316,7 @@ export const FilterPanel = ({
                     'flex items-center gap-1.5 h-9 px-3 text-sm font-medium rounded-lg transition-all',
                     isExporting && exportType === 'excel'
                       ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                      : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100 shadow-[0_0_8px_rgba(16,185,129,0.35)]'
+                      : 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200'
                   )}
                 >
                   {isExporting && exportType === 'excel' ? (
@@ -336,7 +336,7 @@ export const FilterPanel = ({
                     'flex items-center gap-1.5 h-9 px-3 text-sm font-medium rounded-lg transition-all',
                     isExporting && exportType === 'pdf'
                       ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                      : 'bg-rose-50 text-rose-700 hover:bg-rose-100 shadow-[0_0_8px_rgba(244,63,94,0.35)]'
+                      : 'bg-rose-100 text-rose-700 hover:bg-rose-200'
                   )}
                 >
                   {isExporting && exportType === 'pdf' ? (
