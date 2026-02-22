@@ -60,6 +60,18 @@ class OzonClient:
             payload["sku"] = skus
         return await self._request("POST", "/v3/product/info/list", json=payload)
 
+    async def get_product_prices(self, limit: int = 100, last_id: str = "", offer_ids: list[str] = None) -> dict:
+        """Получить цены товаров (v5). Ответ: {items: [{offer_id, price: {price, old_price, ...}, ...}]}"""
+        payload: dict[str, Any] = {
+            "filter": {},
+            "limit": limit,
+        }
+        if last_id:
+            payload["last_id"] = last_id
+        if offer_ids:
+            payload["filter"]["offer_id"] = offer_ids
+        return await self._request("POST", "/v5/product/info/prices", json=payload)
+
     async def get_products_by_barcode(self, barcodes: list[str]) -> dict:
         """Получить товары по штрихкодам"""
         # Сначала получаем все товары
@@ -80,7 +92,7 @@ class OzonClient:
         product_ids = [p["product_id"] for p in all_products]
         if product_ids:
             details = await self.get_product_info(product_ids=product_ids)
-            products_detail = details.get("result", {}).get("items", [])
+            products_detail = details.get("items") or details.get("result", {}).get("items", [])
 
             # Фильтруем по штрихкодам
             filtered = [
@@ -249,7 +261,7 @@ class OzonClient:
 
     async def get_warehouse_list(self) -> dict:
         """Получить список складов"""
-        return await self._request("POST", "/v1/warehouse/list", json={})
+        return await self._request("POST", "/v2/warehouse/list", json={})
 
     # ==================== ЗАКАЗЫ И ПРОДАЖИ ====================
 
@@ -268,6 +280,22 @@ class OzonClient:
             }
         }
         return await self._request("POST", "/v3/posting/fbs/list", json=payload)
+
+    async def get_posting_fbo_list(self, date_from: datetime, date_to: datetime, limit: int = 100, offset: int = 0) -> dict:
+        """Получить список отправлений FBO (склад Ozon)"""
+        payload = {
+            "filter": {
+                "since": date_from.strftime("%Y-%m-%dT00:00:00.000Z"),
+                "to": date_to.strftime("%Y-%m-%dT23:59:59.999Z")
+            },
+            "limit": limit,
+            "offset": offset,
+            "with": {
+                "analytics_data": True,
+                "financial_data": True
+            }
+        }
+        return await self._request("POST", "/v2/posting/fbo/list", json=payload)
 
     # ==================== ФИНАНСЫ ====================
 
@@ -300,7 +328,7 @@ class OzonClient:
 
     # ==================== АНАЛИТИКА ====================
 
-    async def get_analytics_data(self, date_from: datetime, date_to: datetime, dimensions: list[str] = None, metrics: list[str] = None) -> dict:
+    async def get_analytics_data(self, date_from: datetime, date_to: datetime, dimensions: list[str] = None, metrics: list[str] = None, limit: int = 1000, offset: int = 0) -> dict:
         """
         Получить аналитику
         dimensions: ["sku"], ["sku", "day"], ["day"], ["week"], ["month"]
@@ -316,8 +344,8 @@ class OzonClient:
             "date_to": date_to.strftime("%Y-%m-%d"),
             "dimension": dimensions,
             "metrics": metrics,
-            "limit": 1000,
-            "offset": 0
+            "limit": limit,
+            "offset": offset
         }
         return await self._request("POST", "/v1/analytics/data", json=payload)
 

@@ -6,29 +6,19 @@
  * чтобы избежать дублирования запросов.
  */
 import { useMemo, useState } from 'react';
-import { AlertTriangle, ChevronDown, ChevronUp } from 'lucide-react';
+import { AlertTriangle, ChevronDown, ChevronUp, HelpCircle } from 'lucide-react';
 import { formatCurrency } from '../../lib/utils';
-import type { CostsTreeItem, CostsTreeResponse, DashboardFilters } from '../../types';
+import type { CostsTreeItem, CostsTreeResponse, MpProfitData } from '../../types';
 
 interface OzonAccrualsCardProps {
-  filters: DashboardFilters;
-  /**
-   * Если задано — детализация контролируется снаружи (синхронизация с WB карточкой).
-   */
+  /** Если задано — детализация контролируется снаружи (синхронизация с WB карточкой). */
   detailsOpen?: boolean;
   onToggleDetails?: () => void;
-  /**
-   * Опционально: показывать % у подкатегорий (листов) в детализации.
-   * % считается как доля от "Продажи" (как в ЛК).
-   * По умолчанию выключено (в ЛК у подкатегорий % обычно не показываются).
-   */
-  showLeafPercents?: boolean;
-  /**
-   * ОПТИМИЗАЦИЯ: данные costs-tree передаются из родителя (DashboardPage),
-   * чтобы избежать дублирования запросов.
-   */
+  /** Данные costs-tree передаются из родителя (DashboardPage). */
   costsTreeData?: CostsTreeResponse | null;
   isLoading?: boolean;
+  /** Прибыль по этому МП (рассчитывается в DashboardPage). */
+  profitData?: MpProfitData | null;
 }
 
 type ColorToken =
@@ -54,18 +44,12 @@ const COLORS: Record<ColorToken, { dot: string; bar: string }> = {
   other: { dot: 'bg-gray-300', bar: 'bg-gray-300' },
 };
 
-const formatCurrencyRounded = (value: number): string => {
-  return new Intl.NumberFormat('ru-RU', {
-    style: 'currency',
-    currency: 'RUB',
+function formatOzonAmount(amount: number): string {
+  // Без символа ₽ — экономит место на мобиле
+  const abs = new Intl.NumberFormat('ru-RU', {
     minimumFractionDigits: 0,
     maximumFractionDigits: 0,
-  }).format(value);
-};
-
-function formatOzonAmount(amount: number): string {
-  // В ЛК Ozon в этом блоке суммы отображаются в ₽ без копеек.
-  const abs = formatCurrencyRounded(Math.abs(amount));
+  }).format(Math.abs(amount));
   return amount < 0 ? `-${abs}` : abs;
 }
 
@@ -109,24 +93,17 @@ function pickSalesColor(subcategory: string, idx: number): ColorToken {
 }
 
 export const OzonAccrualsCard = ({
-  filters: _filters,
-  showLeafPercents,
   detailsOpen,
   onToggleDetails,
   costsTreeData,
   isLoading: isLoadingProp,
+  profitData,
 }: OzonAccrualsCardProps) => {
-  // _filters зарезервирован для будущего использования
-  void _filters;
   const [showDetailsLocal, setShowDetailsLocal] = useState(false);
-  const [showLeafPercentsLocal, setShowLeafPercentsLocal] = useState(false);
 
   const controlled = typeof detailsOpen === 'boolean';
   const showDetails = controlled ? detailsOpen : showDetailsLocal;
   const toggleDetails = controlled ? (onToggleDetails ?? (() => {})) : () => setShowDetailsLocal((v) => !v);
-
-  const leafPercentsExternallyControlled = typeof showLeafPercents === 'boolean';
-  const leafPercentsEnabled = leafPercentsExternallyControlled ? showLeafPercents : showLeafPercentsLocal;
 
   // ОПТИМИЗАЦИЯ: данные передаются через props из DashboardPage
   const data = costsTreeData;
@@ -162,26 +139,14 @@ export const OzonAccrualsCard = ({
 
   if (isLoading) {
     return (
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-5">
-        <div className="animate-pulse space-y-4">
-          <div className="h-6 bg-gray-200 rounded w-24" />
-          <div className="h-10 bg-gray-100 rounded w-40" />
-          <div className="h-2 bg-gray-100 rounded w-full" />
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <div className="space-y-3">
-              <div className="h-4 bg-gray-100 rounded w-40" />
-              <div className="h-3 bg-gray-50 rounded w-56" />
-              <div className="h-3 bg-gray-50 rounded w-48" />
-            </div>
-            <div className="space-y-3">
-              <div className="h-4 bg-gray-100 rounded w-32" />
-              <div className="h-3 bg-gray-50 rounded w-56" />
-              <div className="h-3 bg-gray-50 rounded w-48" />
-            </div>
-            <div className="space-y-3">
-              <div className="h-4 bg-gray-100 rounded w-16" />
-              <div className="h-3 bg-gray-50 rounded w-40" />
-            </div>
+      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-3 sm:p-5">
+        <div className="animate-pulse space-y-3">
+          <div className="h-5 bg-gray-200 rounded w-12" />
+          <div className="h-8 bg-gray-100 rounded w-24" />
+          <div className="h-1.5 bg-gray-100 rounded w-full" />
+          <div className="space-y-2">
+            <div className="h-3 bg-gray-50 rounded w-32" />
+            <div className="h-3 bg-gray-50 rounded w-28" />
           </div>
         </div>
       </div>
@@ -190,13 +155,15 @@ export const OzonAccrualsCard = ({
 
   if (error || !data?.tree?.length) {
     return (
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-5">
-        <h3 className="text-lg font-bold mb-2" style={{ color: '#005BFF' }}>
+      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-3 sm:p-5">
+        <h3 className="text-base sm:text-lg font-bold mb-2" style={{ color: '#005BFF' }}>
           OZON
         </h3>
-        <p className="text-sm text-gray-400">
-          {error ? 'Не удалось загрузить данные' : 'Нет данных за период'}
-        </p>
+        <div className="text-center py-4 sm:py-6">
+          <div className="text-sm text-gray-400">
+            {error ? 'Не удалось загрузить данные' : 'Нет данных за период'}
+          </div>
+        </div>
       </div>
     );
   }
@@ -240,14 +207,32 @@ export const OzonAccrualsCard = ({
         {/* Row 1: Sales + Total */}
         <div className="flex justify-between items-start gap-2">
           <div className="min-w-0 flex-1">
-            <div className="text-[10px] sm:text-xs font-semibold text-gray-500 mb-0.5">Продажи</div>
-            <div className="text-lg sm:text-2xl font-bold tabular-nums text-gray-900" title={`Точно: ${formatExactSigned(computed.salesTotal)}`}>
+            <div className="flex items-center gap-1 mb-0.5">
+              <span className="text-[10px] sm:text-xs font-semibold text-gray-500">Продажи</span>
+              <div className="group relative flex-shrink-0">
+                <HelpCircle className="w-3 h-3 text-gray-400 cursor-help" />
+                <div className="invisible group-hover:visible absolute z-50 top-5 left-0 w-48 sm:w-56 p-2 sm:p-3 bg-gray-900 text-white text-[10px] sm:text-xs rounded-lg shadow-2xl leading-relaxed whitespace-pre-line">
+                  {`Продажи товаров из\nфинансового отчёта OZON\n\nТочно: ${formatExactSigned(computed.salesTotal)}`}
+                  <div className="absolute -top-1 left-2 w-2 h-2 bg-gray-900 rotate-45" />
+                </div>
+              </div>
+            </div>
+            <div className="text-lg sm:text-2xl font-bold tabular-nums text-gray-900">
               {formatOzonAmount(computed.salesTotal)}
             </div>
           </div>
           <div className="text-right min-w-0">
-            <div className="text-[10px] sm:text-xs font-semibold text-gray-500 mb-0.5">Начислено</div>
-            <div className="text-lg sm:text-2xl font-bold tabular-nums text-teal-600" title={`Точно: ${formatExactSigned(computed.totalAccrued)}`}>
+            <div className="flex items-center justify-end gap-1 mb-0.5">
+              <span className="text-[10px] sm:text-xs font-semibold text-gray-500">Начислено</span>
+              <div className="group relative flex-shrink-0">
+                <HelpCircle className="w-3 h-3 text-gray-400 cursor-help" />
+                <div className="invisible group-hover:visible absolute z-50 top-5 right-0 w-48 sm:w-56 p-2 sm:p-3 bg-gray-900 text-white text-[10px] sm:text-xs rounded-lg shadow-2xl leading-relaxed whitespace-pre-line">
+                  {`Итого начислено к выплате\nот OZON за период\n\nПродажи: ${formatOzonAmount(computed.salesTotal)}\nУдержания: ${formatOzonAmount(computed.costsTotal)}\nИтого: ${formatOzonAmount(computed.totalAccrued)}`}
+                  <div className="absolute -top-1 right-2 w-2 h-2 bg-gray-900 rotate-45" />
+                </div>
+              </div>
+            </div>
+            <div className="text-lg sm:text-2xl font-bold tabular-nums text-teal-600">
               {formatOzonAmount(computed.totalAccrued)}
             </div>
           </div>
@@ -302,34 +287,44 @@ export const OzonAccrualsCard = ({
             })}
           </div>
         </div>
+
+        {/* Row 3: Profit */}
+        {profitData && (
+          <div className="pt-2 border-t border-gray-100">
+            <div className="flex justify-between items-start">
+              <div className="flex items-center gap-1">
+                <span className="text-[10px] sm:text-xs font-semibold text-gray-500">Прибыль</span>
+                <div className="group relative flex-shrink-0">
+                  <HelpCircle className="w-3 h-3 text-gray-400 cursor-help" />
+                  <div className="invisible group-hover:visible absolute z-50 top-5 left-0 w-48 sm:w-56 p-2 sm:p-3 bg-gray-900 text-white text-[10px] sm:text-xs rounded-lg shadow-2xl leading-relaxed whitespace-pre-line">
+                    {`Прибыль = Начислено\n− Закупка − Реклама\n\nНачислено: ${formatOzonAmount(computed.totalAccrued)}\nЗакупка: −${formatOzonAmount(profitData.purchase)}\nРеклама: −${formatOzonAmount(profitData.ad)}\nПрибыль: ${formatOzonAmount(profitData.profit)}`}
+                    <div className="absolute -top-1 left-2 w-2 h-2 bg-gray-900 rotate-45" />
+                  </div>
+                </div>
+              </div>
+              <div className="text-right">
+                <div className={`text-sm sm:text-base font-bold tabular-nums ${profitData.profit >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
+                  {formatOzonAmount(profitData.profit)}
+                </div>
+                {computed.salesTotal !== 0 && (
+                  <div className="text-[9px] sm:text-[10px] text-gray-400">
+                    маржа {Math.abs(Math.round((profitData.profit / Math.abs(computed.salesTotal)) * 1000) / 10)}%
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
-      {/* Details: tree (без отдельной карточки) */}
+      {/* Details: tree */}
       {showDetails && (
         <div className="mt-4 pt-3 border-t border-gray-100">
           <div className="flex items-baseline justify-between mb-2">
-            <div className="flex items-baseline gap-2">
-              <span className="text-xs font-semibold text-gray-900">Начислено</span>
-              <span className="text-[10px] text-gray-400">за период</span>
-            </div>
-            <div className="flex items-center gap-3">
-              <label
-                className="flex items-center gap-2 text-[10px] text-gray-500 select-none"
-                title="Опционально: показать эффективные % у подкатегорий (доля от 'Продажи')"
-              >
-                <input
-                  type="checkbox"
-                  className="w-3 h-3"
-                  checked={leafPercentsEnabled}
-                  disabled={leafPercentsExternallyControlled}
-                  onChange={() => setShowLeafPercentsLocal((v) => !v)}
-                />
-                % у подкат.
-              </label>
-              <span className="text-xs font-semibold tabular-nums text-gray-900">
-                {formatOzonAmount(computed.totalAccrued)}
-              </span>
-            </div>
+            <span className="text-xs font-semibold text-gray-900">Начислено</span>
+            <span className="text-xs font-semibold tabular-nums text-gray-900">
+              {formatOzonAmount(computed.totalAccrued)}
+            </span>
           </div>
 
           <div className="space-y-0">
@@ -337,14 +332,11 @@ export const OzonAccrualsCard = ({
               <TreeCategoryInline
                 key={item.name}
                 item={item}
-                leafPercents={{
-                  enabled: leafPercentsEnabled,
-                  denom: Math.abs(
-                    typeof computed.percentBaseSales === 'number'
-                      ? computed.percentBaseSales
-                      : computed.salesTotal ?? 0
-                  ),
-                }}
+                denom={Math.abs(
+                  typeof computed.percentBaseSales === 'number'
+                    ? computed.percentBaseSales
+                    : computed.salesTotal ?? 0
+                )}
               />
             ))}
           </div>
@@ -354,9 +346,7 @@ export const OzonAccrualsCard = ({
   );
 };
 
-type LeafPercentsCfg = { enabled: boolean; denom: number };
-
-const TreeCategoryInline = ({ item, leafPercents }: { item: CostsTreeItem; leafPercents: LeafPercentsCfg }) => {
+const TreeCategoryInline = ({ item, denom }: { item: CostsTreeItem; denom: number }) => {
   const [expanded, setExpanded] = useState(true);
   const hasChildren = item.children.length > 0;
 
@@ -366,26 +356,23 @@ const TreeCategoryInline = ({ item, leafPercents }: { item: CostsTreeItem; leafP
         className="flex items-center justify-between py-1.5 cursor-pointer group"
         onClick={() => hasChildren && setExpanded((v) => !v)}
       >
-        <div className="flex items-center gap-1 min-w-0">
+        <div className="flex items-center gap-1 min-w-0 flex-1 mr-2">
           {hasChildren ? (
-            <span className="text-gray-400 w-5 h-5 flex items-center justify-center flex-shrink-0 group-hover:text-gray-600">
-              {expanded ? <ChevronDown size={16} /> : <ChevronUp size={16} />}
+            <span className="text-gray-400 w-4 h-4 flex items-center justify-center flex-shrink-0 group-hover:text-gray-600">
+              {expanded ? <ChevronDown size={14} /> : <ChevronUp size={14} />}
             </span>
           ) : (
-            <span className="w-5 flex-shrink-0" />
+            <span className="w-4 flex-shrink-0" />
           )}
-          <span className="text-xs font-medium text-gray-900">{item.name}</span>
+          <span className="text-xs font-medium text-gray-900 truncate">{item.name}</span>
         </div>
 
-        <div className="flex flex-col items-end flex-shrink-0 ml-3">
+        <div className="flex flex-col items-end flex-shrink-0">
           <span className="text-xs font-medium tabular-nums text-gray-900" title={`Точно: ${formatExactSigned(item.amount)}`}>
             {formatOzonAmount(item.amount)}
           </span>
           {item.percent !== null && item.percent !== undefined && (
-            <span
-              className="text-[10px] text-gray-400"
-              title={`Эффективная доля от Продаж (как в ЛК): ${formatCurrency(Math.abs(item.amount))} / ${formatCurrency(leafPercents.denom)} = ${item.percent} %`}
-            >
+            <span className="text-[10px] text-gray-400" title={`${formatCurrency(Math.abs(item.amount))} / ${formatCurrency(denom)}`}>
               {item.percent} %
             </span>
           )}
@@ -393,18 +380,16 @@ const TreeCategoryInline = ({ item, leafPercents }: { item: CostsTreeItem; leafP
       </div>
 
       {expanded && hasChildren && (
-        <div className="ml-5">
+        <div className="ml-4">
           {item.children.map((child) => (
-            <div key={child.name} className="flex items-center justify-between py-1.5">
-              <span className="text-xs text-gray-700">{normalizePolicyLabel(child.name)}</span>
-              <div className="flex flex-col items-end flex-shrink-0 ml-3">
-                <span className="text-xs tabular-nums text-gray-900">
-                  <span title={`Точно: ${formatExactSigned(child.amount)}`}>{formatOzonAmount(child.amount)}</span>
+            <div key={child.name} className="flex items-center justify-between py-1">
+              <span className="text-xs text-gray-700 truncate flex-1 mr-2">{normalizePolicyLabel(child.name)}</span>
+              <div className="flex flex-col items-end flex-shrink-0">
+                <span className="text-xs tabular-nums text-gray-900" title={`Точно: ${formatExactSigned(child.amount)}`}>
+                  {formatOzonAmount(child.amount)}
                 </span>
-                {leafPercents.enabled && leafPercents.denom > 0 && item.name !== 'Продажи' && (
-                  <span className="text-[10px] text-gray-400" title="Доля от 'Продажи' (как в ЛК)">
-                    {pct1(Math.abs(child.amount), leafPercents.denom)} %
-                  </span>
+                {denom > 0 && item.name !== 'Продажи' && (
+                  <span className="text-[10px] text-gray-400">{pct1(Math.abs(child.amount), denom)} %</span>
                 )}
               </div>
             </div>

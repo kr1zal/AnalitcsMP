@@ -2,6 +2,7 @@
  * API клиент для взаимодействия с backend
  */
 import axios from 'axios';
+import { supabase } from '../lib/supabase';
 import type {
   ProductsResponse,
   DashboardSummaryResponse,
@@ -11,10 +12,30 @@ import type {
   StocksResponse,
   SyncLogsResponse,
   SyncAllResponse,
+  SyncStatusResponse,
+  ManualSyncResponse,
   DashboardFilters,
   AdCostsResponse,
+  AdCampaignsResponse,
   CostsTreeResponse,
   CostsTreeCombinedResponse,
+  TokensStatus,
+  TokensInput,
+  TokensValidateResponse,
+  UserSubscriptionResponse,
+  PlansListResponse,
+  OrderFunnelResponse,
+  OrdersListResponse,
+  OrderDetailResponse,
+  OrdersFilters,
+  StockHistoryResponse,
+  FulfillmentInfo,
+  SalesPlanResponse,
+  SalesPlanCompletionResponse,
+  SalesPlanSummaryResponse,
+  PreviousPlanResponse,
+  DashboardConfigResponse,
+  DashboardConfigPayload,
 } from '../types';
 
 // Создаём axios instance с базовыми настройками
@@ -26,11 +47,85 @@ const api = axios.create({
   },
 });
 
+// ==================== AUTH INTERCEPTOR ====================
+
+// PrintPage передаёт JWT через URL (?token=...) — используем его приоритетно
+declare global {
+  interface Window {
+    __PDF_TOKEN?: string;
+  }
+}
+
+api.interceptors.request.use(async (config) => {
+  // Приоритет 1: PDF token (передан через URL в PrintPage)
+  if (window.__PDF_TOKEN) {
+    config.headers.Authorization = `Bearer ${window.__PDF_TOKEN}`;
+    return config;
+  }
+
+  // Приоритет 2: Supabase session token
+  const { data: { session } } = await supabase.auth.getSession();
+  if (session?.access_token) {
+    config.headers.Authorization = `Bearer ${session.access_token}`;
+  }
+
+  return config;
+});
+
+// 401 → try refresh token once, then redirect to /login
+let isRefreshing = false;
+let refreshPromise: Promise<boolean> | null = null;
+
+async function tryRefreshSession(): Promise<boolean> {
+  const { data, error } = await supabase.auth.refreshSession();
+  return !error && !!data.session;
+}
+
+api.interceptors.response.use(
+  (response) => response,
+  async (error) => {
+    const originalRequest = error.config;
+
+    if (
+      error.response?.status === 401 &&
+      !window.__PDF_TOKEN &&
+      !originalRequest._retried
+    ) {
+      originalRequest._retried = true;
+
+      // Deduplicate: if already refreshing, wait for the same promise
+      if (!isRefreshing) {
+        isRefreshing = true;
+        refreshPromise = tryRefreshSession().finally(() => {
+          isRefreshing = false;
+          refreshPromise = null;
+        });
+      }
+
+      const refreshed = await refreshPromise;
+
+      if (refreshed) {
+        // Re-attach fresh token and retry
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session?.access_token) {
+          originalRequest.headers.Authorization = `Bearer ${session.access_token}`;
+        }
+        return api(originalRequest);
+      }
+
+      // Refresh failed — redirect to login
+      if (window.location.pathname !== '/login') {
+        window.location.href = '/login';
+      }
+    }
+
+    return Promise.reject(error);
+  }
+);
+
 // Interceptor для логирования запросов (только в dev режиме)
 if (import.meta.env.DEV) {
   api.interceptors.request.use((config) => {
-    // ВАЖНО: не логируем payload ответа (response.data) — это сильно замедляет UI на больших ответах.
-    // Пишем только метаданные: method/url + время/размер (если есть).
     (config as any).__meta = {
       startMs: typeof performance !== 'undefined' ? performance.now() : Date.now(),
     };
@@ -91,6 +186,44 @@ export const productsApi = {
     const { data } = await api.get(`/products/barcode/${barcode}`);
     return data;
   },
+
+  /**
+   * Обновить себестоимость (синхронизирует связанные товары)
+   */
+  updatePurchasePrice: async (productId: string, purchasePrice: number) => {
+    const { data } = await api.put(`/products/${productId}/purchase-price`, {
+      purchase_price: purchasePrice,
+    });
+    return data;
+  },
+
+  /**
+   * Массовое обновление sort_order
+   */
+  reorder: async (items: { product_id: string; sort_order: number }[]) => {
+    const { data } = await api.put('/products/reorder', { items });
+    return data;
+  },
+
+  /**
+   * Связать два товара (WB + Ozon)
+   */
+  link: async (wbProductId: string, ozonProductId: string, purchasePrice: number) => {
+    const { data } = await api.post('/products/link', {
+      wb_product_id: wbProductId,
+      ozon_product_id: ozonProductId,
+      purchase_price: purchasePrice,
+    });
+    return data;
+  },
+
+  /**
+   * Разорвать связь товаров
+   */
+  unlink: async (groupId: string) => {
+    const { data } = await api.post(`/products/unlink/${groupId}`);
+    return data;
+  },
 };
 
 // ==================== DASHBOARD ====================
@@ -129,9 +262,25 @@ export const dashboardApi = {
   /**
    * Получить остатки на складах
    */
-  getStocks: async (marketplace?: string) => {
+  getStocks: async (marketplace?: string, fulfillmentType?: string, timeout?: number) => {
     const { data } = await api.get<StocksResponse>('/dashboard/stocks', {
-      params: { marketplace },
+      params: { marketplace, fulfillment_type: fulfillmentType },
+      timeout: timeout ?? 30000,
+    });
+    return data;
+  },
+
+  /**
+   * Проверить наличие FBS данных у пользователя (Progressive Disclosure)
+   */
+  getFulfillmentInfo: async () => {
+    const { data } = await api.get<FulfillmentInfo>('/dashboard/fulfillment-info');
+    return data;
+  },
+
+  getStockHistory: async (params?: { date_from?: string; date_to?: string; marketplace?: string; product_id?: string; fulfillment_type?: string }) => {
+    const { data } = await api.get<StockHistoryResponse>('/dashboard/stock-history', {
+      params,
     });
     return data;
   },
@@ -139,9 +288,18 @@ export const dashboardApi = {
   /**
    * Получить рекламные расходы и ДРР
    */
-  getAdCosts: async (filters?: DashboardFilters) => {
+  getAdCosts: async (filters?: DashboardFilters, timeout?: number) => {
     const { data } = await api.get<AdCostsResponse>('/dashboard/ad-costs', {
       params: filters,
+      timeout: timeout ?? 30000,
+    });
+    return data;
+  },
+
+  getAdCampaigns: async (filters?: DashboardFilters) => {
+    const { data } = await api.get<AdCampaignsResponse>('/dashboard/ad-campaigns', {
+      params: filters,
+      timeout: 30000,
     });
     return data;
   },
@@ -179,6 +337,106 @@ export const dashboardApi = {
         include_ozon_truth: filters?.include_ozon_truth ?? true,
       },
     });
+    return data;
+  },
+};
+
+// ==================== МОНИТОР ЗАКАЗОВ ====================
+
+export const ordersApi = {
+  getFunnel: async (filters?: DashboardFilters): Promise<OrderFunnelResponse> => {
+    const { data } = await api.get<OrderFunnelResponse>('/dashboard/order-funnel', {
+      params: filters,
+    });
+    return data;
+  },
+
+  getList: async (filters?: OrdersFilters): Promise<OrdersListResponse> => {
+    const { data } = await api.get<OrdersListResponse>('/dashboard/orders', {
+      params: filters,
+    });
+    return data;
+  },
+
+  getDetail: async (orderId: string): Promise<OrderDetailResponse> => {
+    const { data } = await api.get<OrderDetailResponse>(`/dashboard/orders/${orderId}`);
+    return data;
+  },
+};
+
+// ==================== ЭКСПОРТ ====================
+
+export const exportApi = {
+  /**
+   * Экспорт в PDF через Playwright (backend)
+   * Возвращает blob PDF файла
+   */
+  exportPdf: async (params: {
+    date_from: string;
+    date_to: string;
+    marketplace: string;
+    fulfillment_type?: string;
+  }): Promise<Blob> => {
+    const { data } = await api.get('/export/pdf', {
+      params,
+      responseType: 'blob',
+      timeout: 120000, // 2 минуты — PDF генерация может быть долгой
+    });
+    return data;
+  },
+};
+
+// ==================== ТОКЕНЫ ====================
+
+export const tokensApi = {
+  getStatus: async (): Promise<TokensStatus> => {
+    const { data } = await api.get<TokensStatus>('/tokens');
+    return data;
+  },
+
+  save: async (tokens: TokensInput): Promise<{ status: string }> => {
+    const { data } = await api.put('/tokens', tokens);
+    return data;
+  },
+
+  validate: async (tokens: TokensInput): Promise<TokensValidateResponse> => {
+    const { data } = await api.post<TokensValidateResponse>('/tokens/validate', tokens);
+    return data;
+  },
+
+  saveAndSync: async (tokens: TokensInput): Promise<{ status: string }> => {
+    const { data } = await api.post('/tokens/save-and-sync', tokens);
+    return data;
+  },
+};
+
+// ==================== ПОДПИСКИ ====================
+
+export const subscriptionApi = {
+  getMy: async (): Promise<UserSubscriptionResponse> => {
+    const { data } = await api.get<UserSubscriptionResponse>('/subscription');
+    return data;
+  },
+
+  getPlans: async (): Promise<PlansListResponse> => {
+    const { data } = await api.get<PlansListResponse>('/subscription/plans');
+    return data;
+  },
+};
+
+// ==================== ОПЛАТА ====================
+
+export const paymentApi = {
+  upgrade: async (plan: string): Promise<{ confirmation_url: string }> => {
+    const { data } = await api.post<{ confirmation_url: string }>('/subscription/upgrade', { plan });
+    return data;
+  },
+  cancel: async (): Promise<{ status: string }> => {
+    const { data } = await api.post<{ status: string }>('/subscription/cancel');
+    return data;
+  },
+  enableAutoRenew: async (): Promise<{ status: string }> => {
+    const { data } = await api.post<{ status: string }>('/subscription/enable-auto-renew');
     return data;
   },
 };
@@ -251,6 +509,93 @@ export const syncApi = {
     const { data } = await api.get<SyncLogsResponse>('/sync/logs', {
       params: { limit },
     });
+    return data;
+  },
+
+  /**
+   * Получить статус синхронизации (Phase 4)
+   */
+  getStatus: async (): Promise<SyncStatusResponse> => {
+    const { data } = await api.get<SyncStatusResponse>('/sync/status');
+    return data;
+  },
+
+  /**
+   * Ручная синхронизация с дневным лимитом (Phase 4)
+   */
+  manualSync: async (): Promise<ManualSyncResponse> => {
+    const { data } = await api.post<ManualSyncResponse>('/sync/manual', null, {
+      timeout: 300000, // 5 мин — полная синхронизация
+    });
+    return data;
+  },
+};
+
+// ==================== АККАУНТ ====================
+
+export const accountApi = {
+  deleteAccount: async (): Promise<{ status: string }> => {
+    const { data } = await api.delete<{ status: string }>('/account');
+    return data;
+  },
+};
+
+// ==================== ПЛАН ПРОДАЖ ====================
+
+export const salesPlanApi = {
+  getPlans: async (month: string, marketplace: string): Promise<SalesPlanResponse> => {
+    const { data } = await api.get<SalesPlanResponse>('/sales-plan', { params: { month, marketplace } });
+    return data;
+  },
+
+  upsertPlans: async (body: { month: string; marketplace: string; items: { product_id: string; plan_revenue: number }[] }) => {
+    const { data } = await api.put<{ status: string; updated: number }>('/sales-plan', body);
+    return data;
+  },
+
+  getCompletion: async (params?: { date_from?: string; date_to?: string; marketplace?: string; fulfillment_type?: string }): Promise<SalesPlanCompletionResponse> => {
+    const { data } = await api.get<SalesPlanCompletionResponse>('/sales-plan/completion', { params });
+    return data;
+  },
+
+  getSummary: async (month: string): Promise<SalesPlanSummaryResponse> => {
+    const { data } = await api.get<SalesPlanSummaryResponse>('/sales-plan/summary', { params: { month } });
+    return data;
+  },
+
+  upsertSummary: async (body: { month: string; level: string; plan_revenue: number }) => {
+    const { data } = await api.put<{ status: string }>('/sales-plan/summary', body);
+    return data;
+  },
+
+  reset: async (month: string) => {
+    const { data } = await api.delete<{ status: string }>('/sales-plan/reset', { params: { month } });
+    return data;
+  },
+
+  getPrevious: async (month: string): Promise<PreviousPlanResponse> => {
+    const { data } = await api.get<PreviousPlanResponse>('/sales-plan/previous', { params: { month } });
+    return data;
+  },
+
+};
+
+// ==================== DASHBOARD CONFIG (Widget Dashboard) ====================
+
+export const dashboardConfigApi = {
+  /**
+   * Получить конфигурацию дашборда пользователя (включённые виджеты, layout)
+   */
+  getConfig: async (): Promise<DashboardConfigResponse> => {
+    const { data } = await api.get<DashboardConfigResponse>('/dashboard/config');
+    return data;
+  },
+
+  /**
+   * Сохранить конфигурацию дашборда пользователя
+   */
+  saveConfig: async (payload: DashboardConfigPayload): Promise<{ status: string }> => {
+    const { data } = await api.put<{ status: string }>('/dashboard/config', payload);
     return data;
   },
 };

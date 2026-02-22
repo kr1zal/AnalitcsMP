@@ -12,16 +12,30 @@
  * - При пресете (7d/30d/90d): 7 карточек (5 основных + Prior Period + YoY)
  * - При custom датах: 5 основных карточек (Заказы, Прибыль, ДРР, Продвижение, Op. Costs)
  */
-import { Suspense, lazy, useEffect, useMemo, useState } from 'react';
+import { Suspense, lazy, useCallback, useEffect, useMemo, useState } from 'react';
 import axios from 'axios';
-import { DollarSign, ShoppingCart, TrendingUp, Percent, Megaphone, BarChart3, Receipt } from 'lucide-react';
-import { SummaryCard } from '../components/Dashboard/SummaryCard';
+import { useNavigate } from 'react-router-dom';
+import { AlertTriangle, X } from 'lucide-react';
+import { useExport } from '../hooks/useExport';
+import { useSubscription } from '../hooks/useSubscription';
+import type { ExcelExportData } from '../lib/exportExcel';
+import { WidgetGrid } from '../components/Dashboard/WidgetGrid';
+import { useDashboardConfig } from '../hooks/useDashboardConfig';
+import type { WidgetValue, CardAccent, WidgetDataDep } from '../components/Dashboard/widgets/registry';
+import { WIDGET_DEFINITIONS } from '../components/Dashboard/widgets/definitions';
 import { MarketplaceBreakdown } from '../components/Dashboard/MarketplaceBreakdown';
 import { StocksTable } from '../components/Dashboard/StocksTable';
+import { ProfitWaterfall } from '../components/Dashboard/ProfitWaterfall';
+import { TopProductsChart } from '../components/Dashboard/TopProductsChart';
+import { CostsDonutChart } from '../components/Dashboard/CostsDonutChart';
+import { StockForecastChart } from '../components/Dashboard/StockForecastChart';
+import { StockHistoryChart } from '../components/Dashboard/StockHistoryChart';
+import { PlanCompletionCard } from '../components/Dashboard/PlanCompletionCard';
+import { FeatureGate } from '../components/Shared/FeatureGate';
 import { FilterPanel } from '../components/Shared/FilterPanel';
 import { LoadingSpinner } from '../components/Shared/LoadingSpinner';
 import {
-  useDashboardSummary,
+  useDashboardSummaryWithPrev,
   useSalesChart,
   useStocks,
   useAdCosts,
@@ -30,27 +44,37 @@ import {
   useUnitEconomics,
 } from '../hooks/useDashboard';
 import { useFiltersStore } from '../store/useFiltersStore';
-import { fillDailySeriesYmd, formatCurrency, getDateRangeFromPreset } from '../lib/utils';
-import type { CostsTreeResponse, Marketplace } from '../types';
+import { fillDailySeriesYmd, formatCurrency, formatNumber, getDateRangeFromPreset } from '../lib/utils';
+import { useSalesPlanCompletion } from '../hooks/useSalesPlan';
+import type { CostsTreeResponse, Marketplace, MpProfitData } from '../types';
 
 // Lazy-load charts to keep initial bundle small (recharts is heavy).
 const SalesChart = lazy(() =>
   import('../components/Dashboard/SalesChart').then((m) => ({ default: m.SalesChart }))
 );
-const AvgCheckChart = lazy(() =>
-  import('../components/Dashboard/AvgCheckChart').then((m) => ({ default: m.AvgCheckChart }))
+const ProfitChart = lazy(() =>
+  import('../components/Dashboard/ProfitChart').then((m) => ({ default: m.ProfitChart }))
 );
 const DrrChart = lazy(() =>
   import('../components/Dashboard/DrrChart').then((m) => ({ default: m.DrrChart }))
 );
+const ConversionChart = lazy(() =>
+  import('../components/Dashboard/ConversionChart').then((m) => ({ default: m.ConversionChart }))
+);
 
+/** Выручка = tree "Продажи" + positive credits (СПП, возмещения и т.д.) */
 function getSalesTotalFromCostsTree(data?: CostsTreeResponse | null): number | null {
   const tree = data?.tree ?? [];
   const salesItem = tree.find((t) => t.name === 'Продажи');
   if (!salesItem) return null;
-  return salesItem.amount;
+  // Credits: положительные items кроме "Продажи" (WB: СПП, возмещения)
+  const credits = tree
+    .filter((t) => t.name !== 'Продажи' && t.amount > 0)
+    .reduce((acc, t) => acc + t.amount, 0);
+  return salesItem.amount + credits;
 }
 
+/** Только credits (положительные items кроме "Продажи") — для тултипа */
 function getDeductionsAbsFromCostsTree(data?: CostsTreeResponse | null, marketplace?: Marketplace): number | null {
   const tree = data?.tree ?? [];
   if (!tree.length) return null;
@@ -64,17 +88,17 @@ function getDeductionsAbsFromCostsTree(data?: CostsTreeResponse | null, marketpl
 }
 
 function shortCostLabel(name: string): string {
-  if (name === 'Вознаграждение Ozon') return 'ком.';
-  if (name === 'Услуги доставки') return 'лог.';
-  if (name === 'Услуги агентов') return 'агент.';
+  if (name === 'Вознаграждение Ozon') return 'Комиссия';
+  if (name === 'Услуги доставки') return 'Доставка';
+  if (name === 'Услуги агентов') return 'Агенты';
   if (name === 'Услуги FBO') return 'FBO';
-  if (name === 'Продвижение и реклама') return 'промо';
+  if (name === 'Продвижение и реклама') return 'Промо';
 
-  if (name === 'Вознаграждение Вайлдберриз (ВВ)') return 'ком.';
-  if (name === 'Эквайринг/Комиссии за организацию платежей') return 'экв.';
-  if (name === 'Услуги по доставке товара покупателю') return 'лог.';
-  if (name === 'Стоимость хранения') return 'хран.';
-  if (name === 'Общая сумма штрафов') return 'штр.';
+  if (name === 'Вознаграждение Вайлдберриз (ВВ)') return 'Комиссия';
+  if (name === 'Эквайринг/Комиссии за организацию платежей') return 'Эквайринг';
+  if (name === 'Услуги по доставке товара покупателю') return 'Доставка';
+  if (name === 'Стоимость хранения') return 'Хранение';
+  if (name === 'Общая сумма штрафов') return 'Штрафы';
 
   return name;
 }
@@ -89,7 +113,7 @@ function buildCostsSubtitleFromTree(data?: CostsTreeResponse | null, marketplace
   const top = [...filtered].sort((a, b) => Math.abs(b.amount) - Math.abs(a.amount)).slice(0, 3);
   if (!top.length) return undefined;
 
-  return top.map((t) => `${shortCostLabel(t.name)} ${formatCurrency(Math.abs(t.amount))}`).join(', ');
+  return top.map((t) => `${shortCostLabel(t.name)} ${formatNumber(Math.round(Math.abs(t.amount)))}`).join(' · ');
 }
 
 function describeRequestUrl(err: unknown): string | null {
@@ -102,12 +126,20 @@ function describeRequestUrl(err: unknown): string | null {
 }
 
 export const DashboardPage = () => {
-  const { datePreset, marketplace, customDateFrom, customDateTo } = useFiltersStore();
+  const { datePreset, marketplace, fulfillmentType, customDateFrom, customDateTo } = useFiltersStore();
   const dateRange = getDateRangeFromPreset(datePreset, customDateFrom, customDateTo);
+  // fulfillment_type для API: 'all' → undefined (= все типы)
+  const ftParam = fulfillmentType === 'all' ? undefined : fulfillmentType;
 
-  // Фильтр товаров (боковая панель)
+  // Export hook
+  const { isExporting, exportType, exportExcel, exportPdf } = useExport();
+  const { data: subscription } = useSubscription();
+
+  // Фильтр товаров (боковая панель — только товары, МП из FilterPanel)
   const [selectedProduct, setSelectedProduct] = useState<string | undefined>(undefined);
-  const [sidebarMarketplace, setSidebarMarketplace] = useState<Marketplace>('all');
+
+  // Widget settings panel (controlled from FilterPanel → WidgetGrid)
+  const [widgetSettingsOpen, setWidgetSettingsOpen] = useState(false);
 
   // ОПТИМИЗАЦИЯ: visibility gating убран, т.к. RPC запросы теперь быстрые
   // и нет смысла откладывать загрузку графиков/остатков
@@ -116,71 +148,77 @@ export const DashboardPage = () => {
     date_from: dateRange.from,
     date_to: dateRange.to,
     marketplace,
+    fulfillment_type: ftParam,
   };
 
-  // Фильтры для графиков (используют боковой фильтр маркетплейса)
+  // Фильтры для графиков (глобальный МП из FilterPanel + drill-down по товару)
   const chartFilters = {
     date_from: dateRange.from,
     date_to: dateRange.to,
-    marketplace: sidebarMarketplace, // Используем боковой фильтр для графиков
+    marketplace,
     product_id: selectedProduct,
+    fulfillment_type: ftParam,
   };
 
   // Показывать ли карточки сравнения периодов
   const showPeriodComparison = datePreset !== 'custom';
 
   // ==================== ЗАГРУЗКА ДАННЫХ ====================
-  // TODO: Включить оптимизацию после создания RPC get_costs_tree в Supabase
-  // Сейчас используем стандартную логику (отдельные запросы)
-
   // Основной summary
-  const { data: summaryData, isLoading: summaryLoading, error, refetch: refetchSummary } = useDashboardSummary(filters);
+  const { data: summaryData, isLoading: summaryLoading, error } = useDashboardSummaryWithPrev(filters);
 
   // Флаг загрузки
   const isSummaryLoading = summaryLoading;
 
-  // Costs-tree для Ozon и WB (отдельные запросы)
+  // Costs-tree для Ozon и WB (отдельные параллельные запросы)
+  // АРХИТЕКТУРНОЕ РЕШЕНИЕ: используем отдельные запросы вместо combined для:
+  // - Progressive rendering (показываем данные по мере загрузки)
+  // - Изоляции ошибок (если один МП упал — остальные работают)
+  // - Масштабируемости (при добавлении 3+ маркетплейсов)
+  // - Гибкого кэширования React Query
+  // ВСЕГДА загружаем оба МП — MarketplaceBreakdown показывает OZON и WB независимо от фильтра
   const { data: ozonCostsTreeData, isLoading: ozonCostsTreeLoading } = useCostsTree(
     { ...filters, marketplace: 'ozon', include_children: true },
-    { enabled: marketplace === 'ozon' || marketplace === 'all' }
   );
   const { data: wbCostsTreeData, isLoading: wbCostsTreeLoading } = useCostsTree(
     { ...filters, marketplace: 'wb', include_children: true },
-    { enabled: marketplace === 'wb' || marketplace === 'all' }
-  );
-
-  // Для marketplace=all нужен отдельный ozon summary (для вычитания из общей выручки)
-  const { data: ozonSummaryData } = useDashboardSummary(
-    { ...filters, marketplace: 'ozon' },
-    { enabled: marketplace === 'all' }
   );
 
   // Закупка: считаем по unit-economics (purchase_costs = purchase_price * qty).
   // ОПТИМИЗАЦИЯ: purchase_costs_total теперь приходит из RPC get_dashboard_summary
-  const hasPurchaseCostsInSummary = typeof summaryData?.summary?.purchase_costs_total === 'number';
-  const { data: unitEconomicsData } = useUnitEconomics(filters, {
-    // Если summary уже содержит purchase_costs_total — unit-economics не нужен
-    enabled: Boolean(summaryData) && !hasPurchaseCostsInSummary,
+  const { data: unitEconomicsData, isLoading: ueLoading } = useUnitEconomics(filters, {
+    // Всегда загружаем: нужен для TopProductsChart + purchase fallback
+    enabled: Boolean(summaryData),
   });
 
   // Графики и остатки загружаются сразу (RPC оптимизированы)
   const chartsEnabled = true;
   const stocksEnabled = true;
 
-  const { data: chartData, isLoading: chartLoading, refetch: refetchChart } = useSalesChart(chartFilters, {
+  const { data: chartData, isLoading: chartLoading } = useSalesChart(chartFilters, {
     enabled: chartsEnabled,
   });
 
-  const { data: adCostsData, isLoading: adCostsLoading, refetch: refetchAdCosts } = useAdCosts(chartFilters, {
+  const { data: adCostsData, isLoading: adCostsLoading } = useAdCosts(chartFilters, {
     enabled: chartsEnabled,
   });
 
-  const { data: stocksData, isLoading: stocksLoading, refetch: refetchStocks } = useStocks(marketplace, {
+  // Остатки ВСЕГДА показывают все МП — StocksTable имеет встроенные фильтры (Все/OOS WB/OOS Ozon)
+  const { data: stocksData, isLoading: stocksLoading } = useStocks('all', fulfillmentType, {
     enabled: stocksEnabled,
   });
 
-  // Товары для бокового фильтра (используем sidebarMarketplace)
-  const { data: productsData } = useProducts(sidebarMarketplace);
+  // dateTo для графика остатков: всегда сегодня МСК (снимки пишутся в реальном времени)
+  const stockHistoryDateTo = new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Moscow' });
+
+  // План продаж — completion
+  const { data: planCompletionData, isLoading: planCompletionLoading } = useSalesPlanCompletion(filters);
+
+  // Widget Dashboard config (DnD layout, enabled widgets)
+  useDashboardConfig();
+
+  // Товары для бокового фильтра (используем глобальный marketplace)
+  const { data: productsData } = useProducts(marketplace);
   const sidebarProducts = useMemo(() => {
     // Системный WB_ACCOUNT — это не товар; убираем из пользовательского списка.
     return (productsData?.products ?? []).filter((p) => p.barcode !== 'WB_ACCOUNT');
@@ -193,19 +231,30 @@ export const DashboardPage = () => {
     if (isSelectedSystem) setSelectedProduct(undefined);
   }, [selectedProduct, productsData]);
 
-  // Обработчик обновления данных
-  const handleRefresh = () => {
-    refetchSummary();
-    // Важно: disabled queries всё равно можно рефетчить вручную — но это даёт "лавину".
-    // Поэтому рефетчим только то, что уже включено/видимо.
-    if (chartsEnabled) {
-      refetchChart();
-      refetchAdCosts();
+  // ── CC=0 notification ──
+  const navigate = useNavigate();
+  const [showCcModal, setShowCcModal] = useState(false);
+
+  const productsWithZeroCc = useMemo(
+    () => sidebarProducts.filter((p) => !p.purchase_price || p.purchase_price === 0),
+    [sidebarProducts],
+  );
+  const hasZeroCc = productsWithZeroCc.length > 0;
+
+  useEffect(() => {
+    if (hasZeroCc && localStorage.getItem('cc-reminder-dismissed') !== 'true') {
+      setShowCcModal(true);
     }
-    if (stocksEnabled) {
-      refetchStocks();
-    }
-  };
+  }, [hasZeroCc]);
+
+  const dismissCcModal = useCallback(() => {
+    localStorage.setItem('cc-reminder-dismissed', 'true');
+    setShowCcModal(false);
+  }, []);
+
+  const ccWarning = hasZeroCc
+    ? `Без учёта себестоимости ${productsWithZeroCc.length} товаров. Заполните в настройках.`
+    : undefined;
 
   // IMPORTANT: hooks must run before any early returns.
   const salesChartSeries = useMemo(() => {
@@ -271,13 +320,10 @@ export const DashboardPage = () => {
     );
   }
 
-  // Данные из summary (оптимизация отключена, используем стандартный запрос)
+  // Данные из summary
   const summary = summaryData?.summary;
   const previousPeriod = summaryData?.previous_period;
   const revenueChange = previousPeriod?.revenue_change_percent || 0;
-
-  // TODO: включить когда RPC get_costs_tree будет создан в Supabase
-  // const adjustedRevenue = summaryWithPrevData?.adjusted_revenue;
 
   const purchaseCostsForTile =
     (typeof summary?.purchase_costs_total === 'number' ? summary.purchase_costs_total : null) ??
@@ -295,23 +341,57 @@ export const DashboardPage = () => {
     return null;
   })();
 
+  // Флаг: costs-tree ещё грузится для текущего marketplace
+  const isCostsTreeLoading = (() => {
+    if (marketplace === 'ozon') return ozonCostsTreeLoading;
+    if (marketplace === 'wb') return wbCostsTreeLoading;
+    if (marketplace === 'all') return ozonCostsTreeLoading || wbCostsTreeLoading;
+    return false;
+  })();
+
   const revenueForTile = (() => {
     if (!summary) return 0;
 
-    // marketplace=ozon: полностью берём из costs-tree (истина как в ЛК).
+    // marketplace=ozon: берём из costs-tree (истина как в ЛК)
     if (marketplace === 'ozon') {
       const ozonTruth = getSalesTotalFromCostsTree(ozonCostsTreeData);
-      return ozonTruth ?? summary.revenue;
+      // Если costs-tree ещё грузится — не fallback, вернём 0 (покажем skeleton)
+      if (ozonTruth === null) return isCostsTreeLoading ? 0 : summary.revenue;
+      return ozonTruth;
     }
 
-    // marketplace=all: заменяем только Ozon-часть на costs-tree.
+    // marketplace=wb: берём из costs-tree
+    if (marketplace === 'wb') {
+      const wbTruth = getSalesTotalFromCostsTree(wbCostsTreeData);
+      if (wbTruth === null) return isCostsTreeLoading ? 0 : summary.revenue;
+      return wbTruth;
+    }
+
+    // marketplace=all: сумма ozon + wb из costs-tree
     if (marketplace === 'all') {
-      const ozonSalesFromSummary = ozonSummaryData?.summary?.revenue ?? 0;
-      const ozonTruth = getSalesTotalFromCostsTree(ozonCostsTreeData) ?? ozonSalesFromSummary;
-      return summary.revenue - ozonSalesFromSummary + ozonTruth;
+      const ozonTruth = getSalesTotalFromCostsTree(ozonCostsTreeData);
+      const wbTruth = getSalesTotalFromCostsTree(wbCostsTreeData);
+
+      // Если оба есть — сумма
+      if (ozonTruth !== null && wbTruth !== null) {
+        return ozonTruth + wbTruth;
+      }
+
+      // Если один есть — берём что есть (другой может быть 0)
+      if (ozonTruth !== null && !wbCostsTreeLoading) {
+        return ozonTruth + (wbTruth ?? 0);
+      }
+      if (wbTruth !== null && !ozonCostsTreeLoading) {
+        return (ozonTruth ?? 0) + wbTruth;
+      }
+
+      // Ещё грузится — вернём 0 для skeleton
+      if (isCostsTreeLoading) return 0;
+
+      // Fallback только если costs-tree полностью загрузился и пуст
+      return summary.revenue;
     }
 
-    // marketplace=wb (и любые будущие): оставляем как есть (mp_sales).
     return summary.revenue;
   })();
 
@@ -342,11 +422,13 @@ export const DashboardPage = () => {
     if (marketplace === 'ozon') return buildCostsSubtitleFromTree(ozonCostsTreeData, 'ozon');
     if (marketplace === 'wb') return buildCostsSubtitleFromTree(wbCostsTreeData, 'wb');
     if (marketplace === 'all') {
-      const oz = buildCostsSubtitleFromTree(ozonCostsTreeData, 'ozon');
-      const wb = buildCostsSubtitleFromTree(wbCostsTreeData, 'wb');
-      if (!oz && !wb) return undefined;
-      if (oz && wb) return `oz: ${oz}, wb: ${wb}`;
-      return oz ? `oz: ${oz}` : `wb: ${wb}`;
+      const ozTotal = getDeductionsAbsFromCostsTree(ozonCostsTreeData, 'ozon');
+      const wbTotal = getDeductionsAbsFromCostsTree(wbCostsTreeData, 'wb');
+      if (ozTotal === null && wbTotal === null) return undefined;
+      const parts: string[] = [];
+      if (ozTotal !== null) parts.push(`Ozon ${formatNumber(Math.round(ozTotal))}`);
+      if (wbTotal !== null) parts.push(`WB ${formatNumber(Math.round(wbTotal))}`);
+      return parts.join(' · ');
     }
     return undefined;
   })();
@@ -354,13 +436,9 @@ export const DashboardPage = () => {
   const netProfitForTile = (() => {
     if (!summary) return 0;
 
-    // Истина по начислениям:
-    // - Ozon: total_accrued = "Начислено за период" (Продажи + расходы)
-    // - WB: total_accrued = "К перечислению за период"
-    // Прибыль в нашей модели: payout - закупка - реклама.
     const ad = summary.ad_cost ?? 0;
 
-    // Fallback: если по какой-то причине нет дерева — используем backend summary (лучше чем 0).
+    // Fallback: если по какой-то причине нет дерева — используем backend summary.
     if (payoutForTile === null) {
       return summary.net_profit;
     }
@@ -368,165 +446,348 @@ export const DashboardPage = () => {
     return payoutForTile - purchaseCostsForTile - ad;
   })();
 
-  // Количество колонок зависит от наличия карточек сравнения
-  const gridCols = showPeriodComparison ? 'lg:grid-cols-8' : 'lg:grid-cols-6';
+  const salesCountForTile = summary?.sales ?? 0;
+  const returnsCountForTile = summary?.returns ?? 0;
+
+  // Margin ratio for ProfitChart (daily profit estimate = daily_revenue × profitMargin)
+  const profitMargin = revenueForTile > 0 ? netProfitForTile / revenueForTile : 0;
+
+  // ── Per-marketplace profit (IIFE, not useMemo — after early returns) ──
+  // When marketplace filter is active, purchaseCostsForTile and ad_cost are already
+  // filtered by that MP — share must be 1 for the matching card, otherwise we
+  // double-discount and overstate profit.
+  const ozonProfitData: MpProfitData | null = (() => {
+    if (!summary || !ozonCostsTreeData) return null;
+    const ozonPayout = ozonCostsTreeData.total_accrued ?? 0;
+    let share: number;
+    if (marketplace === 'ozon') {
+      share = 1;
+    } else {
+      const ozonPureSales = ozonCostsTreeData.tree?.find((t) => t.name === 'Продажи')?.amount ?? 0;
+      const wbPS = wbCostsTreeData?.tree?.find((t) => t.name === 'Продажи')?.amount ?? 0;
+      const totalPS = ozonPureSales + wbPS;
+      share = totalPS > 0 ? ozonPureSales / totalPS : 1;
+    }
+    const purchase = purchaseCostsForTile * share;
+    const ad = (summary.ad_cost ?? 0) * share;
+    return { profit: ozonPayout - purchase - ad, purchase, ad };
+  })();
+
+  const wbProfitData: MpProfitData | null = (() => {
+    if (!summary || !wbCostsTreeData) return null;
+    const wbPayout = wbCostsTreeData.total_accrued ?? 0;
+    let share: number;
+    if (marketplace === 'wb') {
+      share = 1;
+    } else {
+      const ozPS = ozonCostsTreeData?.tree?.find((t) => t.name === 'Продажи')?.amount ?? 0;
+      const wbPureSales = wbCostsTreeData.tree?.find((t) => t.name === 'Продажи')?.amount ?? 0;
+      const totalPS = ozPS + wbPureSales;
+      share = totalPS > 0 ? wbPureSales / totalPS : 1;
+    }
+    const purchase = purchaseCostsForTile * share;
+    const ad = (summary.ad_cost ?? 0) * share;
+    return { profit: wbPayout - purchase - ad, purchase, ad };
+  })();
+
+  // ── Данные для новых карточек ──
+  const ordersCountForTile = summary?.orders ?? 0;
+  const ordersRevenueForTile = summary?.revenue ?? 0; // mp_sales revenue (все заказы)
+  const buyoutPercent = ordersCountForTile > 0 ? Math.round((salesCountForTile / ordersCountForTile) * 100) : 0;
+
+  // Средняя себестоимость за единицу
+  const avgCcPerUnit = salesCountForTile > 0 ? purchaseCostsForTile / salesCountForTile : 0;
+
+  // Change badges (period comparison integrated into cards)
+  const prevRevenue = previousPeriod?.revenue ?? 0;
+  const prevOrders = previousPeriod?.orders ?? 0;
+  const canShowChange = showPeriodComparison && subscription?.features?.period_comparison;
+  const revenueChangePct = canShowChange && prevRevenue > 0
+    ? Math.round(((revenueForTile - prevRevenue) / prevRevenue) * 1000) / 10
+    : undefined;
+  const ordersChangePct = canShowChange && prevOrders > 0
+    ? Math.round(((ordersCountForTile - prevOrders) / prevOrders) * 1000) / 10
+    : undefined;
+
+  // ── Costs-tree item extractor (for mp_commission, mp_logistics, mp_storage widgets) ──
+  const extractCostsTreeAmount = (names: string[]): number => {
+    let total = 0;
+    const trees = [ozonCostsTreeData, wbCostsTreeData].filter(Boolean);
+    for (const tree of trees) {
+      if (!tree?.tree) continue;
+      for (const item of tree.tree) {
+        if (names.some((n) => item.name?.includes(n))) {
+          total += Math.abs(item.amount ?? 0);
+        }
+      }
+    }
+    return total;
+  };
+
+  // ── Widget values for WidgetGrid ──
+  const widgetValues: Record<string, WidgetValue> = (() => {
+    const marginPct = revenueForTile > 0 ? ((netProfitForTile / revenueForTile) * 100).toFixed(1) : '0';
+    const profitAccent: CardAccent = netProfitForTile >= 0 ? 'emerald' : 'red';
+
+    // Stocks aggregates
+    const stockItems = (stocksData?.stocks ?? []).filter((s) => s.barcode !== 'WB_ACCOUNT');
+    const stockTotal = stockItems.reduce((acc, s) => acc + (s.total_quantity ?? 0), 0);
+    const stockWithForecast = stockItems.filter((s) => s.days_remaining !== null && s.days_remaining !== undefined);
+    const stockForecastAvg = stockWithForecast.length > 0
+      ? Math.round(stockWithForecast.reduce((acc, s) => acc + (s.days_remaining ?? 0), 0) / stockWithForecast.length)
+      : 0;
+    const oosCount = stockItems.filter((s) => (s.total_quantity ?? 0) === 0).length;
+
+    // Plan completion
+    const planPct = planCompletionData?.completion_percent ?? 0;
+
+    // Period delta
+    const deltaAccent: CardAccent = revenueChangeForTile >= 0 ? 'emerald' : 'red';
+
+    return {
+      // ── Sales (ORDER-based) ──
+      orders_count: {
+        value: ordersCountForTile,
+        secondaryValue: formatCurrency(ordersRevenueForTile),
+        subtitle: returnsCountForTile > 0 ? `${returnsCountForTile} возвр.` : undefined,
+        change: ordersChangePct,
+      },
+      orders_revenue: {
+        value: ordersRevenueForTile,
+        secondaryValue: `${ordersCountForTile} шт`,
+      },
+      sales_count: {
+        value: salesCountForTile,
+        secondaryValue: `выкуп ${buyoutPercent}%`,
+      },
+      returns_count: {
+        value: returnsCountForTile,
+      },
+      buyout_percent: {
+        value: `${buyoutPercent}%`,
+      },
+      avg_check: {
+        value: summary?.avg_check ?? 0,
+      },
+      purchase_costs: {
+        value: purchaseCostsForTile,
+        secondaryValue: salesCountForTile > 0 ? `\u2205 ${formatCurrency(avgCcPerUnit)} / \u0448\u0442` : undefined,
+        warning: ccWarning,
+      },
+
+      // ── Finance (SETTLEMENT-based) ──
+      revenue_settled: {
+        value: revenueForTile,
+        secondaryValue: `${salesCountForTile} \u0448\u0442 \u00B7 \u0432\u044B\u043A\u0443\u043F ${buyoutPercent}%`,
+        subtitle: (() => {
+          if (marketplace === 'all') {
+            const oz = getSalesTotalFromCostsTree(ozonCostsTreeData);
+            const wb = getSalesTotalFromCostsTree(wbCostsTreeData);
+            if (oz !== null && wb !== null) return `Ozon ${formatNumber(Math.round(oz))} \u00B7 WB ${formatNumber(Math.round(wb))}`;
+          }
+          return undefined;
+        })(),
+        change: revenueChangePct,
+      },
+      payout: {
+        value: payoutForTile ?? 0,
+        subtitle: marketplace === 'all' && ozonCostsTreeData && wbCostsTreeData
+          ? `Ozon ${formatNumber(Math.round(ozonCostsTreeData.total_accrued ?? 0))} \u00B7 WB ${formatNumber(Math.round(wbCostsTreeData.total_accrued ?? 0))}`
+          : undefined,
+      },
+      mp_deductions: {
+        value: mpDeductionsForTile,
+        subtitle: mpDeductionsSubtitle,
+      },
+      net_profit: {
+        value: netProfitForTile,
+        secondaryValue: `\u043C\u0430\u0440\u0436\u0430 ${marginPct}%`,
+        accentOverride: profitAccent,
+      },
+      profit_margin: {
+        value: `${marginPct}%`,
+        accentOverride: profitAccent,
+      },
+      mp_commission: {
+        value: extractCostsTreeAmount(['\u041A\u043E\u043C\u0438\u0441\u0441\u0438', '\u0412\u043E\u0437\u043D\u0430\u0433\u0440\u0430\u0436\u0434\u0435\u043D\u0438\u0435']),
+      },
+      mp_logistics: {
+        value: extractCostsTreeAmount(['\u0434\u043E\u0441\u0442\u0430\u0432\u043A', '\u043B\u043E\u0433\u0438\u0441\u0442\u0438\u043A']),
+      },
+      mp_storage: {
+        value: extractCostsTreeAmount(['\u0445\u0440\u0430\u043D\u0435\u043D\u0438', '\u0425\u0440\u0430\u043D\u0435\u043D\u0438']),
+      },
+
+      // ── Ads ──
+      ad_cost: {
+        value: adCostForTile,
+        secondaryValue: `\u0414\u0420\u0420 ${drrForTile}%`,
+      },
+      drr: {
+        value: `${drrForTile}%`,
+        secondaryValue: formatCurrency(adCostForTile),
+      },
+      acos: {
+        value: '0%',
+      },
+      cpo: {
+        value: 0,
+      },
+
+      // ── Stocks ──
+      stock_total: {
+        value: stockTotal,
+      },
+      stock_forecast_avg: {
+        value: stockForecastAvg,
+        secondaryValue: `${stockForecastAvg} \u0434\u043D.`,
+      },
+      oos_count: {
+        value: oosCount,
+        accentOverride: oosCount > 0 ? 'red' : 'emerald',
+      },
+
+      // ── Plan ──
+      plan_completion: {
+        value: `${Math.round(planPct)}%`,
+      },
+
+      // ── Delta ──
+      period_delta: {
+        value: `${revenueChangeForTile > 0 ? '+' : ''}${revenueChangeForTile}%`,
+        secondaryValue: `\u0431\u044B\u043B\u043E ${formatCurrency(prevRevenueForTile)}`,
+        subtitle: prevOrders > 0 ? `${prevOrders} \u0437\u0430\u043A\u0430\u0437\u043E\u0432` : undefined,
+        isPositive: revenueChangeForTile >= 0,
+        accentOverride: deltaAccent,
+      },
+    };
+  })();
+
+  // ── Loading states per data dependency ──
+  const loadingStates: Record<string, boolean> = (() => {
+    const depLoading: Record<WidgetDataDep, boolean> = {
+      summary: isSummaryLoading,
+      costsTreeOzon: ozonCostsTreeLoading,
+      costsTreeWb: wbCostsTreeLoading,
+      unitEconomics: ueLoading,
+      adCosts: adCostsLoading,
+      stocks: stocksLoading,
+      planCompletion: planCompletionLoading,
+      products: false,
+    };
+
+    const result: Record<string, boolean> = {};
+    for (const def of WIDGET_DEFINITIONS) {
+      result[def.id] = def.dataDeps.some((dep) => depLoading[dep] ?? false);
+    }
+    return result;
+  })();
+
+  // ==================== EXPORT HANDLERS ====================
+  const handleExportExcel = () => {
+    const exportData: ExcelExportData = {
+      summary: summary ?? null,
+      period: dateRange,
+      marketplace,
+      salesChart: chartData?.data ?? [],
+      adCosts: adCostsData?.data ?? [],
+      ozonCostsTree: ozonCostsTreeData ?? null,
+      wbCostsTree: wbCostsTreeData ?? null,
+      unitEconomics: unitEconomicsData?.products ?? [],
+      stocks: stocksData?.stocks ?? [],
+    };
+    exportExcel(exportData);
+  };
+
+  const handleExportPdf = () => {
+    exportPdf({
+      period: dateRange,
+      marketplace,
+      fulfillment_type: ftParam,
+    });
+  };
 
   return (
     <div className="max-w-7xl mx-auto px-3 sm:px-4 lg:px-6 py-4 sm:py-6 lg:py-8">
+      {/* CC=0 reminder modal */}
+      {showCcModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={dismissCcModal}>
+          <div className="bg-white rounded-xl shadow-xl max-w-sm w-full mx-4 p-5" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <AlertTriangle className="w-5 h-5 text-amber-500" />
+                <h3 className="text-sm font-bold text-gray-900">Себестоимость не заполнена</h3>
+              </div>
+              <button onClick={dismissCcModal} className="text-gray-400 hover:text-gray-600">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <p className="text-sm text-gray-600 mb-2">
+              Для точного расчёта прибыли заполните себестоимость товаров.
+            </p>
+            <p className="text-xs text-gray-500 mb-4">
+              Товары без CC: {productsWithZeroCc.slice(0, 3).map((p) => p.name).join(', ')}
+              {productsWithZeroCc.length > 3 && ` и ещё ${productsWithZeroCc.length - 3}`}
+            </p>
+            <div className="flex gap-2">
+              <button
+                onClick={dismissCcModal}
+                className="flex-1 py-2 text-sm font-medium text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+              >
+                Позже
+              </button>
+              <button
+                onClick={() => { dismissCcModal(); navigate('/settings?tab=products'); }}
+                className="flex-1 py-2 text-sm font-medium text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 transition-colors"
+              >
+                Перейти в настройки
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* 1. Фильтры */}
-      <FilterPanel onRefresh={handleRefresh} isRefreshing={isSummaryLoading || (chartsEnabled ? chartLoading : false)} />
+      <FilterPanel
+        onExportExcel={handleExportExcel}
+        onExportPdf={subscription?.features?.pdf_export ? handleExportPdf : undefined}
+        onWidgetSettings={() => setWidgetSettingsOpen(true)}
+        isExporting={isExporting}
+        exportType={exportType}
+      />
 
-      {/* 2. Карточки метрик */}
-      <div className={`grid grid-cols-2 md:grid-cols-3 ${gridCols} gap-2 mb-8`}>
-        {/* Всегда видимые карточки (6 шт) */}
-        <SummaryCard
-          title="Продажи"
-          value={revenueForTile}
-          format="currency"
-          subtitle={`${summary?.sales || 0} выкупов`}
-          tooltip={[
-            'Продажи (как в ЛК начислений)',
-            "WB: денежная выручка из фин.отчёта (mp_sales.revenue).",
-            "Ozon: 'Продажи' из costs-tree = Выручка + Баллы + Партнёры.",
-            ozonCostsTreeData?.warnings?.length ? `⚠ ${ozonCostsTreeData.warnings[0]}` : '',
-            ozonCostsTreeData?.source ? `source: ${ozonCostsTreeData.source}` : '',
-          ]
-            .filter(Boolean)
-            .join('\n')}
-          icon={ShoppingCart}
-          loading={isSummaryLoading}
+      {/* 2. Карточки метрик — Widget Dashboard с DnD */}
+      <div className="mb-4 sm:mb-5 lg:mb-6">
+        <WidgetGrid
+          widgetValues={widgetValues}
+          loadingStates={loadingStates}
+          settingsOpen={widgetSettingsOpen}
+          onOpenSettings={() => setWidgetSettingsOpen(true)}
+          onCloseSettings={() => setWidgetSettingsOpen(false)}
         />
-        <SummaryCard
-          title="Прибыль"
-          value={netProfitForTile}
-          format="currency"
-          subtitle={revenueForTile ? `${((netProfitForTile / revenueForTile) * 100).toFixed(1)}%` : '0%'}
-          tooltip={
-            summary
-              ? [
-                  `Прибыль (оценка)`,
-                  `Формула: прибыль = payout − закупка − реклама`,
-                  `payout (costs-tree.total_accrued): ${payoutForTile === null ? '—' : formatCurrency(payoutForTile)}`,
-                  `закупка (unit-economics.purchase_costs): ${formatCurrency(purchaseCostsForTile)}`,
-                  `реклама (summary.ad_cost): ${formatCurrency(summary.ad_cost ?? 0)}`,
-                  `итог: ${formatCurrency(netProfitForTile)}`,
-                ].join('\n')
-              : undefined
-          }
-          icon={DollarSign}
-          loading={isSummaryLoading}
-        />
-        <SummaryCard
-          title="ДРР"
-          value={drrForTile}
-          format="percent"
-          tooltip={[
-            'ДРР',
-            'Формула: Ads API / Продажи * 100%.',
-            'Важно: не включает "Бонусы продавца" из удержаний МП.',
-          ].join('\n')}
-          icon={Percent}
-          loading={isSummaryLoading}
-        />
-        <SummaryCard
-          title="Реклама"
-          value={adCostForTile}
-          format="currency"
-          tooltip={[
-            'Реклама (Ads API)',
-            'WB: расходы из WB Ads.',
-            'Ozon: расходы из Ozon Performance (если синхронизировано).',
-            'Не равно "Продвижение и реклама / Бонусы продавца" в удержаниях.',
-          ].join('\n')}
-          icon={Megaphone}
-          loading={isSummaryLoading}
-        />
-        <SummaryCard
-          title="Расх. МП"
-          value={mpDeductionsForTile}
-          format="currency"
-          subtitle={mpDeductionsSubtitle}
-          tooltip={[
-            'Расходы МП = Удержания МП',
-            'Берётся из costs-tree (как в карточках OZON/WB).',
-            'Должно совпадать с "Удержания" в блоке начислений за тот же период.',
-          ].join('\n')}
-          icon={Receipt}
-          loading={isSummaryLoading}
-        />
-        <SummaryCard
-          title="К перечисл."
-          value={payoutForTile ?? 0}
-          format="currency"
-          tooltip={[
-            'К перечислению / Начислено',
-            "Ozon: 'Начислено за период' (costs-tree.total_accrued).",
-            "WB: 'К перечислению за период' (costs-tree.total_accrued).",
-          ].join('\n')}
-          icon={BarChart3}
-          loading={isSummaryLoading}
-        />
-
-        {/* Карточки сравнения периодов - только при пресетах 7/30/90 */}
-        {showPeriodComparison && (
-          <>
-            <SummaryCard
-              title="Пред. пер."
-              value={prevRevenueForTile}
-              format="currency"
-              subtitle={`${previousPeriod?.orders || 0} заказов`}
-              tooltip="Продажи за предыдущий период той же длительности."
-              icon={BarChart3}
-              loading={isSummaryLoading}
-            />
-            <SummaryCard
-              title="Δ к пред."
-              value={`${revenueChangeForTile > 0 ? '+' : ''}${revenueChangeForTile}%`}
-              icon={TrendingUp}
-              isPositive={revenueChangeForTile >= 0}
-              tooltip="Изменение продаж относительно предыдущего периода (а не YoY)."
-              loading={isSummaryLoading}
-            />
-          </>
-        )}
       </div>
 
+      {/* 2.5. План продаж (если задан, только Pro+) */}
+      <FeatureGate feature="unit_economics" hide>
+        <div className="mb-4 sm:mb-5 lg:mb-6">
+          <PlanCompletionCard data={planCompletionData} loading={planCompletionLoading} />
+        </div>
+      </FeatureGate>
+
       {/* 3. MarketplaceBreakdown (OZON / WB) */}
-      {/* ОПТИМИЗАЦИЯ: передаём данные costs-tree через props, чтобы избежать дублирования запросов */}
       <MarketplaceBreakdown
-        filters={filters}
         ozonCostsTree={ozonCostsTreeData}
         ozonCostsTreeLoading={ozonCostsTreeLoading}
         wbCostsTree={wbCostsTreeData}
         wbCostsTreeLoading={wbCostsTreeLoading}
+        ozonProfit={ozonProfitData}
+        wbProfit={wbProfitData}
       />
 
       {/* 4. Графики с боковыми фильтрами */}
-      <div className="flex flex-row gap-3 lg:gap-4 mb-6 lg:mb-8">
-        {/* Боковая панель фильтров - всегда слева (как на десктопе) */}
-        <div className="w-28 sm:w-32 lg:w-36 flex-shrink-0 space-y-2 sm:space-y-3">
-          {/* Фильтр маркетплейса */}
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-2 sm:p-3">
-            <h4 className="text-[9px] sm:text-[10px] font-semibold text-gray-400 uppercase mb-1.5 sm:mb-2">МП</h4>
-            <div className="space-y-1 sm:space-y-1.5">
-              {(['all', 'wb', 'ozon'] as Marketplace[]).map((mp) => (
-                <label key={mp} className="flex items-center gap-1.5 sm:gap-2 cursor-pointer">
-                  <input
-                    type="radio"
-                    name="sidebar-mp"
-                    checked={sidebarMarketplace === mp}
-                    onChange={() => setSidebarMarketplace(mp)}
-                    className="w-3 h-3 text-indigo-600"
-                  />
-                  <span className="text-[11px] sm:text-xs text-gray-700">
-                    {mp === 'all' ? 'все' : mp === 'wb' ? 'WB' : 'OZON'}
-                  </span>
-                </label>
-              ))}
-            </div>
-          </div>
-
-          {/* Фильтр товаров */}
+      <div className="flex flex-row gap-2 sm:gap-3 mb-4 sm:mb-5 lg:mb-6">
+        {/* Боковая панель — только фильтр товаров (МП из FilterPanel, sticky) */}
+        <div className="w-28 sm:w-32 lg:w-36 flex-shrink-0">
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-2 sm:p-3">
             <h4 className="text-[9px] sm:text-[10px] font-semibold text-gray-400 uppercase mb-1.5 sm:mb-2">Товары</h4>
             <div className="space-y-1 sm:space-y-1.5 max-h-32 sm:max-h-48 overflow-y-auto">
@@ -558,41 +819,81 @@ export const DashboardPage = () => {
           </div>
         </div>
 
-        {/* Графики */}
-        <div className="flex-1 min-w-0 space-y-4 lg:space-y-6">
+        {/* Графики — 2 колонки на lg+ */}
+        <div className="flex-1 min-w-0">
           <Suspense
             fallback={
-              <div className="space-y-6">
-                {[1, 2, 3].map((i) => (
-                  <div key={i} className="bg-white rounded-lg shadow-sm border border-gray-200 p-5">
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-2 sm:gap-3">
+                {[1, 2, 3, 4].map((i) => (
+                  <div key={i} className="bg-white rounded-lg shadow-sm border border-gray-200 p-3">
                     <div className="animate-pulse">
-                      <div className="h-5 bg-gray-200 rounded w-1/4 mb-6" />
-                      <div className="h-48 bg-gray-100 rounded" />
+                      <div className="h-4 bg-gray-200 rounded w-1/4 mb-2" />
+                      <div className={`bg-gray-100 rounded ${i <= 2 ? 'h-[100px] sm:h-[140px]' : 'h-[80px] sm:h-[100px]'}`} />
                     </div>
                   </div>
                 ))}
               </div>
             }
           >
-            {/* График заказов с табами */}
-            <SalesChart data={salesChartSeries as any} isLoading={!chartsEnabled || chartLoading} />
-
-            {/* График Средний чек */}
-            <AvgCheckChart data={salesChartSeries as any} isLoading={!chartsEnabled || chartLoading} />
-
-            {/* График ДРР */}
-            <DrrChart data={adCostsSeriesFull as any} isLoading={!chartsEnabled || adCostsLoading} />
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-2 sm:gap-3">
+              {/* Ряд 1: Заказы + Прибыль */}
+              <SalesChart data={salesChartSeries as any} isLoading={!chartsEnabled || chartLoading} />
+              <ProfitChart
+                data={salesChartSeries as any}
+                profitMargin={profitMargin}
+                isLoading={!chartsEnabled || chartLoading}
+              />
+              {/* Ряд 2: ДРР + Конверсия */}
+              <DrrChart data={adCostsSeriesFull as any} isLoading={!chartsEnabled || adCostsLoading} />
+              <ConversionChart data={salesChartSeries as any} isLoading={!chartsEnabled || chartLoading} />
+            </div>
           </Suspense>
         </div>
       </div>
 
+      {/* 4.5. Аналитика: Структура прибыли + Расходы + Топ товаров + Прогноз остатков */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-3 mb-4 sm:mb-5 lg:mb-6">
+        <ProfitWaterfall
+          revenue={revenueForTile}
+          mpDeductions={mpDeductionsForTile}
+          purchase={purchaseCostsForTile}
+          ads={adCostForTile}
+          profit={netProfitForTile}
+          loading={isSummaryLoading || isCostsTreeLoading}
+        />
+        <CostsDonutChart
+          ozonTree={ozonCostsTreeData?.tree}
+          wbTree={wbCostsTreeData?.tree}
+          marketplace={marketplace}
+          loading={isCostsTreeLoading}
+        />
+        <TopProductsChart
+          products={unitEconomicsData?.products ?? []}
+          isLoading={ueLoading}
+        />
+        <StockForecastChart
+          stocks={stocksData?.stocks ?? []}
+          isLoading={stocksLoading}
+        />
+      </div>
+
+      {/* 4.6. Динамика остатков */}
+      <div className="mb-4 sm:mb-5 lg:mb-6">
+        <StockHistoryChart
+          dateFrom={dateRange.from}
+          dateTo={stockHistoryDateTo}
+          enabled={stocksEnabled}
+        />
+      </div>
+
       {/* 5. Таблица остатков */}
-      <div className="mb-8">
+      <div id="stocks-table" className="mb-4 sm:mb-5 lg:mb-6">
         <StocksTable
           stocks={stocksData?.stocks || []}
           isLoading={!stocksEnabled || stocksLoading}
         />
       </div>
+
     </div>
   );
 };

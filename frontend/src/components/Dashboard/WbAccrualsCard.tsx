@@ -1,28 +1,21 @@
 /**
  * WB Accruals summary card (по аналогии с OZON блоком, но семантика WB).
- * Источник данных: /dashboard/costs-tree (marketplace=wb), который строится из WB reportDetailByPeriod.
- *
- * ОПТИМИЗАЦИЯ: данные передаются через props из DashboardPage,
- * чтобы избежать дублирования запросов.
+ * Источник данных: /dashboard/costs-tree (marketplace=wb).
  */
 import { useMemo, useState } from 'react';
-import { AlertTriangle, ChevronDown, ChevronUp } from 'lucide-react';
+import { AlertTriangle, ChevronDown, ChevronUp, HelpCircle } from 'lucide-react';
 import { formatCurrency } from '../../lib/utils';
-import type { CostsTreeItem, CostsTreeResponse, DashboardFilters } from '../../types';
+import type { CostsTreeItem, CostsTreeResponse, MpProfitData } from '../../types';
 
 interface WbAccrualsCardProps {
-  filters: DashboardFilters;
-  /**
-   * Если задано — детализация контролируется снаружи (синхронизация с OZON карточкой).
-   */
+  /** Если задано — детализация контролируется снаружи (синхронизация с OZON карточкой). */
   detailsOpen?: boolean;
   onToggleDetails?: () => void;
-  /**
-   * ОПТИМИЗАЦИЯ: данные costs-tree передаются из родителя (DashboardPage),
-   * чтобы избежать дублирования запросов.
-   */
+  /** Данные costs-tree передаются из родителя (DashboardPage). */
   costsTreeData?: CostsTreeResponse | null;
   isLoading?: boolean;
+  /** Прибыль по этому МП (рассчитывается в DashboardPage). */
+  profitData?: MpProfitData | null;
 }
 
 type ColorToken = 'sales' | 'reward' | 'logistics' | 'acquiring' | 'storage' | 'penalties' | 'other';
@@ -38,10 +31,8 @@ const COLORS: Record<ColorToken, { dot: string; bar: string }> = {
 };
 
 function formatWbAmount(amount: number): string {
-  // В карточке показываем ₽ без копеек (как в OZON карточке), точные значения остаются в title.
+  // Без символа ₽ — экономит место на мобиле
   const abs = new Intl.NumberFormat('ru-RU', {
-    style: 'currency',
-    currency: 'RUB',
     minimumFractionDigits: 0,
     maximumFractionDigits: 0,
   }).format(Math.abs(amount));
@@ -58,31 +49,6 @@ function formatExactSigned(amount: number): string {
   return amount < 0 ? `-${abs}` : abs;
 }
 
-function nearlyEq(a: number, b: number, eps: number = 0.01): boolean {
-  return Math.abs(a - b) <= eps;
-}
-
-function buildAmountMap(items: CostsTreeItem[], opts?: { excludeSales?: boolean }): Map<string, number> {
-  const m = new Map<string, number>();
-  for (const it of items) {
-    if (opts?.excludeSales && it.name === 'Продажи') continue;
-    m.set(it.name, it.amount ?? 0);
-  }
-  return m;
-}
-
-function isSameTreeByCategoryAmount(a: CostsTreeItem[], b: CostsTreeItem[]): boolean {
-  const ma = buildAmountMap(a, { excludeSales: false });
-  const mb = buildAmountMap(b, { excludeSales: false });
-  if (ma.size !== mb.size) return false;
-  for (const [k, va] of ma.entries()) {
-    const vb = mb.get(k);
-    if (typeof vb !== 'number') return false;
-    if (!nearlyEq(va, vb)) return false;
-  }
-  return true;
-}
-
 function pickCostColor(category: string): ColorToken {
   if (category === 'Вознаграждение Вайлдберриз (ВВ)') return 'reward';
   if (category === 'Эквайринг/Комиссии за организацию платежей') return 'acquiring';
@@ -93,27 +59,19 @@ function pickCostColor(category: string): ColorToken {
 }
 
 export const WbAccrualsCard = ({
-  filters: _filters,
   detailsOpen,
   onToggleDetails,
   costsTreeData,
   isLoading: isLoadingProp,
+  profitData,
 }: WbAccrualsCardProps) => {
-  // _filters зарезервирован для будущего использования
   const [showDetailsLocal, setShowDetailsLocal] = useState(false);
   const controlled = typeof detailsOpen === 'boolean';
   const showDetails = controlled ? detailsOpen : showDetailsLocal;
   const toggleDetails = controlled ? (onToggleDetails ?? (() => {})) : () => setShowDetailsLocal((v) => !v);
 
-  // ОПТИМИЗАЦИЯ: данные передаются через props из DashboardPage
   const data = costsTreeData;
   const isLoading = isLoadingProp ?? false;
-  const error = null; // ошибки обрабатываются в DashboardPage
-
-  // WB_ACCOUNT логика убрана для оптимизации (редко используется)
-  // Переменные оставлены для возможного восстановления функциональности
-  const wbAccountTree = null as CostsTreeResponse | null;
-  const summaryData = null as { summary?: { revenue?: number; sales?: number; total_costs?: number } } | null;
 
   const computed = useMemo(() => {
     const tree = data?.tree ?? [];
@@ -121,115 +79,56 @@ export const WbAccrualsCard = ({
     const costItems = tree.filter((t) => t.name !== 'Продажи');
 
     const salesTotal = salesItem?.amount ?? 0;
-    // В WB дереве кроме продаж есть начисления (возмещения/компенсации) — они могут быть положительными.
-    // В блоке "Удержания" показываем только реальные удержания (отрицательные суммы).
     const costsTotal = costItems.reduce((acc, t) => acc + (t.amount < 0 ? t.amount : 0), 0);
     const creditsTotal = costItems.reduce((acc, t) => acc + (t.amount > 0 ? t.amount : 0), 0);
-    const salesChildren = salesItem?.children ?? [];
     const costsForList: CostsTreeItem[] = [...costItems]
       .filter((t) => t.amount < 0)
       .sort((a, b) => Math.abs(b.amount) - Math.abs(a.amount));
 
     return {
       tree,
-      salesItem,
       costItems,
       salesTotal,
       costsTotal,
       creditsTotal,
-      salesChildren,
       costsForList,
       totalAccrued: data?.total_accrued ?? 0,
       percentBaseSales: data?.percent_base_sales ?? null,
-      warnings: (data as any)?.warnings as string[] | undefined,
-      source: (data as any)?.source as string | undefined,
+      warnings: data?.warnings,
+      source: data?.source,
     };
   }, [data]);
 
   if (isLoading) {
     return (
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-5">
-        <div className="animate-pulse space-y-4">
-          <div className="h-6 bg-gray-200 rounded w-20" />
-          <div className="h-10 bg-gray-100 rounded w-40" />
-          <div className="h-2 bg-gray-100 rounded w-full" />
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <div className="space-y-3">
-              <div className="h-4 bg-gray-100 rounded w-40" />
-              <div className="h-3 bg-gray-50 rounded w-56" />
-              <div className="h-3 bg-gray-50 rounded w-48" />
-            </div>
-            <div className="space-y-3">
-              <div className="h-4 bg-gray-100 rounded w-32" />
-              <div className="h-3 bg-gray-50 rounded w-56" />
-              <div className="h-3 bg-gray-50 rounded w-48" />
-            </div>
-            <div className="space-y-3">
-              <div className="h-4 bg-gray-100 rounded w-16" />
-              <div className="h-3 bg-gray-50 rounded w-40" />
-            </div>
+      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-3 sm:p-5">
+        <div className="animate-pulse space-y-3">
+          <div className="h-5 bg-gray-200 rounded w-12" />
+          <div className="h-8 bg-gray-100 rounded w-24" />
+          <div className="h-1.5 bg-gray-100 rounded w-full" />
+          <div className="space-y-2">
+            <div className="h-3 bg-gray-50 rounded w-32" />
+            <div className="h-3 bg-gray-50 rounded w-28" />
           </div>
         </div>
       </div>
     );
   }
 
-  const hasTree = !!data?.tree?.length;
-  const summary = summaryData?.summary;
-  const wbAccountSales = wbAccountTree?.tree?.find((t) => t.name === 'Продажи')?.amount ?? 0;
-  const wbAccountTreeItems = wbAccountTree?.tree?.filter((t) => t.name !== 'Продажи' && Math.abs(t.amount) > 0.009) ?? [];
-  // Важно: total_accrued включает "Продажи", а секция WB_ACCOUNT задумана как account-level (без SKU),
-  // поэтому в заголовке показываем сумму БЕЗ продаж, чтобы не дублировать общий итог.
-  const wbAccountNetWithoutSales = wbAccountTreeItems.reduce((acc, t) => acc + (t.amount ?? 0), 0);
-  const wbAccountDenom = Math.abs(
-    typeof wbAccountTree?.percent_base_sales === 'number' ? wbAccountTree.percent_base_sales : 0
-  );
-  const wbAccountFullyDuplicatesMain =
-    !!wbAccountTree?.tree?.length && !!data?.tree?.length && isSameTreeByCategoryAmount(wbAccountTree.tree, data.tree);
-
-  if (error || !hasTree) {
-    // Fallback: показываем агрегаты из /dashboard/summary, чтобы карточка не была пустой.
-    const fallbackRevenue = summary?.revenue ?? null;
-    const fallbackSales = summary?.sales ?? null;
-    const fallbackCosts = summary?.total_costs ?? null;
-    const fallbackTotal = fallbackRevenue !== null && fallbackCosts !== null ? fallbackRevenue - fallbackCosts : null;
-
+  if (!data?.tree?.length) {
     return (
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-5">
-        <h3 className="text-lg font-bold mb-2" style={{ color: '#8B3FFD' }}>
+      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-3 sm:p-5">
+        <h3 className="text-base sm:text-lg font-bold mb-2" style={{ color: '#8B3FFD' }}>
           WB
         </h3>
-        <div className="flex items-start gap-2 text-sm text-amber-700 bg-amber-50 border border-amber-100 rounded-md p-3">
-          <AlertTriangle size={16} className="mt-0.5 flex-shrink-0" />
-          <div className="min-w-0">
-            <div className="font-medium">Нет детализации WB за период</div>
-            <div className="text-amber-700/80">
-              {error ? 'Ошибка загрузки дерева. ' : ''}
-              Показаны агрегаты из сводки. Для 1-в-1 мэтча с ЛК запусти синхронизацию удержаний WB.
-            </div>
-          </div>
-        </div>
-
-        <div className="mt-4 space-y-2.5">
-          <Row label="Продажи" value={fallbackRevenue !== null ? formatWbAmount(fallbackRevenue) : '—'} alert={fallbackRevenue === null} />
-          <Row label="Выкупы" value={fallbackSales !== null ? `${fallbackSales} шт` : '—'} alert={fallbackSales === null} />
-          <Row label="Удержания" value={fallbackCosts !== null ? `-${formatCurrency(fallbackCosts)}` : '—'} alert={fallbackCosts === null} valueClassName="text-red-600 font-semibold" />
-          <div className="border-t pt-3 mt-3">
-            <Row
-              label="Итого (оценка)"
-              value={fallbackTotal !== null ? formatWbAmount(fallbackTotal) : '—'}
-              alert={fallbackTotal === null}
-              valueClassName="font-bold text-xl text-gray-900"
-            />
-          </div>
+        <div className="text-center py-4 sm:py-6">
+          <div className="text-sm text-gray-400">Нет данных за период</div>
         </div>
       </div>
     );
   }
 
-  const _salesAbs = Math.abs(computed.salesTotal); // зарезервировано для будущего использования
-  const costsAbs = Math.abs(computed.costsTotal); // costsTotal уже только удержания (<=0)
-  void _salesAbs; // suppress unused warning
+  const costsAbs = Math.abs(computed.costsTotal);
 
   return (
     <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-3 sm:p-5">
@@ -248,33 +147,47 @@ export const WbAccrualsCard = ({
       </div>
 
       {computed.warnings?.length ? (
-        <div className="mb-4 flex items-start gap-2 text-sm text-amber-700 bg-amber-50 border border-amber-100 rounded-md p-3">
-          <AlertTriangle size={16} className="mt-0.5 flex-shrink-0" />
+        <div className="mb-3 flex items-start gap-2 text-xs text-amber-700 bg-amber-50 border border-amber-100 rounded-md p-2">
+          <AlertTriangle size={14} className="mt-0.5 flex-shrink-0" />
           <div className="min-w-0">
-            <div className="font-medium">Показаны данные с предупреждениями</div>
-            <div className="text-amber-700/80">{computed.warnings[0]}</div>
-            {computed.source ? (
-              <div className="mt-1 text-amber-700/70 text-xs">
-                source: <span className="font-mono">{computed.source}</span>
-              </div>
-            ) : null}
+            <div className="font-medium">{computed.warnings[0]}</div>
+            {computed.source && <div className="text-amber-700/70 text-[10px]">source: {computed.source}</div>}
           </div>
         </div>
       ) : null}
 
-      {/* Compact layout for 50% width on mobile */}
       <div className="space-y-3 sm:space-y-4">
         {/* Row 1: Sales + Total */}
         <div className="flex justify-between items-start gap-2">
           <div className="min-w-0 flex-1">
-            <div className="text-[10px] sm:text-xs font-semibold text-gray-500 mb-0.5">Продажи</div>
-            <div className="text-lg sm:text-2xl font-bold tabular-nums text-gray-900" title={`Продажи: ${formatExactSigned(computed.salesTotal)}${computed.creditsTotal > 0.01 ? ` + СПП: ${formatExactSigned(computed.creditsTotal)}` : ''}`}>
+            <div className="flex items-center gap-1 mb-0.5">
+              <span className="text-[10px] sm:text-xs font-semibold text-gray-500">Продажи</span>
+              {computed.creditsTotal > 0.01 && (
+                <div className="group relative flex-shrink-0">
+                  <HelpCircle className="w-3 h-3 text-gray-400 cursor-help" />
+                  <div className="invisible group-hover:visible absolute z-50 top-5 -right-2 sm:left-0 sm:right-auto w-52 sm:w-56 p-2 sm:p-3 bg-gray-900 text-white text-[10px] sm:text-xs rounded-lg shadow-2xl leading-relaxed whitespace-pre-line">
+                    {`Сумма включает СПП\n(скидка постоянного покупателя)\n\nПродажи: ${formatWbAmount(computed.salesTotal)}\nСПП / возмещения: +${formatWbAmount(computed.creditsTotal)}\nИтого: ${formatWbAmount(computed.salesTotal + computed.creditsTotal)}`}
+                    <div className="absolute -top-1 right-3 sm:right-auto sm:left-2 w-2 h-2 bg-gray-900 rotate-45" />
+                  </div>
+                </div>
+              )}
+            </div>
+            <div className="text-lg sm:text-2xl font-bold tabular-nums text-gray-900">
               {formatWbAmount(computed.salesTotal + computed.creditsTotal)}
             </div>
           </div>
           <div className="text-right min-w-0">
-            <div className="text-[10px] sm:text-xs font-semibold text-gray-500 mb-0.5">Начислено</div>
-            <div className="text-lg sm:text-2xl font-bold tabular-nums text-purple-600" title={`Точно: ${formatExactSigned(computed.totalAccrued)}`}>
+            <div className="flex items-center justify-end gap-1 mb-0.5">
+              <span className="text-[10px] sm:text-xs font-semibold text-gray-500">Начислено</span>
+              <div className="group relative flex-shrink-0">
+                <HelpCircle className="w-3 h-3 text-gray-400 cursor-help" />
+                <div className="invisible group-hover:visible absolute z-50 top-5 right-0 w-52 sm:w-56 p-2 sm:p-3 bg-gray-900 text-white text-[10px] sm:text-xs rounded-lg shadow-2xl leading-relaxed whitespace-pre-line">
+                  {`Итого начислено к выплате\nот WB за период\n\nПродажи: ${formatWbAmount(computed.salesTotal + computed.creditsTotal)}\nУдержания: ${formatWbAmount(computed.costsTotal)}\nИтого: ${formatWbAmount(computed.totalAccrued)}`}
+                  <div className="absolute -top-1 right-2 w-2 h-2 bg-gray-900 rotate-45" />
+                </div>
+              </div>
+            </div>
+            <div className="text-lg sm:text-2xl font-bold tabular-nums text-purple-600">
               {formatWbAmount(computed.totalAccrued)}
             </div>
           </div>
@@ -282,9 +195,10 @@ export const WbAccrualsCard = ({
 
         {/* Sales bar */}
         <div className="h-1.5 sm:h-2 rounded bg-gray-100 overflow-hidden flex">
-          {/* Sales portion */}
-          <div className={COLORS.sales.bar} style={{ width: computed.creditsTotal > 0.01 ? `${pct(Math.abs(computed.salesTotal), Math.abs(computed.salesTotal) + computed.creditsTotal)}%` : '100%' }} />
-          {/* Credits (СПП) portion */}
+          <div
+            className={COLORS.sales.bar}
+            style={{ width: computed.creditsTotal > 0.01 ? `${pct(Math.abs(computed.salesTotal), Math.abs(computed.salesTotal) + computed.creditsTotal)}%` : '100%' }}
+          />
           {computed.creditsTotal > 0.01 && (
             <div className="bg-emerald-300" style={{ width: `${pct(computed.creditsTotal, Math.abs(computed.salesTotal) + computed.creditsTotal)}%` }} />
           )}
@@ -316,11 +230,11 @@ export const WbAccrualsCard = ({
               const token = pickCostColor(c.name);
               return (
                 <div key={c.name} className="flex items-center justify-between text-[11px] sm:text-xs">
-                  <div className="flex items-center gap-1.5 min-w-0">
+                  <div className="flex items-center gap-1.5 min-w-0 flex-1 mr-2">
                     <span className={`w-2 h-2 rounded ${COLORS[token].dot} flex-shrink-0`} />
                     <span className="text-gray-600 truncate">{c.name}</span>
                   </div>
-                  <span className="tabular-nums text-gray-900 ml-2 flex-shrink-0" title={`Точно: ${formatExactSigned(c.amount)}`}>
+                  <span className="tabular-nums text-gray-900 flex-shrink-0" title={`Точно: ${formatExactSigned(c.amount)}`}>
                     {formatWbAmount(c.amount)}
                   </span>
                 </div>
@@ -331,24 +245,50 @@ export const WbAccrualsCard = ({
             )}
             {computed.creditsTotal > 0.01 && (
               <div className="flex items-center justify-between text-[11px] sm:text-xs">
-                <div className="flex items-center gap-1.5 min-w-0">
+                <div className="flex items-center gap-1.5 min-w-0 flex-1 mr-2">
                   <span className="w-2 h-2 rounded bg-emerald-300 flex-shrink-0" />
                   <span className="text-gray-600 truncate" title="Скидка постоянного покупателя">СПП</span>
                 </div>
-                <span className="tabular-nums text-gray-900 ml-2">{formatWbAmount(computed.creditsTotal)}</span>
+                <span className="tabular-nums text-gray-900 flex-shrink-0">{formatWbAmount(computed.creditsTotal)}</span>
               </div>
             )}
           </div>
         </div>
+
+        {/* Row 3: Profit */}
+        {profitData && (
+          <div className="pt-2 border-t border-gray-100">
+            <div className="flex justify-between items-start">
+              <div className="flex items-center gap-1">
+                <span className="text-[10px] sm:text-xs font-semibold text-gray-500">Прибыль</span>
+                <div className="group relative flex-shrink-0">
+                  <HelpCircle className="w-3 h-3 text-gray-400 cursor-help" />
+                  <div className="invisible group-hover:visible absolute z-50 top-5 -right-2 sm:left-0 sm:right-auto w-52 sm:w-56 p-2 sm:p-3 bg-gray-900 text-white text-[10px] sm:text-xs rounded-lg shadow-2xl leading-relaxed whitespace-pre-line">
+                    {`Прибыль = Начислено\n− Закупка − Реклама\n\nНачислено: ${formatWbAmount(computed.totalAccrued)}\nЗакупка: −${formatWbAmount(profitData.purchase)}\nРеклама: −${formatWbAmount(profitData.ad)}\nПрибыль: ${formatWbAmount(profitData.profit)}`}
+                    <div className="absolute -top-1 right-3 sm:right-auto sm:left-2 w-2 h-2 bg-gray-900 rotate-45" />
+                  </div>
+                </div>
+              </div>
+              <div className="text-right">
+                <div className={`text-sm sm:text-base font-bold tabular-nums ${profitData.profit >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
+                  {formatWbAmount(profitData.profit)}
+                </div>
+                {computed.salesTotal !== 0 && (
+                  <div className="text-[9px] sm:text-[10px] text-gray-400">
+                    маржа {Math.abs(Math.round((profitData.profit / Math.abs(computed.salesTotal + computed.creditsTotal)) * 1000) / 10)}%
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
+      {/* Details: tree */}
       {showDetails && (
         <div className="mt-4 pt-3 border-t border-gray-100">
           <div className="flex items-baseline justify-between mb-2">
-            <div className="flex items-baseline gap-2">
-              <span className="text-xs font-semibold text-gray-900">К перечислению</span>
-              <span className="text-[10px] text-gray-400">за период</span>
-            </div>
+            <span className="text-xs font-semibold text-gray-900">Начислено</span>
             <span className="text-xs font-semibold tabular-nums text-gray-900">{formatWbAmount(computed.totalAccrued)}</span>
           </div>
 
@@ -361,59 +301,8 @@ export const WbAccrualsCard = ({
               />
             ))}
           </div>
-
-          {/* WB: account-level строки без SKU (WB_ACCOUNT) */}
-          {wbAccountTreeItems.length ? (
-            <div className="mt-4 pt-3 border-t border-gray-100">
-              <div className="flex items-baseline justify-between mb-2">
-                <div className="flex items-baseline gap-2 min-w-0">
-                  <span className="text-xs font-semibold text-gray-900 truncate">Служебные WB (без товара)</span>
-                </div>
-                <span className="text-xs font-semibold tabular-nums text-gray-900">
-                  {formatWbAmount(wbAccountNetWithoutSales)}
-                </span>
-              </div>
-
-              {wbAccountFullyDuplicatesMain ? (
-                <div className="mt-2 text-[10px] text-gray-500 bg-gray-50 border border-gray-100 rounded-md px-2 py-2">
-                  Учтено в отчёте &quot;К перечислению&quot; как операции без привязки к товару — разнести по SKU нельзя.
-                  {Math.abs(wbAccountSales) > 0.009 ? ' Включая часть продаж.' : ''}
-                </div>
-              ) : (
-                <div className="space-y-0">
-                  {wbAccountTreeItems.map((item: CostsTreeItem) => (
-                    <TreeCategoryInline key={`wb_account_${item.name}`} item={item} denom={wbAccountDenom} />
-                  ))}
-                </div>
-              )}
-
-              {/* Примечание объединено в инфо-блок выше */}
-            </div>
-          ) : null}
         </div>
       )}
-    </div>
-  );
-};
-
-const Row = ({
-  label,
-  value,
-  alert,
-  valueClassName,
-}: {
-  label: string;
-  value: string;
-  alert?: boolean;
-  valueClassName?: string;
-}) => {
-  return (
-    <div className="flex justify-between items-center">
-      <span className="text-sm text-gray-600 flex items-center gap-1.5">
-        {label}
-        {alert ? <AlertTriangle size={14} className="text-amber-600" /> : null}
-      </span>
-      <span className={valueClassName ?? 'font-semibold text-gray-900'}>{value}</span>
     </div>
   );
 };
@@ -424,27 +313,27 @@ const TreeCategoryInline = ({ item, denom }: { item: CostsTreeItem; denom: numbe
 
   return (
     <div className="relative">
-      <div className="flex items-center justify-between py-1.5 cursor-pointer group" onClick={() => hasChildren && setExpanded((v) => !v)}>
-        <div className="flex items-center gap-1 min-w-0">
+      <div
+        className="flex items-center justify-between py-1.5 cursor-pointer group"
+        onClick={() => hasChildren && setExpanded((v) => !v)}
+      >
+        <div className="flex items-center gap-1 min-w-0 flex-1 mr-2">
           {hasChildren ? (
-            <span className="text-gray-400 w-5 h-5 flex items-center justify-center flex-shrink-0 group-hover:text-gray-600">
-              {expanded ? <ChevronDown size={16} /> : <ChevronUp size={16} />}
+            <span className="text-gray-400 w-4 h-4 flex items-center justify-center flex-shrink-0 group-hover:text-gray-600">
+              {expanded ? <ChevronDown size={14} /> : <ChevronUp size={14} />}
             </span>
           ) : (
-            <span className="w-5 flex-shrink-0" />
+            <span className="w-4 flex-shrink-0" />
           )}
-          <span className="text-xs font-medium text-gray-900">{item.name}</span>
+          <span className="text-xs font-medium text-gray-900 truncate">{item.name}</span>
         </div>
 
-        <div className="flex flex-col items-end flex-shrink-0 ml-3">
+        <div className="flex flex-col items-end flex-shrink-0">
           <span className="text-xs font-medium tabular-nums text-gray-900" title={`Точно: ${formatExactSigned(item.amount)}`}>
             {formatWbAmount(item.amount)}
           </span>
           {item.percent !== null && item.percent !== undefined && (
-            <span
-              className="text-[10px] text-gray-400"
-              title={`Эффективная доля от Продаж (как в ЛК): ${formatCurrency(Math.abs(item.amount))} / ${formatCurrency(denom)} = ${item.percent} %`}
-            >
+            <span className="text-[10px] text-gray-400" title={`${formatCurrency(Math.abs(item.amount))} / ${formatCurrency(denom)}`}>
               {item.percent} %
             </span>
           )}
@@ -452,11 +341,11 @@ const TreeCategoryInline = ({ item, denom }: { item: CostsTreeItem; denom: numbe
       </div>
 
       {expanded && hasChildren && (
-        <div className="ml-5">
+        <div className="ml-4">
           {item.children.map((child) => (
-            <div key={child.name} className="flex items-center justify-between py-1.5">
-              <span className="text-xs text-gray-700">{child.name}</span>
-              <span className="text-xs tabular-nums text-gray-900 ml-3 flex-shrink-0" title={`Точно: ${formatExactSigned(child.amount)}`}>
+            <div key={child.name} className="flex items-center justify-between py-1">
+              <span className="text-xs text-gray-700 truncate flex-1 mr-2">{child.name}</span>
+              <span className="text-xs tabular-nums text-gray-900 flex-shrink-0" title={`Точно: ${formatExactSigned(child.amount)}`}>
                 {formatWbAmount(child.amount)}
               </span>
             </div>
@@ -466,4 +355,3 @@ const TreeCategoryInline = ({ item, denom }: { item: CostsTreeItem; denom: numbe
     </div>
   );
 };
-

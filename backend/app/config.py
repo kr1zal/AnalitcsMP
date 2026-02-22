@@ -1,4 +1,5 @@
 from pydantic_settings import BaseSettings
+from pydantic import Field
 from functools import lru_cache
 
 
@@ -19,19 +20,36 @@ class Settings(BaseSettings):
     supabase_anon_key: str
     supabase_service_role_key: str
 
-    # Sync security (protect /sync/* endpoints in production)
-    # If set, requests must provide this token via:
-    # - header: X-Sync-Token: <token>
-    # - or: Authorization: Bearer <token>
+    # Sync security (legacy, unused — replaced by JWT auth)
     sync_token: str | None = None
+
+    # Cron secret for server-side sync jobs (X-Cron-Secret header)
+    sync_cron_secret: str | None = None
+
+    # Fernet encryption key for user API tokens
+    fernet_key: str = ""
+
+    # YooKassa payment
+    yookassa_shop_id: str = ""
+    yookassa_secret_key: str = ""
 
     # App
     debug: bool = True
-    secret_key: str = "change-me-in-production"
+
+    # Frontend URL for PDF export (Playwright opens this)
+    # Локально: добавь FRONTEND_URL=http://localhost:5173 в .env
+    # Production: дефолт https://reviomp.ru
+    frontend_url: str = "https://reviomp.ru"
+
+    # Admin user IDs (UUID list)
+    admin_user_ids: list[str] = Field(
+        default_factory=lambda: ["e2db2023-4ce3-4182-96d3-7a194657cb4a"]
+    )
 
     class Config:
         env_file = "../.env"
         env_file_encoding = "utf-8"
+        extra = "ignore"
 
 
 @lru_cache()

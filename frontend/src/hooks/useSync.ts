@@ -86,3 +86,48 @@ export const useSyncStocks = () => {
     },
   });
 };
+
+// ==================== Phase 4: Sync Queue ====================
+
+/**
+ * Hook для получения статуса синхронизации (Phase 4)
+ * Polling каждые 30 секунд
+ */
+export const useSyncStatus = () => {
+  return useQuery({
+    queryKey: ['sync', 'status'],
+    queryFn: syncApi.getStatus,
+    refetchInterval: 30000,
+    staleTime: 10000,
+  });
+};
+
+/**
+ * Hook для ручной синхронизации с дневным лимитом (Phase 4)
+ */
+export const useManualSync = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: () => syncApi.manualSync(),
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      queryClient.invalidateQueries({ queryKey: ['sync'] });
+      toast.success(
+        `Синхронизация завершена! Осталось обновлений: ${data.syncs_remaining}`
+      );
+    },
+    onError: (error: any) => {
+      const detail = error.response?.data?.detail;
+      if (detail?.error === 'manual_sync_limit_reached') {
+        toast.error('Лимит ручных обновлений исчерпан на сегодня');
+      } else if (detail?.error === 'manual_sync_not_available') {
+        toast.error('Ручное обновление недоступно на вашем тарифе');
+      } else if (detail?.error === 'sync_already_running') {
+        toast.error('Синхронизация уже выполняется');
+      } else {
+        toast.error(`Ошибка синхронизации: ${error.message || 'Неизвестная ошибка'}`);
+      }
+    },
+  });
+};

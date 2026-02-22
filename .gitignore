@@ -36,5 +36,13 @@ dist/
 build/
 .next/
 
+# Supabase CLI
+supabase/.temp/
+
 # Docker
 docker-compose.override.yml
+
+# Claude Code (credentials)
+.mcp.json
+.claude/settings.local.json
+.claude/hooks/

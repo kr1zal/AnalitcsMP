@@ -6,7 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 
 from .config import get_settings
-from .api.v1 import products, dashboard, sync
+from .api.v1 import products, dashboard, dashboard_config, sync, export, tokens, subscription, payment, sync_queue, admin, account, sales_plan
 
 settings = get_settings()
 
@@ -32,7 +32,12 @@ app = FastAPI(
 # CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # В продакшене указать конкретные домены
+    allow_origins=[
+        "https://reviomp.ru",
+        "https://analitics.bixirun.ru",
+        "http://localhost:5173",
+        "http://localhost:4173",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -41,7 +46,16 @@ app.add_middleware(
 # Подключаем роутеры
 app.include_router(products.router, prefix="/api/v1", tags=["Products"])
 app.include_router(dashboard.router, prefix="/api/v1", tags=["Dashboard"])
+app.include_router(dashboard_config.router, prefix="/api/v1", tags=["Dashboard Config"])
 app.include_router(sync.router, prefix="/api/v1", tags=["Sync"])
+app.include_router(export.router, prefix="/api/v1", tags=["Export"])
+app.include_router(tokens.router, prefix="/api/v1", tags=["Tokens"])
+app.include_router(subscription.router, prefix="/api/v1", tags=["Subscription"])
+app.include_router(payment.router, prefix="/api/v1", tags=["Payment"])
+app.include_router(sync_queue.router, prefix="/api/v1", tags=["Sync Queue"])
+app.include_router(admin.router, prefix="/api/v1", tags=["Admin"])
+app.include_router(account.router, prefix="/api/v1", tags=["Account"])
+app.include_router(sales_plan.router, prefix="/api/v1", tags=["Sales Plan"])
 
 
 @app.get("/")
@@ -56,6 +70,7 @@ async def root():
 
 
 @app.get("/health")
+@app.get("/api/v1/health")
 async def health():
     """Health check"""
     return {"status": "ok"}

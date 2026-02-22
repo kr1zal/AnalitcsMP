@@ -1,49 +1,171 @@
 """
 Роутер для дашборда - сводная аналитика
 """
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Depends
 from typing import Optional
 from datetime import datetime, timedelta
-from decimal import Decimal
 
 from ...db.supabase import get_supabase_client
+from ...auth import CurrentUser, get_current_user
+from ...subscription import get_user_subscription, UserSubscription, require_feature
+from ...plans import has_feature
 
 router = APIRouter()
 
 
+# ─── Costs-tree FBO/FBS merge helpers ─────────────────────────────────────────
+# WB reportDetailByPeriod может не содержать FBS-данные в mp_costs_details
+# (поля isSupply/delivery_type_id отсутствуют в ряде версий API).
+# FBS-данные при этом могут быть в mp_costs/mp_sales (из других sync-пайплайнов).
+# При fulfillment_type=NULL ("Все") RPC видит mp_costs_details (только FBO) и
+# игнорирует FBS. Для корректного суммирования: FBO из primary + FBS из fallback.
+
+def _merge_costs_tree_data(primary: dict, supplement: dict) -> dict:
+    """
+    Merge two costs-tree RPC responses (primary + supplement).
+    Суммирует total_accrued, total_revenue, объединяет tree items по name.
+    """
+    if not supplement:
+        return primary
+    if not primary:
+        return supplement
+
+    p_accrued = float(primary.get("total_accrued") or 0)
+    s_accrued = float(supplement.get("total_accrued") or 0)
+    p_revenue = float(primary.get("total_revenue") or 0)
+    s_revenue = float(supplement.get("total_revenue") or 0)
+    p_sales = float(primary.get("percent_base_sales") or 0)
+    s_sales = float(supplement.get("percent_base_sales") or 0)
+
+    # Merge tree items by category name
+    tree_map: dict[str, dict] = {}
+    for item in (primary.get("tree") or []):
+        name = item.get("name", "")
+        tree_map[name] = {
+            "name": name,
+            "amount": float(item.get("amount") or 0),
+            "percent": item.get("percent"),
+            "children": list(item.get("children") or []),
+        }
+
+    for item in (supplement.get("tree") or []):
+        name = item.get("name", "")
+        amount = float(item.get("amount") or 0)
+        if abs(amount) < 0.01:
+            continue
+        if name in tree_map:
+            tree_map[name]["amount"] = round(tree_map[name]["amount"] + amount, 2)
+            # Merge children по subcategory name
+            existing_children = tree_map[name].get("children") or []
+            new_children = item.get("children") or []
+            if new_children:
+                child_map = {}
+                for c in existing_children:
+                    cn = c.get("name", "")
+                    child_map[cn] = {**c, "amount": float(c.get("amount") or 0)}
+                for c in new_children:
+                    cn = c.get("name", "")
+                    ca = float(c.get("amount") or 0)
+                    if cn in child_map:
+                        child_map[cn]["amount"] = round(child_map[cn]["amount"] + ca, 2)
+                    else:
+                        child_map[cn] = {**c, "amount": ca}
+                tree_map[name]["children"] = list(child_map.values())
+        else:
+            tree_map[name] = {
+                "name": name,
+                "amount": round(amount, 2),
+                "percent": item.get("percent"),
+                "children": list(item.get("children") or []),
+            }
+
+    return {
+        "status": "success",
+        "period": primary.get("period"),
+        "marketplace": primary.get("marketplace"),
+        "total_accrued": round(p_accrued + s_accrued, 2),
+        "total_revenue": round(p_revenue + s_revenue, 2),
+        "percent_base_sales": round(p_sales + s_sales, 2),
+        "source": "merged",
+        "tree": list(tree_map.values()),
+    }
+
+
+def _fetch_costs_tree_merged(
+    supabase,
+    date_from: str,
+    date_to: str,
+    marketplace: str | None,
+    product_id: str | None,
+    include_children: bool,
+    user_id: str,
+    fulfillment_type: str | None,
+) -> dict:
+    """
+    Fetch costs-tree с автоматическим FBO+FBS merge при fulfillment_type=None.
+    Когда FT задан (FBO/FBS) — один вызов RPC.
+    Когда FT=None ("Все") — два вызова (FBO + FBS), результат объединяется.
+    """
+    params = {
+        "p_date_from": date_from,
+        "p_date_to": date_to,
+        "p_marketplace": marketplace,
+        "p_product_id": product_id,
+        "p_include_children": include_children,
+        "p_user_id": user_id,
+    }
+
+    if fulfillment_type is not None:
+        params["p_fulfillment_type"] = fulfillment_type
+        result = supabase.rpc("get_costs_tree", params).execute()
+        return result.data
+
+    # FT=None → fetch FBO и FBS отдельно, merge
+    fbo_params = {**params, "p_fulfillment_type": "FBO"}
+    fbs_params = {**params, "p_fulfillment_type": "FBS"}
+
+    fbo_data = supabase.rpc("get_costs_tree", fbo_params).execute().data
+    fbs_data = supabase.rpc("get_costs_tree", fbs_params).execute().data
+
+    # Если FBS пуст — возвращаем FBO as-is (частый случай)
+    fbs_accrued = float(fbs_data.get("total_accrued") or 0) if fbs_data else 0
+    fbs_revenue = float(fbs_data.get("total_revenue") or 0) if fbs_data else 0
+    if abs(fbs_accrued) < 0.01 and abs(fbs_revenue) < 0.01:
+        return fbo_data
+
+    return _merge_costs_tree_data(fbo_data, fbs_data)
+
+
 @router.get("/dashboard/summary")
 async def get_summary(
+    current_user: CurrentUser = Depends(get_current_user),
+    sub: UserSubscription = Depends(get_user_subscription),
     date_from: Optional[str] = Query(None, description="Дата начала (YYYY-MM-DD)"),
     date_to: Optional[str] = Query(None, description="Дата окончания (YYYY-MM-DD)"),
     marketplace: Optional[str] = Query(None, description="Фильтр по МП: wb, ozon"),
+    fulfillment_type: Optional[str] = Query(None, pattern="^(FBO|FBS)$", description="Фильтр по типу фулфилмента"),
     include_prev_period: bool = Query(False, description="Включить данные предыдущего периода"),
     include_ozon_truth: bool = Query(False, description="Использовать 'истинную' выручку Ozon из costs-tree")
 ):
     """
     Сводка по продажам за период (использует RPC для оптимизации).
-
-    Возвращает агрегированные данные:
-    - Общее количество заказов, выкупов, возвратов
-    - Выручка
-    - Средний процент выкупа
-
-    При include_prev_period=true также возвращает:
-    - Данные предыдущего периода
-    - Процент изменения выручки
-
-    При include_ozon_truth=true:
-    - Выручка Ozon берётся из costs-tree (как в ЛК)
     """
+    # Feature gate: period comparison requires pro+
+    if include_prev_period and not has_feature(sub.plan, "period_comparison"):
+        include_prev_period = False
+
+    # Feature gate: FBS analytics requires pro+
+    if fulfillment_type and not has_feature(sub.plan, "fbs_analytics"):
+        fulfillment_type = None
+
     supabase = get_supabase_client()
 
-    # Если даты не указаны, берём последние 30 дней
     if not date_from:
         date_from = (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d")
     if not date_to:
         date_to = datetime.now().strftime("%Y-%m-%d")
 
     try:
-        # Используем оптимизированную RPC если нужен prev-period
         if include_prev_period:
             result = supabase.rpc(
                 "get_dashboard_summary_with_prev",
@@ -51,17 +173,20 @@ async def get_summary(
                     "p_date_from": date_from,
                     "p_date_to": date_to,
                     "p_marketplace": marketplace,
-                    "p_include_costs_tree_revenue": include_ozon_truth
+                    "p_include_costs_tree_revenue": include_ozon_truth,
+                    "p_user_id": current_user.id,
+                    "p_fulfillment_type": fulfillment_type,
                 }
             ).execute()
         else:
-            # Стандартный запрос без prev-period
             result = supabase.rpc(
                 "get_dashboard_summary",
                 {
                     "p_date_from": date_from,
                     "p_date_to": date_to,
-                    "p_marketplace": marketplace
+                    "p_marketplace": marketplace,
+                    "p_user_id": current_user.id,
+                    "p_fulfillment_type": fulfillment_type,
                 }
             ).execute()
 
@@ -73,19 +198,30 @@ async def get_summary(
 
 @router.get("/dashboard/unit-economics")
 async def get_unit_economics(
+    current_user: CurrentUser = Depends(get_current_user),
+    sub: UserSubscription = Depends(require_feature("unit_economics")),
     date_from: Optional[str] = Query(None),
     date_to: Optional[str] = Query(None),
-    marketplace: Optional[str] = Query(None)
+    marketplace: Optional[str] = Query(None),
+    fulfillment_type: Optional[str] = Query(None, pattern="^(FBO|FBS)$"),
 ):
     """
-    Unit-экономика по товарам
-
-    Возвращает для каждого товара:
-    - Продажи, выручка
-    - Удержания (комиссия, логистика, хранение и т.д.)
-    - Чистая прибыль на единицу
+    Unit-экономика по товарам.
+    Методология ИДЕНТИЧНА дашборду:
+    - Payout (total_accrued) берётся из costs-tree и распределяется по товарам пропорционально выручке
+    - Закупка: WB = purchase_price × sales_count (order-based), Ozon = purchase_price × settled_qty (settlement-based)
+    - Реклама учитывается по товарам (mp_ad_costs)
+    - Формула: Прибыль = PayoutShare − Закупка − Реклама
+    - Гарантия: SUM(profit) = Dashboard profit
     """
     supabase = get_supabase_client()
+
+    # Feature gate: FBS filtering requires Pro+ plan
+    include_ft_breakdown = True
+    if fulfillment_type and not has_feature(sub.plan, "fbs_analytics"):
+        fulfillment_type = None
+    if not has_feature(sub.plan, "fbs_analytics"):
+        include_ft_breakdown = False
 
     if not date_from:
         date_from = (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d")
@@ -93,44 +229,168 @@ async def get_unit_economics(
         date_to = datetime.now().strftime("%Y-%m-%d")
 
     try:
-        # Получаем товары
-        products_result = supabase.table("mp_products").select("*").execute()
+        # 1. Продукты пользователя
+        products_result = supabase.table("mp_products").select("*").eq("user_id", current_user.id).execute()
         products = {p["id"]: p for p in products_result.data}
 
-        # Получаем продажи
-        sales_query = supabase.table("mp_sales").select("*").gte("date", date_from).lte("date", date_to)
+        # 2. Продажи (mp_sales — аналитика, все заказы)
+        sales_query = supabase.table("mp_sales").select("*").eq("user_id", current_user.id).gte("date", date_from).lte("date", date_to)
         if marketplace and marketplace != "all":
             sales_query = sales_query.eq("marketplace", marketplace)
+        if fulfillment_type:
+            sales_query = sales_query.eq("fulfillment_type", fulfillment_type)
         sales_result = sales_query.execute()
 
-        # Получаем удержания
-        costs_query = supabase.table("mp_costs").select("*").gte("date", date_from).lte("date", date_to)
+        # 3. Удержания МП (mp_costs) — для отображения в таблице
+        costs_query = supabase.table("mp_costs").select("*").eq("user_id", current_user.id).gte("date", date_from).lte("date", date_to)
         if marketplace and marketplace != "all":
             costs_query = costs_query.eq("marketplace", marketplace)
+        if fulfillment_type:
+            costs_query = costs_query.eq("fulfillment_type", fulfillment_type)
         costs_result = costs_query.execute()
 
-        # Группируем по product_id
-        product_metrics = {}
+        # 4. Рекламные расходы по товарам (mp_ad_costs) — NOT filtered by fulfillment_type (account-level)
+        ad_query = supabase.table("mp_ad_costs").select("product_id, cost").eq("user_id", current_user.id).gte("date", date_from).lte("date", date_to)
+        if marketplace and marketplace != "all":
+            ad_query = ad_query.eq("marketplace", marketplace)
+        ad_result = ad_query.execute()
+
+        # Агрегация рекламы по product_id
+        ad_by_product: dict[str, float] = {}
+        unattributed_ad = 0.0
+        for ad in ad_result.data:
+            cost = float(ad.get("cost", 0) or 0)
+            pid = ad.get("product_id")
+            if pid:
+                ad_by_product[pid] = ad_by_product.get(pid, 0) + cost
+            else:
+                unattributed_ad += cost
+
+        # 4a. При фильтре по fulfillment_type: пропорциональное распределение рекламы
+        # Реклама — account-level, не привязана к FBO/FBS. Чтобы profit_FBO + profit_FBS = profit_Total,
+        # распределяем рекламу пропорционально: ad_ft = ad × (revenue_ft / revenue_total) per product.
+        total_revenue_by_product: dict[str, float] = {}
+        if fulfillment_type:
+            total_sales_query = supabase.table("mp_sales").select("product_id, revenue").eq("user_id", current_user.id).gte("date", date_from).lte("date", date_to)
+            if marketplace and marketplace != "all":
+                total_sales_query = total_sales_query.eq("marketplace", marketplace)
+            # NO fulfillment_type filter — total revenue across FBO+FBS
+            total_sales_result = total_sales_query.execute()
+            for sale in total_sales_result.data:
+                pid = sale["product_id"]
+                total_revenue_by_product[pid] = total_revenue_by_product.get(pid, 0) + float(sale.get("revenue", 0))
+
+        # 5. Агрегация продаж и удержаний по товарам
+        product_metrics: dict[str, dict] = {}
+
+        # 5a. FBO/FBS breakdown per product (when not filtered by fulfillment_type)
+        ft_sales: dict[str, dict[str, dict]] = {}  # {product_id: {FBO: {sales, revenue}, FBS: {...}}}
+        ft_costs: dict[str, dict[str, float]] = {}  # {product_id: {FBO: costs, FBS: costs}}
+
+        # 5b. Ozon settlement-based purchase: settled_qty из mp_costs (дата расчёта, а не заказа)
+        settled_qty_by_product: dict[str, int] = {}
+        ft_settled_qty: dict[str, dict[str, int]] = {}  # {product_id: {FBO: qty, FBS: qty}}
+        has_ozon_settled = False
+        ozon_product_ids: set[str] = set()  # product_id's с Ozon costs (для settlement purchase)
 
         for sale in sales_result.data:
             product_id = sale["product_id"]
             if product_id not in product_metrics:
-                product_metrics[product_id] = {
-                    "sales": 0,
-                    "revenue": 0,
-                    "costs": 0
-                }
+                product_metrics[product_id] = {"sales": 0, "revenue": 0, "costs": 0, "returns": 0}
             product_metrics[product_id]["sales"] += sale.get("sales_count", 0)
             product_metrics[product_id]["revenue"] += float(sale.get("revenue", 0))
+            product_metrics[product_id]["returns"] += sale.get("returns_count", 0) or 0
 
-        # Считаем costs только для товаров с продажами (исключаем orphan-затраты)
+            # Track per fulfillment_type (only for Pro+ with fbs_analytics)
+            if include_ft_breakdown and not fulfillment_type:
+                ft = sale.get("fulfillment_type", "FBO") or "FBO"
+                if product_id not in ft_sales:
+                    ft_sales[product_id] = {}
+                if ft not in ft_sales[product_id]:
+                    ft_sales[product_id][ft] = {"sales": 0, "revenue": 0}
+                ft_sales[product_id][ft]["sales"] += sale.get("sales_count", 0)
+                ft_sales[product_id][ft]["revenue"] += float(sale.get("revenue", 0))
+
         for cost in costs_result.data:
             product_id = cost["product_id"]
             if product_id not in product_metrics:
-                continue  # Пропускаем затраты для товаров без продаж в периоде
+                continue
             product_metrics[product_id]["costs"] += float(cost.get("total_costs", 0))
 
-        # Рассчитываем unit-экономику
+            # Ozon settled_qty: количество проданных единиц по дате расчёта
+            cost_mp = cost.get("marketplace", "")
+            if cost_mp == "ozon":
+                ozon_product_ids.add(product_id)
+                qty = int(cost.get("settled_qty", 0) or 0)
+                if qty > 0:
+                    has_ozon_settled = True
+                settled_qty_by_product[product_id] = settled_qty_by_product.get(product_id, 0) + qty
+                # Per FBO/FBS settled_qty
+                if include_ft_breakdown and not fulfillment_type:
+                    ft = cost.get("fulfillment_type", "FBO") or "FBO"
+                    if product_id not in ft_settled_qty:
+                        ft_settled_qty[product_id] = {}
+                    ft_settled_qty[product_id][ft] = ft_settled_qty[product_id].get(ft, 0) + qty
+
+            # Track per fulfillment_type (only for Pro+ with fbs_analytics)
+            if include_ft_breakdown and not fulfillment_type:
+                ft = cost.get("fulfillment_type", "FBO") or "FBO"
+                if product_id not in ft_costs:
+                    ft_costs[product_id] = {}
+                ft_costs[product_id][ft] = ft_costs[product_id].get(ft, 0) + float(cost.get("total_costs", 0))
+
+        # 6. Costs-tree: payout (total_accrued) + revenue ("Продажи") + credits (СПП и т.д.)
+        #    Используем payout для расчёта прибыли — точно как на дашборде.
+        #    Credits (WB: СПП, возмещения) включаем в displayed_revenue,
+        #    чтобы "Продажи" на дашборде и UE совпадали.
+        total_mp_sales_revenue = sum(m["revenue"] for m in product_metrics.values())
+        costs_tree_sales = 0.0  # Только tree item "Продажи" (для ratio)
+        costs_tree_credits = 0.0  # Положительные items кроме "Продажи" (СПП, возмещения)
+        total_payout = 0.0
+        try:
+            mp_list = [marketplace] if marketplace and marketplace != "all" else ["ozon", "wb"]
+            for mp in mp_list:
+                ct_data = _fetch_costs_tree_merged(
+                    supabase, date_from, date_to, mp, None,
+                    False, current_user.id, fulfillment_type,
+                )
+                if ct_data:
+                    if isinstance(ct_data, list) and len(ct_data) > 0:
+                        ct_data = ct_data[0]
+                    if isinstance(ct_data, dict):
+                        total_payout += float(ct_data.get("total_accrued", 0) or 0)
+                        for item in ct_data.get("tree", []):
+                            name = item.get("name", "")
+                            amount = float(item.get("amount", 0) or 0)
+                            if name == "Продажи":
+                                costs_tree_sales += abs(amount)
+                            elif amount > 0:
+                                # Положительные: СПП, возмещения и т.д.
+                                costs_tree_credits += amount
+        except Exception:
+            pass  # Если costs-tree недоступен — fallback на mp_sales/mp_costs
+
+        # revenue с учётом credits (для отображения: "Продажи" вкл. СПП)
+        costs_tree_revenue = costs_tree_sales + costs_tree_credits
+
+        # Флаг: есть ли данные costs-tree для расчёта через payout
+        use_payout = total_payout != 0
+
+        # 7. Распределение неатрибутированной рекламы (без product_id) пропорционально выручке
+        if unattributed_ad > 0 and total_mp_sales_revenue > 0:
+            for pid, m in product_metrics.items():
+                share = m["revenue"] / total_mp_sales_revenue
+                ad_by_product[pid] = ad_by_product.get(pid, 0) + unattributed_ad * share
+
+        # 8. Формирование результата
+        # Dashboard: Продажи = costs-tree "Продажи" + credits (СПП, возмещения)
+        # UE per product: распределяем пропорционально mp_sales revenue share.
+        #
+        # Формула (всегда 100%):
+        #   displayed_revenue = (costs_tree_sales + credits) × share
+        #   mp_deductions     = displayed_revenue − payout_share  (>=0 т.к. revenue включает credits)
+        #   profit            = payout_share − purchase − ads
+        #   → revenue = mp_deductions + purchase + ads + profit  ✓
         result = []
         for product_id, metrics in product_metrics.items():
             if product_id not in products:
@@ -138,15 +398,75 @@ async def get_unit_economics(
 
             product = products[product_id]
             sales_count = metrics["sales"]
-            revenue = metrics["revenue"]
-            costs = metrics["costs"]
+            mp_sales_revenue = metrics["revenue"]  # из mp_sales (аналитика)
+            costs = metrics["costs"]  # из mp_costs (fallback)
             purchase_price = float(product.get("purchase_price", 0))
+            # Settlement-based purchase для Ozon: settled_qty из mp_costs (дата расчёта)
+            # WB: order-based (sales_count из mp_sales) — работает корректно
+            is_ozon = product_id in ozon_product_ids or bool(product.get("ozon_product_id"))
+            if is_ozon and has_ozon_settled and product_id in settled_qty_by_product:
+                raw_purchase = purchase_price * settled_qty_by_product[product_id]
+            else:
+                raw_purchase = purchase_price * sales_count
+            ad_cost = ad_by_product.get(product_id, 0)
 
-            # Чистая прибыль
-            net_profit = revenue - costs - (purchase_price * sales_count)
+            if use_payout and total_mp_sales_revenue > 0 and costs_tree_revenue > 0:
+                # Доля товара в общей выручке (по mp_sales)
+                share = mp_sales_revenue / total_mp_sales_revenue
+                # Выручка из costs-tree (как на Dashboard "Продажи")
+                displayed_revenue = costs_tree_revenue * share
+                # Начислено (payout) для этого товара
+                payout_share = total_payout * share
+                # Удержания МП = Выручка − Начислено (всегда >= 0 т.к. CT revenue > payout)
+                mp_costs_consistent = max(0, displayed_revenue - payout_share)
+                # Прибыль = Начислено − Закупка − Реклама
+                net_profit = payout_share - raw_purchase - ad_cost
+            else:
+                # Fallback: если costs-tree недоступен — mp_sales/mp_costs
+                displayed_revenue = mp_sales_revenue
+                mp_costs_consistent = costs
+                net_profit = mp_sales_revenue - costs - raw_purchase - ad_cost
+
             unit_profit = round(net_profit / sales_count, 2) if sales_count > 0 else 0
 
-            result.append({
+            drr = round((ad_cost / displayed_revenue) * 100, 1) if displayed_revenue > 0 and ad_cost > 0 else 0
+
+            # FBO/FBS breakdown (always when no fulfillment_type filter)
+            fb: dict | None = None
+            if not fulfillment_type and product_id in ft_sales:
+                ft_data = ft_sales[product_id]
+                fb = {}
+                for ft_key in ("FBO", "FBS"):
+                    s = ft_data.get(ft_key, {"sales": 0, "revenue": 0})
+                    ft_cnt = s["sales"]
+                    ft_rev = s["revenue"]
+                    if ft_cnt <= 0 and ft_rev <= 0:
+                        continue
+                    c = ft_costs.get(product_id, {}).get(ft_key, 0)
+                    # Ozon: settlement-based purchase per FBO/FBS
+                    if is_ozon and has_ozon_settled and product_id in ft_settled_qty:
+                        ft_purchase = purchase_price * ft_settled_qty.get(product_id, {}).get(ft_key, 0)
+                    else:
+                        ft_purchase = purchase_price * ft_cnt
+                    # Proportional ad: ad_ft = ad × (ft_revenue / total_revenue)
+                    ft_ad = ad_cost * (ft_rev / mp_sales_revenue) if mp_sales_revenue > 0 else 0
+                    # Profit: payout_share - purchase - ads (same payout distribution)
+                    if use_payout and total_mp_sales_revenue > 0:
+                        ft_payout = total_payout * (ft_rev / total_mp_sales_revenue)
+                        ft_profit = ft_payout - ft_purchase - ft_ad
+                    else:
+                        ft_profit = ft_rev - c - ft_purchase - ft_ad
+                    ft_margin = (ft_profit / ft_rev * 100) if ft_rev > 0 else 0
+                    ft_unit_profit = round(ft_profit / ft_cnt, 2) if ft_cnt > 0 else 0
+                    fb[ft_key.lower()] = {
+                        "sales_count": ft_cnt,
+                        "revenue": round(ft_rev, 2),
+                        "net_profit": round(ft_profit, 2),
+                        "margin": round(ft_margin, 1),
+                        "unit_profit": ft_unit_profit,
+                    }
+
+            item: dict = {
                 "product": {
                     "id": product_id,
                     "name": product["name"],
@@ -155,21 +475,33 @@ async def get_unit_economics(
                 },
                 "metrics": {
                     "sales_count": sales_count,
-                    "revenue": round(revenue, 2),
-                    "mp_costs": round(costs, 2),
-                    "purchase_costs": round(purchase_price * sales_count, 2),
+                    "returns_count": metrics["returns"],
+                    "revenue": round(displayed_revenue, 2),
+                    "mp_costs": round(mp_costs_consistent, 2),
+                    "purchase_costs": round(raw_purchase, 2),
+                    "ad_cost": round(ad_cost, 2),
+                    "drr": drr,
                     "net_profit": round(net_profit, 2),
                     "unit_profit": unit_profit
                 }
-            })
+            }
+            if fb:
+                item["fulfillment_breakdown"] = fb
+            result.append(item)
 
-        # Сортируем по прибыли
         result.sort(key=lambda x: x["metrics"]["net_profit"], reverse=True)
+
+        total_ad_cost = sum(p["metrics"]["ad_cost"] for p in result)
+        total_returns = sum(p["metrics"]["returns_count"] for p in result)
 
         return {
             "status": "success",
             "period": {"from": date_from, "to": date_to},
             "marketplace": marketplace or "all",
+            "costs_tree_ratio": 1.0,  # deprecated: ratio больше не используется, оставлено для совместимости
+            "total_ad_cost": round(total_ad_cost, 2),
+            "total_payout": round(total_payout, 2),
+            "total_returns": total_returns,
             "products": result
         }
 
@@ -179,10 +511,12 @@ async def get_unit_economics(
 
 @router.get("/dashboard/sales-chart")
 async def get_sales_chart(
+    current_user: CurrentUser = Depends(get_current_user),
     date_from: Optional[str] = Query(None),
     date_to: Optional[str] = Query(None),
     marketplace: Optional[str] = Query(None),
-    product_id: Optional[str] = Query(None)
+    product_id: Optional[str] = Query(None),
+    fulfillment_type: Optional[str] = Query(None, pattern="^(FBO|FBS)$"),
 ):
     """
     Данные для графика продаж (по дням)
@@ -195,16 +529,17 @@ async def get_sales_chart(
         date_to = datetime.now().strftime("%Y-%m-%d")
 
     try:
-        query = supabase.table("mp_sales").select("*").gte("date", date_from).lte("date", date_to).order("date")
+        query = supabase.table("mp_sales").select("*").eq("user_id", current_user.id).gte("date", date_from).lte("date", date_to).order("date")
 
         if marketplace and marketplace != "all":
             query = query.eq("marketplace", marketplace)
         if product_id:
             query = query.eq("product_id", product_id)
+        if fulfillment_type:
+            query = query.eq("fulfillment_type", fulfillment_type)
 
         result = query.execute()
 
-        # Группируем по дате
         chart_data = {}
         for sale in result.data:
             date = sale["date"]
@@ -219,7 +554,6 @@ async def get_sales_chart(
             chart_data[date]["sales"] += sale.get("sales_count", 0)
             chart_data[date]["revenue"] += float(sale.get("revenue", 0))
 
-        # Рассчитываем средний чек
         for date_key in chart_data:
             sales_count = chart_data[date_key]["sales"]
             revenue = chart_data[date_key]["revenue"]
@@ -240,9 +574,13 @@ async def get_sales_chart(
 
 @router.get("/dashboard/ad-costs")
 async def get_ad_costs(
+    current_user: CurrentUser = Depends(get_current_user),
+    sub: UserSubscription = Depends(require_feature("ads_page")),
     date_from: Optional[str] = Query(None),
     date_to: Optional[str] = Query(None),
-    marketplace: Optional[str] = Query(None)
+    marketplace: Optional[str] = Query(None),
+    fulfillment_type: Optional[str] = Query(None, pattern="^(FBO|FBS)$"),
+    include_prev_period: bool = Query(False),
 ):
     """
     Рекламные расходы и ДРР за период (по дням)
@@ -255,19 +593,18 @@ async def get_ad_costs(
         date_to = datetime.now().strftime("%Y-%m-%d")
 
     try:
-        # Получаем рекламные расходы
-        ads_query = supabase.table("mp_ad_costs").select("*").gte("date", date_from).lte("date", date_to)
+        ads_query = supabase.table("mp_ad_costs").select("*").eq("user_id", current_user.id).gte("date", date_from).lte("date", date_to)
         if marketplace and marketplace != "all":
             ads_query = ads_query.eq("marketplace", marketplace)
         ads_result = ads_query.execute()
 
-        # Получаем продажи за тот же период для расчёта ДРР
-        sales_query = supabase.table("mp_sales").select("*").gte("date", date_from).lte("date", date_to)
+        sales_query = supabase.table("mp_sales").select("*").eq("user_id", current_user.id).gte("date", date_from).lte("date", date_to)
         if marketplace and marketplace != "all":
             sales_query = sales_query.eq("marketplace", marketplace)
+        if fulfillment_type:
+            sales_query = sales_query.eq("fulfillment_type", fulfillment_type)
         sales_result = sales_query.execute()
 
-        # Группируем продажи по дате
         revenue_by_date = {}
         for sale in sales_result.data:
             date = sale["date"]
@@ -275,7 +612,6 @@ async def get_ad_costs(
                 revenue_by_date[date] = 0
             revenue_by_date[date] += float(sale.get("revenue", 0))
 
-        # Группируем рекламные расходы по дате
         ads_by_date = {}
         total_ad_cost = 0
         total_impressions = 0
@@ -302,7 +638,6 @@ async def get_ad_costs(
             total_clicks += ad.get("clicks", 0)
             total_orders += ad.get("orders_count", 0)
 
-        # Рассчитываем ДРР по дням
         chart_data = []
         for date in sorted(set(list(ads_by_date.keys()) + list(revenue_by_date.keys()))):
             ad_data = ads_by_date.get(date, {"cost": 0, "impressions": 0, "clicks": 0, "orders": 0})
@@ -319,11 +654,10 @@ async def get_ad_costs(
                 "orders": ad_data["orders"]
             })
 
-        # Общий ДРР
         total_revenue = sum(revenue_by_date.values())
         total_drr = round(total_ad_cost / total_revenue * 100, 2) if total_revenue > 0 else 0
 
-        return {
+        response = {
             "status": "success",
             "period": {"from": date_from, "to": date_to},
             "marketplace": marketplace or "all",
@@ -338,21 +672,58 @@ async def get_ad_costs(
             "data": chart_data
         }
 
+        # Previous period comparison
+        if include_prev_period:
+            date_from_dt = datetime.strptime(date_from, "%Y-%m-%d")
+            date_to_dt = datetime.strptime(date_to, "%Y-%m-%d")
+            period_length = (date_to_dt - date_from_dt).days + 1
+            prev_from = (date_from_dt - timedelta(days=period_length)).strftime("%Y-%m-%d")
+            prev_to = (date_from_dt - timedelta(days=1)).strftime("%Y-%m-%d")
+
+            prev_ads_query = supabase.table("mp_ad_costs").select("cost,impressions,clicks,orders_count").eq("user_id", current_user.id).gte("date", prev_from).lte("date", prev_to)
+            if marketplace and marketplace != "all":
+                prev_ads_query = prev_ads_query.eq("marketplace", marketplace)
+            prev_ads_result = prev_ads_query.execute()
+
+            prev_sales_query = supabase.table("mp_sales").select("revenue").eq("user_id", current_user.id).gte("date", prev_from).lte("date", prev_to)
+            if marketplace and marketplace != "all":
+                prev_sales_query = prev_sales_query.eq("marketplace", marketplace)
+            if fulfillment_type:
+                prev_sales_query = prev_sales_query.eq("fulfillment_type", fulfillment_type)
+            prev_sales_result = prev_sales_query.execute()
+
+            prev_ad_cost = sum(float(ad.get("cost", 0)) for ad in prev_ads_result.data)
+            prev_impressions = sum(ad.get("impressions", 0) for ad in prev_ads_result.data)
+            prev_clicks = sum(ad.get("clicks", 0) for ad in prev_ads_result.data)
+            prev_orders = sum(ad.get("orders_count", 0) for ad in prev_ads_result.data)
+            prev_revenue = sum(float(s.get("revenue", 0)) for s in prev_sales_result.data)
+            prev_drr = round(prev_ad_cost / prev_revenue * 100, 2) if prev_revenue > 0 else 0
+
+            response["previous_totals"] = {
+                "ad_cost": round(prev_ad_cost, 2),
+                "revenue": round(prev_revenue, 2),
+                "drr": prev_drr,
+                "impressions": prev_impressions,
+                "clicks": prev_clicks,
+                "orders": prev_orders
+            }
+
+        return response
+
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/dashboard/costs-tree")
-async def get_costs_tree(
-    date_from: Optional[str] = Query(None, description="Дата начала (YYYY-MM-DD)"),
-    date_to: Optional[str] = Query(None, description="Дата окончания (YYYY-MM-DD)"),
-    marketplace: Optional[str] = Query(None, description="Фильтр по МП: wb, ozon"),
-    product_id: Optional[str] = Query(None, description="Фильтр по товару (UUID)"),
-    include_children: bool = Query(True, description="Включать подкатегории (детализацию) в дереве")
+@router.get("/dashboard/ad-campaigns")
+async def get_ad_campaigns(
+    current_user: CurrentUser = Depends(get_current_user),
+    sub: UserSubscription = Depends(require_feature("ads_page")),
+    date_from: Optional[str] = Query(None),
+    date_to: Optional[str] = Query(None),
+    marketplace: Optional[str] = Query(None),
 ):
     """
-    Иерархическое дерево удержаний (tree-view как в ЛК Ozon).
-    Использует RPC функцию для оптимизации.
+    Рекламные кампании с агрегированными метриками за период
     """
     supabase = get_supabase_client()
 
@@ -362,19 +733,121 @@ async def get_costs_tree(
         date_to = datetime.now().strftime("%Y-%m-%d")
 
     try:
-        # Вызываем RPC функцию — один запрос вместо нескольких
-        result = supabase.rpc(
-            "get_costs_tree",
-            {
-                "p_date_from": date_from,
-                "p_date_to": date_to,
-                "p_marketplace": marketplace,
-                "p_product_id": product_id,
-                "p_include_children": include_children
-            }
-        ).execute()
+        # Получаем рекламные данные за период
+        ads_query = supabase.table("mp_ad_costs").select("*").eq("user_id", current_user.id).gte("date", date_from).lte("date", date_to)
+        if marketplace and marketplace != "all":
+            ads_query = ads_query.eq("marketplace", marketplace)
+        ads_result = ads_query.execute()
 
-        return result.data
+        # Получаем общую выручку для расчёта ДРР
+        sales_query = supabase.table("mp_sales").select("revenue").eq("user_id", current_user.id).gte("date", date_from).lte("date", date_to)
+        if marketplace and marketplace != "all":
+            sales_query = sales_query.eq("marketplace", marketplace)
+        sales_result = sales_query.execute()
+        total_revenue = sum(float(s.get("revenue", 0)) for s in sales_result.data)
+
+        # Агрегация по campaign_id + marketplace + campaign_name
+        campaigns_map: dict = {}
+        for ad in ads_result.data:
+            key = (ad.get("campaign_id", ""), ad.get("marketplace", ""))
+            if key not in campaigns_map:
+                campaigns_map[key] = {
+                    "campaign_id": ad.get("campaign_id", ""),
+                    "campaign_name": ad.get("campaign_name") or ad.get("campaign_id", ""),
+                    "marketplace": ad.get("marketplace", ""),
+                    "product_id": ad.get("product_id"),
+                    "cost": 0,
+                    "impressions": 0,
+                    "clicks": 0,
+                    "orders": 0,
+                }
+            campaigns_map[key]["cost"] += float(ad.get("cost", 0))
+            campaigns_map[key]["impressions"] += ad.get("impressions", 0)
+            campaigns_map[key]["clicks"] += ad.get("clicks", 0)
+            campaigns_map[key]["orders"] += ad.get("orders_count", 0)
+            # Берём product_id из первой строки где он есть
+            if not campaigns_map[key]["product_id"] and ad.get("product_id"):
+                campaigns_map[key]["product_id"] = ad.get("product_id")
+
+        # Получаем имена товаров
+        product_ids = list(set(
+            c["product_id"] for c in campaigns_map.values() if c.get("product_id")
+        ))
+        product_names: dict = {}
+        if product_ids:
+            products_result = supabase.table("mp_products").select("id,name").eq("user_id", current_user.id).in_("id", product_ids).execute()
+            for p in products_result.data:
+                product_names[p["id"]] = p.get("name", "")
+
+        # Формируем результат
+        campaigns = []
+        for camp in campaigns_map.values():
+            cost = round(camp["cost"], 2)
+            impressions = camp["impressions"]
+            clicks = camp["clicks"]
+            orders = camp["orders"]
+            ctr = round(clicks / impressions * 100, 2) if impressions > 0 else 0
+            cpc = round(cost / clicks, 2) if clicks > 0 else 0
+            drr = round(cost / total_revenue * 100, 2) if total_revenue > 0 else 0
+
+            campaigns.append({
+                "campaign_id": camp["campaign_id"],
+                "campaign_name": camp["campaign_name"],
+                "marketplace": camp["marketplace"],
+                "product_name": product_names.get(camp.get("product_id"), None),
+                "cost": cost,
+                "impressions": impressions,
+                "clicks": clicks,
+                "orders": orders,
+                "ctr": ctr,
+                "cpc": cpc,
+                "drr": drr,
+            })
+
+        # Сортировка по cost desc
+        campaigns.sort(key=lambda x: x["cost"], reverse=True)
+
+        return {
+            "status": "success",
+            "period": {"from": date_from, "to": date_to},
+            "campaigns": campaigns,
+            "total_campaigns": len(campaigns),
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/dashboard/costs-tree")
+async def get_costs_tree(
+    current_user: CurrentUser = Depends(get_current_user),
+    sub: UserSubscription = Depends(get_user_subscription),
+    date_from: Optional[str] = Query(None, description="Дата начала (YYYY-MM-DD)"),
+    date_to: Optional[str] = Query(None, description="Дата окончания (YYYY-MM-DD)"),
+    marketplace: Optional[str] = Query(None, description="Фильтр по МП: wb, ozon"),
+    product_id: Optional[str] = Query(None, description="Фильтр по товару (UUID)"),
+    include_children: bool = Query(True, description="Включать подкатегории (детализацию) в дереве"),
+    fulfillment_type: Optional[str] = Query(None, pattern="^(FBO|FBS)$"),
+):
+    """
+    Иерархическое дерево удержаний (tree-view как в ЛК Ozon).
+    """
+    # Free plan: basic costs tree only (no children details)
+    if not has_feature(sub.plan, "costs_tree_details"):
+        include_children = False
+
+    supabase = get_supabase_client()
+
+    if not date_from:
+        date_from = (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d")
+    if not date_to:
+        date_to = datetime.now().strftime("%Y-%m-%d")
+
+    try:
+        return _fetch_costs_tree_merged(
+            supabase, date_from, date_to, marketplace, product_id,
+            include_children, current_user.id, fulfillment_type,
+        )
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -382,22 +855,20 @@ async def get_costs_tree(
 
 @router.get("/dashboard/costs-tree-combined")
 async def get_costs_tree_combined(
+    current_user: CurrentUser = Depends(get_current_user),
+    sub: UserSubscription = Depends(get_user_subscription),
     date_from: Optional[str] = Query(None, description="Дата начала (YYYY-MM-DD)"),
     date_to: Optional[str] = Query(None, description="Дата окончания (YYYY-MM-DD)"),
     product_id: Optional[str] = Query(None, description="Фильтр по товару (UUID)"),
-    include_children: bool = Query(True, description="Включать подкатегории (детализацию) в дереве")
+    include_children: bool = Query(True, description="Включать подкатегории (детализацию) в дереве"),
+    fulfillment_type: Optional[str] = Query(None, pattern="^(FBO|FBS)$"),
 ):
     """
     Объединённое дерево удержаний для Ozon и WB в одном запросе.
-    Экономит 1 HTTP запрос при marketplace=all.
-
-    Возвращает:
-    {
-      "ozon": { costs-tree для Ozon },
-      "wb": { costs-tree для WB },
-      "period": { "from": "...", "to": "..." }
-    }
     """
+    if not has_feature(sub.plan, "costs_tree_details"):
+        include_children = False
+
     supabase = get_supabase_client()
 
     if not date_from:
@@ -406,40 +877,61 @@ async def get_costs_tree_combined(
         date_to = datetime.now().strftime("%Y-%m-%d")
 
     try:
-        # Вызываем RPC функцию — один запрос вместо двух
-        result = supabase.rpc(
-            "get_costs_tree_combined",
-            {
-                "p_date_from": date_from,
-                "p_date_to": date_to,
-                "p_product_id": product_id,
-                "p_include_children": include_children
-            }
-        ).execute()
-
-        return result.data
+        ozon_data = _fetch_costs_tree_merged(
+            supabase, date_from, date_to, "ozon", product_id,
+            include_children, current_user.id, fulfillment_type,
+        )
+        wb_data = _fetch_costs_tree_merged(
+            supabase, date_from, date_to, "wb", product_id,
+            include_children, current_user.id, fulfillment_type,
+        )
+        return {
+            "ozon": ozon_data,
+            "wb": wb_data,
+            "period": {"from": date_from, "to": date_to},
+        }
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.get("/dashboard/stocks")
-async def get_stocks(marketplace: Optional[str] = Query(None)):
+async def get_stocks(
+    current_user: CurrentUser = Depends(get_current_user),
+    marketplace: Optional[str] = Query(None),
+    fulfillment_type: Optional[str] = Query(None, pattern="^(FBO|FBS)$"),
+):
     """
     Текущие остатки по складам
     """
     supabase = get_supabase_client()
 
     try:
-        query = supabase.table("mp_stocks").select("*, mp_products(name, barcode)")
+        query = supabase.table("mp_stocks").select("*, mp_products(name, barcode)").eq("user_id", current_user.id)
 
         if marketplace and marketplace != "all":
             query = query.eq("marketplace", marketplace)
+        if fulfillment_type:
+            query = query.eq("fulfillment_type", fulfillment_type)
 
         result = query.execute()
 
-        # Группируем по товару.
-        # Важно: НЕ по product_name (возможны совпадения), а по (product_id|barcode) как по устойчивому ключу.
+        # Средние дневные продажи за 30 дней (для прогноза остатков)
+        date_30d_ago = (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d")
+        date_today = datetime.now().strftime("%Y-%m-%d")
+        sales_query = supabase.table("mp_sales").select("product_id, sales_count").eq("user_id", current_user.id).gte("date", date_30d_ago).lte("date", date_today)
+        if marketplace and marketplace != "all":
+            sales_query = sales_query.eq("marketplace", marketplace)
+        if fulfillment_type:
+            sales_query = sales_query.eq("fulfillment_type", fulfillment_type)
+        sales_result = sales_query.execute()
+
+        sales_by_product: dict[str, int] = {}
+        for sale in sales_result.data:
+            pid = sale.get("product_id")
+            if pid:
+                sales_by_product[pid] = sales_by_product.get(pid, 0) + sale.get("sales_count", 0)
+
         stocks_by_product: dict[str, dict] = {}
         for stock in result.data:
             product_data = stock.get("mp_products")
@@ -459,6 +951,8 @@ async def get_stocks(marketplace: Optional[str] = Query(None)):
                     "total_quantity": 0,
                     "last_updated_at": None,
                     "warehouses": [],
+                    "avg_daily_sales": 0,
+                    "days_remaining": None,
                 }
 
             warehouse_info = {
@@ -470,16 +964,525 @@ async def get_stocks(marketplace: Optional[str] = Query(None)):
             stocks_by_product[key]["warehouses"].append(warehouse_info)
             stocks_by_product[key]["total_quantity"] += stock["quantity"]
 
-            # last_updated_at: max(updated_at) среди складов (если есть)
             upd = stock.get("updated_at")
             if upd:
                 cur = stocks_by_product[key].get("last_updated_at")
                 if not cur or str(upd) > str(cur):
                     stocks_by_product[key]["last_updated_at"] = upd
 
+        # Расчёт прогноза остатков
+        for key, s in stocks_by_product.items():
+            pid = s.get("product_id")
+            total_sales_30d = sales_by_product.get(pid, 0) if pid else 0
+            avg_daily = round(total_sales_30d / 30, 2) if total_sales_30d > 0 else 0
+            s["avg_daily_sales"] = avg_daily
+            if avg_daily > 0 and s["total_quantity"] > 0:
+                s["days_remaining"] = round(s["total_quantity"] / avg_daily)
+            else:
+                s["days_remaining"] = None
+
         return {
             "status": "success",
             "stocks": list(stocks_by_product.values())
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/dashboard/stock-history")
+async def get_stock_history(
+    current_user: CurrentUser = Depends(get_current_user),
+    date_from: Optional[str] = Query(None, description="Дата начала (YYYY-MM-DD)"),
+    date_to: Optional[str] = Query(None, description="Дата окончания (YYYY-MM-DD)"),
+    marketplace: Optional[str] = Query(None, description="Фильтр по МП: wb, ozon, all"),
+    product_id: Optional[str] = Query(None, description="UUID товара (опционально)"),
+    fulfillment_type: Optional[str] = Query(None, pattern="^(FBO|FBS)$"),
+):
+    """
+    История остатков по дням (из mp_stock_snapshots).
+    Возвращает дневные снимки для графика динамики остатков.
+    """
+    supabase = get_supabase_client()
+
+    try:
+        # Default: last 30 days
+        if not date_from:
+            date_from = (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d")
+        if not date_to:
+            date_to = datetime.now().strftime("%Y-%m-%d")
+
+        query = (
+            supabase.table("mp_stock_snapshots")
+            .select("product_id, marketplace, date, total_quantity, mp_products(name, barcode)")
+            .eq("user_id", current_user.id)
+            .gte("date", date_from)
+            .lte("date", date_to)
+            .order("date", desc=False)
+        )
+
+        if marketplace and marketplace != "all":
+            query = query.eq("marketplace", marketplace)
+
+        if product_id:
+            query = query.eq("product_id", product_id)
+
+        if fulfillment_type:
+            query = query.eq("fulfillment_type", fulfillment_type)
+
+        result = query.execute()
+
+        # Aggregate: per date per product, sum across marketplaces (if all)
+        # Result shape: { dates: string[], products: { id, name, barcode }[], series: { product_id: string, data: number[] }[], totals: number[] }
+        dates_set: set[str] = set()
+        products_map: dict[str, dict] = {}
+        # raw[product_id][date] = total_quantity
+        raw: dict[str, dict[str, int]] = {}
+
+        for row in result.data:
+            pid = row.get("product_id")
+            date = row.get("date")
+            qty = row.get("total_quantity", 0)
+            product_data = row.get("mp_products")
+
+            if not pid or not date:
+                continue
+
+            # Filter WB_ACCOUNT system product
+            if product_data and product_data.get("barcode") == "WB_ACCOUNT":
+                continue
+
+            dates_set.add(date)
+
+            if pid not in products_map and product_data:
+                products_map[pid] = {
+                    "id": pid,
+                    "name": product_data.get("name", "Unknown"),
+                    "barcode": product_data.get("barcode", ""),
+                }
+
+            if pid not in raw:
+                raw[pid] = {}
+            # Sum across marketplaces for same date (when marketplace=all)
+            raw[pid][date] = raw[pid].get(date, 0) + qty
+
+        dates = sorted(dates_set)
+
+        # Build series
+        series = []
+        for pid, daily in raw.items():
+            product_info = products_map.get(pid, {"id": pid, "name": "Unknown", "barcode": ""})
+            data = [daily.get(d, 0) for d in dates]
+            series.append({
+                "product_id": pid,
+                "product_name": product_info["name"],
+                "barcode": product_info["barcode"],
+                "data": data,
+            })
+
+        # Sort series: lowest last value first (most critical)
+        series.sort(key=lambda s: s["data"][-1] if s["data"] else 0)
+
+        # Totals per date (sum across all products)
+        totals = []
+        for d in dates:
+            total = sum(daily.get(d, 0) for daily in raw.values())
+            totals.append(total)
+
+        return {
+            "status": "success",
+            "period": {"from": date_from, "to": date_to},
+            "dates": dates,
+            "products": list(products_map.values()),
+            "series": series,
+            "totals": totals,
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/dashboard/order-funnel")
+async def get_order_funnel(
+    current_user: CurrentUser = Depends(get_current_user),
+    sub: UserSubscription = Depends(require_feature("order_monitor")),
+    date_from: Optional[str] = Query(None, description="Дата начала (YYYY-MM-DD)"),
+    date_to: Optional[str] = Query(None, description="Дата окончания (YYYY-MM-DD)"),
+    marketplace: Optional[str] = Query(None, description="Фильтр по МП: wb, ozon"),
+    fulfillment_type: Optional[str] = Query(None, pattern="^(FBO|FBS)$"),
+):
+    """
+    Воронка заказов: Заказы → Выкупы → Возвраты + непроведённые Ozon.
+    Pro+ фича.
+    """
+    supabase = get_supabase_client()
+
+    if not date_from:
+        date_from = (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d")
+    if not date_to:
+        date_to = datetime.now().strftime("%Y-%m-%d")
+
+    try:
+        # 1. Продукты пользователя
+        products_result = supabase.table("mp_products").select("*").eq("user_id", current_user.id).execute()
+        products = {p["id"]: p for p in products_result.data}
+
+        # 2. Продажи за период
+        sales_query = supabase.table("mp_sales").select("*").eq("user_id", current_user.id).gte("date", date_from).lte("date", date_to)
+        if marketplace and marketplace != "all":
+            sales_query = sales_query.eq("marketplace", marketplace)
+        if fulfillment_type:
+            sales_query = sales_query.eq("fulfillment_type", fulfillment_type)
+        sales_result = sales_query.execute()
+
+        # 3. Агрегация по дням и по товарам
+        daily_map: dict[str, dict] = {}
+        product_map: dict[str, dict] = {}
+        total_orders = 0
+        total_sales = 0
+        total_returns = 0
+        total_revenue = 0.0
+
+        for sale in sales_result.data:
+            date = sale["date"]
+            product_id = sale["product_id"]
+            orders = sale.get("orders_count", 0) or 0
+            sales = sale.get("sales_count", 0) or 0
+            returns = sale.get("returns_count", 0) or 0
+            revenue = float(sale.get("revenue", 0) or 0)
+
+            if date not in daily_map:
+                daily_map[date] = {"date": date, "orders": 0, "sales": 0, "returns": 0, "revenue": 0.0}
+            daily_map[date]["orders"] += orders
+            daily_map[date]["sales"] += sales
+            daily_map[date]["returns"] += returns
+            daily_map[date]["revenue"] += revenue
+
+            if product_id not in product_map:
+                product_map[product_id] = {"orders": 0, "sales": 0, "returns": 0, "revenue": 0.0}
+            product_map[product_id]["orders"] += orders
+            product_map[product_id]["sales"] += sales
+            product_map[product_id]["returns"] += returns
+            product_map[product_id]["revenue"] += revenue
+
+            total_orders += orders
+            total_sales += sales
+            total_returns += returns
+            total_revenue += revenue
+
+        # Расчёт buyout_percent для daily
+        daily_list = []
+        for d in sorted(daily_map.values(), key=lambda x: x["date"]):
+            d["buyout_percent"] = round(d["sales"] / d["orders"] * 100, 1) if d["orders"] > 0 else 0
+            d["revenue"] = round(d["revenue"], 2)
+            daily_list.append(d)
+
+        # 4. By product
+        by_product = []
+        for product_id, m in product_map.items():
+            if product_id not in products:
+                continue
+            p = products[product_id]
+            if p.get("name", "").startswith("WB_ACCOUNT"):
+                continue
+            by_product.append({
+                "product_id": product_id,
+                "product_name": p["name"],
+                "barcode": p.get("barcode", ""),
+                "orders": m["orders"],
+                "sales": m["sales"],
+                "returns": m["returns"],
+                "buyout_percent": round(m["sales"] / m["orders"] * 100, 1) if m["orders"] > 0 else 0,
+                "revenue": round(m["revenue"], 2),
+                "avg_check": round(m["revenue"] / m["sales"], 2) if m["sales"] > 0 else 0,
+            })
+        by_product.sort(key=lambda x: x["orders"], reverse=True)
+
+        # 5. Непроведённые (settled via costs-tree)
+        unsettled_orders = 0
+        unsettled_amount = 0.0
+        try:
+            mp_list = [marketplace] if marketplace and marketplace != "all" else ["ozon", "wb"]
+            settled_revenue = 0.0
+            for mp in mp_list:
+                ct_data = _fetch_costs_tree_merged(
+                    supabase, date_from, date_to, mp, None,
+                    False, current_user.id, fulfillment_type,
+                )
+                if ct_data:
+                    if isinstance(ct_data, dict):
+                        settled_revenue += abs(float(ct_data.get("total_revenue", 0) or 0))
+                    elif isinstance(ct_data, list) and len(ct_data) > 0:
+                        settled_revenue += abs(float(ct_data[0].get("total_revenue", 0) or 0))
+
+            if total_revenue > 0 and settled_revenue < total_revenue:
+                unsettled_amount = round(total_revenue - settled_revenue, 2)
+                ratio = settled_revenue / total_revenue
+                unsettled_orders = max(0, total_orders - round(total_orders * ratio))
+        except Exception:
+            pass  # Если costs-tree недоступен, просто не показываем unsettled
+
+        # 6. Summary
+        buyout_percent = round(total_sales / total_orders * 100, 1) if total_orders > 0 else 0
+        avg_check = round(total_revenue / total_sales, 2) if total_sales > 0 else 0
+
+        return {
+            "status": "success",
+            "period": {"from": date_from, "to": date_to},
+            "marketplace": marketplace or "all",
+            "summary": {
+                "total_orders": total_orders,
+                "total_sales": total_sales,
+                "total_returns": total_returns,
+                "buyout_percent": buyout_percent,
+                "total_revenue": round(total_revenue, 2),
+                "unsettled_orders": unsettled_orders,
+                "unsettled_amount": unsettled_amount,
+                "avg_check": avg_check,
+            },
+            "daily": daily_list,
+            "by_product": by_product,
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/dashboard/orders")
+async def get_orders_list(
+    current_user: CurrentUser = Depends(get_current_user),
+    sub: UserSubscription = Depends(require_feature("order_monitor")),
+    date_from: Optional[str] = Query(None, description="Дата начала (YYYY-MM-DD)"),
+    date_to: Optional[str] = Query(None, description="Дата окончания (YYYY-MM-DD)"),
+    marketplace: Optional[str] = Query(None, description="Фильтр по МП: wb, ozon"),
+    fulfillment_type: Optional[str] = Query(None, pattern="^(FBO|FBS)$"),
+    status: Optional[str] = Query(None, description="Фильтр по статусу: ordered, sold, returned, cancelled, delivering"),
+    product_id: Optional[str] = Query(None, description="Фильтр по product_id"),
+    settled: Optional[bool] = Query(None, description="Фильтр по проведённости"),
+    search: Optional[str] = Query(None, description="Поиск по order_id, barcode"),
+    page: int = Query(1, ge=1, description="Номер страницы"),
+    page_size: int = Query(50, ge=10, le=200, description="Размер страницы"),
+    sort_by: str = Query("order_date", description="Поле сортировки"),
+    sort_dir: str = Query("desc", description="Направление: asc, desc"),
+):
+    """
+    Список заказов с пагинацией и фильтрами.
+    Pro+ фича.
+    """
+    supabase = get_supabase_client()
+
+    if not date_from:
+        date_from = (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d")
+    if not date_to:
+        date_to = datetime.now().strftime("%Y-%m-%d")
+
+    try:
+        # Базовый запрос с JOIN на mp_products
+        query = (
+            supabase.table("mp_orders")
+            .select("*, mp_products(name, barcode)", count="exact")
+            .eq("user_id", current_user.id)
+            .gte("order_date", f"{date_from}T00:00:00")
+            .lte("order_date", f"{date_to}T23:59:59")
+        )
+
+        if marketplace and marketplace != "all":
+            query = query.eq("marketplace", marketplace)
+        if fulfillment_type:
+            query = query.eq("fulfillment_type", fulfillment_type)
+        if status:
+            query = query.eq("status", status)
+        if product_id:
+            query = query.eq("product_id", product_id)
+        if settled is not None:
+            query = query.eq("settled", settled)
+        if search:
+            query = query.or_(f"order_id.ilike.%{search}%,barcode.ilike.%{search}%")
+
+        # Сортировка
+        allowed_sort = {"order_date", "price", "payout", "status", "commission", "logistics", "settled"}
+        sort_field = sort_by if sort_by in allowed_sort else "order_date"
+        query = query.order(sort_field, desc=(sort_dir == "desc"))
+
+        # Пагинация
+        offset = (page - 1) * page_size
+        query = query.range(offset, offset + page_size - 1)
+
+        result = query.execute()
+        total_count = result.count if result.count is not None else 0
+
+        # Форматируем ответ
+        orders = []
+        for row in result.data:
+            product_info = row.get("mp_products") or {}
+            orders.append({
+                "id": row["id"],
+                "marketplace": row["marketplace"],
+                "order_id": row["order_id"],
+                "product_id": row.get("product_id"),
+                "product_name": product_info.get("name", "—"),
+                "barcode": row.get("barcode", ""),
+                "order_date": row["order_date"],
+                "last_change_date": row.get("last_change_date"),
+                "status": row["status"],
+                "price": float(row.get("price", 0) or 0),
+                "sale_price": float(row["sale_price"]) if row.get("sale_price") is not None else None,
+                "sale_amount": float(row["sale_amount"]) if row.get("sale_amount") is not None else None,
+                "commission": float(row.get("commission", 0) or 0),
+                "logistics": float(row.get("logistics", 0) or 0),
+                "storage_fee": float(row.get("storage_fee", 0) or 0),
+                "other_fees": float(row.get("other_fees", 0) or 0),
+                "payout": float(row["payout"]) if row.get("payout") is not None else None,
+                "settled": row.get("settled", False),
+                "region": row.get("region"),
+                "warehouse": row.get("warehouse"),
+                "wb_sale_id": row.get("wb_sale_id"),
+                "ozon_posting_status": row.get("ozon_posting_status"),
+                "fulfillment_type": row.get("fulfillment_type", "FBO"),
+            })
+
+        # Summary: агрегация по всем записям (не только по текущей странице)
+        summary_query = (
+            supabase.table("mp_orders")
+            .select("status, settled, payout, price, sale_price")
+            .eq("user_id", current_user.id)
+            .gte("order_date", f"{date_from}T00:00:00")
+            .lte("order_date", f"{date_to}T23:59:59")
+        )
+        if marketplace and marketplace != "all":
+            summary_query = summary_query.eq("marketplace", marketplace)
+        if fulfillment_type:
+            summary_query = summary_query.eq("fulfillment_type", fulfillment_type)
+        summary_result = summary_query.execute()
+
+        total_orders = len(summary_result.data)
+        total_settled = sum(1 for r in summary_result.data if r.get("settled"))
+        total_unsettled = total_orders - total_settled
+        total_payout = sum(float(r.get("payout", 0) or 0) for r in summary_result.data if r.get("payout"))
+        total_sold = sum(1 for r in summary_result.data if r.get("status") == "sold")
+        total_returned = sum(1 for r in summary_result.data if r.get("status") == "returned")
+        # Используем sale_price (реальная цена) если есть, иначе price (каталожная)
+        total_revenue = sum(
+            float(r.get("sale_price") or r.get("price", 0) or 0)
+            for r in summary_result.data
+        )
+
+        total_pages = max(1, (total_count + page_size - 1) // page_size)
+
+        return {
+            "status": "success",
+            "period": {"from": date_from, "to": date_to},
+            "total_count": total_count,
+            "page": page,
+            "page_size": page_size,
+            "total_pages": total_pages,
+            "orders": orders,
+            "summary": {
+                "total_orders": total_orders,
+                "total_sold": total_sold,
+                "total_returned": total_returned,
+                "total_settled": total_settled,
+                "total_unsettled": total_unsettled,
+                "total_payout": round(total_payout, 2),
+                "total_revenue": round(total_revenue, 2),
+                "buyout_percent": round(total_sold / total_orders * 100, 1) if total_orders > 0 else 0,
+            },
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/dashboard/orders/{order_id}")
+async def get_order_detail(
+    order_id: str,
+    current_user: CurrentUser = Depends(get_current_user),
+    sub: UserSubscription = Depends(require_feature("order_monitor")),
+):
+    """
+    Детали одного заказа с cost breakdown.
+    Pro+ фича.
+    """
+    supabase = get_supabase_client()
+
+    try:
+        result = (
+            supabase.table("mp_orders")
+            .select("*, mp_products(name, barcode)")
+            .eq("user_id", current_user.id)
+            .eq("order_id", order_id)
+            .limit(1)
+            .execute()
+        )
+
+        if not result.data:
+            raise HTTPException(status_code=404, detail="Order not found")
+
+        row = result.data[0]
+        product_info = row.get("mp_products") or {}
+
+        return {
+            "status": "success",
+            "order": {
+                "id": row["id"],
+                "marketplace": row["marketplace"],
+                "order_id": row["order_id"],
+                "product_id": row.get("product_id"),
+                "product_name": product_info.get("name", "—"),
+                "barcode": row.get("barcode", ""),
+                "order_date": row["order_date"],
+                "last_change_date": row.get("last_change_date"),
+                "status": row["status"],
+                "price": float(row.get("price", 0) or 0),
+                "sale_price": float(row["sale_price"]) if row.get("sale_price") is not None else None,
+                "sale_amount": float(row["sale_amount"]) if row.get("sale_amount") is not None else None,
+                "commission": float(row.get("commission", 0) or 0),
+                "logistics": float(row.get("logistics", 0) or 0),
+                "storage_fee": float(row.get("storage_fee", 0) or 0),
+                "other_fees": float(row.get("other_fees", 0) or 0),
+                "payout": float(row["payout"]) if row.get("payout") is not None else None,
+                "settled": row.get("settled", False),
+                "region": row.get("region"),
+                "warehouse": row.get("warehouse"),
+                "wb_sale_id": row.get("wb_sale_id"),
+                "wb_rrd_id": row.get("wb_rrd_id"),
+                "ozon_posting_status": row.get("ozon_posting_status"),
+                "fulfillment_type": row.get("fulfillment_type", "FBO"),
+                "raw_data": row.get("raw_data"),
+            },
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/dashboard/fulfillment-info")
+async def get_fulfillment_info(
+    current_user: CurrentUser = Depends(get_current_user),
+):
+    """
+    Проверяет наличие FBS данных у пользователя.
+    Используется для Progressive Disclosure: FBS pills скрыты если нет FBS данных.
+    """
+    supabase = get_supabase_client()
+
+    try:
+        result = (
+            supabase.table("mp_sales")
+            .select("id", count="exact")
+            .eq("user_id", current_user.id)
+            .eq("fulfillment_type", "FBS")
+            .limit(1)
+            .execute()
+        )
+
+        has_fbs = result.count is not None and result.count > 0
+
+        return {
+            "has_fbs_data": has_fbs,
+            "fbs_products_count": result.count or 0,
         }
 
     except Exception as e:
