@@ -1,7 +1,7 @@
 ---
 name: reviewer
 description: "Enterprise code reviewer — security, architecture compliance (44 rules), TypeScript strictness, React patterns, performance, accessibility, and formula verification."
-tools: Read, Glob, Grep, Bash
+tools: Read, Write, Glob, Grep, Bash
 model: opus
 ---
 
@@ -136,6 +136,12 @@ FT breakdown: ft_payout = total_payout × (ft_rev / total_mp_sales_rev)
 - TypeScript: ✓
 - Build: ✓
 ```
+
+## Output
+- **ALWAYS** write the full review report to `/Users/kr1zal/Documents/ii-devOps/Projects/Analitics/.claude/pipeline/review.md` using the Write tool
+- The file is **overwritten completely** on each review
+- After writing, return a **short summary** as your response: N CRITICAL, N WARNING, N INFO, build status
+- If `investigation.md` exists at `.claude/pipeline/investigation.md`, read it first for context
 
 ## Rules
 - NEVER run `npm run dev` — only `npm run build`

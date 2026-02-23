@@ -733,56 +733,299 @@ function ProductShowcase() {
 }
 
 /* ──────────────────────────────────────────────
-   SOCIAL PROOF
+   SOCIAL PROOF — Enterprise Testimonials Marquee
    ────────────────────────────────────────────── */
 
-function SocialProofSection() {
-  const reviews: Array<{ text: string; author: string; role: string; badge: string; badgeClass: string }> = [
-    {
-      text: '«Наконец-то вижу реальную прибыль по каждому товару. Раньше в Excel считал 3 часа, сейчас всё автоматически.»',
-      author: 'Алексей М.',
-      role: 'Продавец витаминов, WB',
-      badge: 'WB',
-      badgeClass: 'bg-violet-100 text-violet-700',
-    },
-    {
-      text: '«Дерево удержаний — это то, чего не хватало. Теперь понимаю, куда уходят деньги на маркетплейсе.»',
-      author: 'Екатерина С.',
-      role: 'Селлер БАДов, Ozon',
-      badge: 'Ozon',
-      badgeClass: 'bg-blue-100 text-blue-700',
-    },
-  ];
+interface Testimonial {
+  quote: string;
+  author: string;
+  role: string;
+  niche: string;
+  marketplace: 'WB' | 'Ozon' | 'WB + Ozon';
+  metric: string;
+  metricLabel: string;
+  initials: string;
+  avatarColor: string;
+}
+
+const TESTIMONIALS_ROW_1: Testimonial[] = [
+  {
+    quote: 'Раньше каждый понедельник убивал полдня на Excel — сводил выручку, вычитал комиссии, пытался понять прибыль. Подключил сервис — и через 10 минут увидел цифру, которая совпала с моим расчётом. Только без четырёх часов работы.',
+    author: 'Алексей М.',
+    role: 'Продавец витаминов',
+    niche: 'Витамины и БАДы',
+    marketplace: 'WB',
+    metric: '–4 часа',
+    metricLabel: 'экономия в неделю',
+    initials: 'АМ',
+    avatarColor: 'bg-indigo-500',
+  },
+  {
+    quote: 'У меня 12 SKU на Ozon, и я искренне не понимала, почему при хорошей выручке на счёт приходит копейки. Дерево удержаний показало: 23% уходило на логистику FBO. Перенесла часть на FBS — маржа выросла на 8 процентных пунктов.',
+    author: 'Екатерина С.',
+    role: 'Селлер БАДов',
+    niche: 'БАДы',
+    marketplace: 'Ozon',
+    metric: '+8 п.п.',
+    metricLabel: 'рост маржи',
+    initials: 'ЕС',
+    avatarColor: 'bg-blue-500',
+  },
+  {
+    quote: 'Торгую одновременно на WB и Ozon. Открывать два личных кабинета, выгружать отчёты, сводить в таблице — это был ад. Здесь оба маркетплейса в одном экране, и я вижу, где какой товар приносит больше. Решения принимаю за минуты.',
+    author: 'Дмитрий К.',
+    role: 'Селлер спортпита',
+    niche: 'Спортивное питание',
+    marketplace: 'WB + Ozon',
+    metric: '2 МП',
+    metricLabel: 'в одном дашборде',
+    initials: 'ДК',
+    avatarColor: 'bg-emerald-500',
+  },
+  {
+    quote: 'Юнит-экономика спасла мой бизнес. Я думала, что все 8 позиций прибыльные. Оказалось, два SKU работали в минус из-за высокой комиссии и возвратов. Убрала их — общая прибыль выросла, хотя выручка снизилась.',
+    author: 'Марина Л.',
+    role: 'Продавец косметики',
+    niche: 'Косметика',
+    marketplace: 'WB',
+    metric: '2 SKU',
+    metricLabel: 'убыточных найдено',
+    initials: 'МЛ',
+    avatarColor: 'bg-rose-500',
+  },
+];
+
+const TESTIMONIALS_ROW_2: Testimonial[] = [
+  {
+    quote: 'Дважды попадал на OOS — товар кончился, карточка улетела вниз, потом две недели восстанавливал позиции. С прогнозом остатков вижу, когда нужно заказывать поставку. Уже два месяца без единого out-of-stock.',
+    author: 'Сергей В.',
+    role: 'Продавец БАДов',
+    niche: 'БАДы',
+    marketplace: 'Ozon',
+    metric: '0 OOS',
+    metricLabel: 'за 2 месяца',
+    initials: 'СВ',
+    avatarColor: 'bg-amber-500',
+  },
+  {
+    quote: 'Лила деньги в рекламу на WB и не понимала, окупается она или нет. В аналитике увидела ДРР 18% — при марже 22% это почти ноль прибыли. Перераспределила бюджет на топовые карточки, ДРР упал до 9%.',
+    author: 'Анна Т.',
+    role: 'Категорийный менеджер',
+    niche: 'Витамины',
+    marketplace: 'WB',
+    metric: '9%',
+    metricLabel: 'ДРР вместо 18%',
+    initials: 'АТ',
+    avatarColor: 'bg-violet-500',
+  },
+  {
+    quote: 'Ставил план продаж наобум — просто \"хочу миллион\". Теперь вижу реальный темп: сколько продаю в день, укладываюсь или нет, прогноз на конец месяца. В январе впервые выполнил план на 94%. Просто потому что видел, где отстаю.',
+    author: 'Игорь Н.',
+    role: 'Предприниматель',
+    niche: 'БАДы и витамины',
+    marketplace: 'WB + Ozon',
+    metric: '94%',
+    metricLabel: 'выполнение плана',
+    initials: 'ИН',
+    avatarColor: 'bg-cyan-500',
+  },
+  {
+    quote: 'Каждое утро данные уже обновлены. Не нужно ничего выгружать, импортировать, ждать. Открываю дашборд — и сразу вижу вчерашнюю прибыль, остатки, рекламу. Для меня это как иметь финдиректора, который работает 24/7.',
+    author: 'Ольга П.',
+    role: 'Владелец магазина',
+    niche: 'Здоровое питание',
+    marketplace: 'Ozon',
+    metric: '24/7',
+    metricLabel: 'автосинхронизация',
+    initials: 'ОП',
+    avatarColor: 'bg-teal-500',
+  },
+];
+
+const MP_BADGE_STYLES: Record<string, string> = {
+  'WB': 'bg-violet-50 text-violet-600 ring-violet-200',
+  'Ozon': 'bg-blue-50 text-blue-600 ring-blue-200',
+  'WB + Ozon': 'bg-indigo-50 text-indigo-600 ring-indigo-200',
+};
+
+function TestimonialCard({ t }: { t: Testimonial }) {
+  return (
+    <div className="w-[340px] sm:w-[380px] flex-shrink-0 mx-3">
+      <div className="bg-white rounded-2xl border border-gray-100 p-5 sm:p-6 h-full flex flex-col shadow-sm hover:shadow-md transition-shadow duration-300">
+        {/* Metric highlight */}
+        <div className="flex items-center gap-3 mb-4">
+          <div className="flex items-center gap-2 px-3 py-1.5 bg-gray-50 rounded-lg">
+            <span className="text-lg font-bold text-gray-900">{t.metric}</span>
+            <span className="text-xs text-gray-500">{t.metricLabel}</span>
+          </div>
+          <span className={`ml-auto text-[11px] px-2 py-0.5 rounded-full font-medium ring-1 ring-inset ${MP_BADGE_STYLES[t.marketplace]}`}>
+            {t.marketplace}
+          </span>
+        </div>
+
+        {/* Quote */}
+        <p className="text-[13px] sm:text-sm leading-relaxed text-gray-600 flex-1 mb-4">
+          {t.quote}
+        </p>
+
+        {/* Author */}
+        <div className="flex items-center gap-3 pt-3 border-t border-gray-100">
+          <div className={`w-9 h-9 rounded-full ${t.avatarColor} flex items-center justify-center`}>
+            <span className="text-xs font-semibold text-white">{t.initials}</span>
+          </div>
+          <div className="min-w-0">
+            <p className="text-sm font-semibold text-gray-900 truncate">{t.author}</p>
+            <p className="text-xs text-gray-400 truncate">{t.role} · {t.niche}</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** Touch-swipeable marquee row. CSS animation for auto-scroll, pointer events for manual drag. */
+function MarqueeRow({ testimonials, direction }: { testimonials: Testimonial[]; direction: 'left' | 'right' }) {
+  const doubled = [...testimonials, ...testimonials];
+  const trackRef = useRef<HTMLDivElement>(null);
+  const dragging = useRef(false);
+  const startX = useRef(0);
+  const startOffset = useRef(0);
+  const currentOffset = useRef(0);
+  const resumeTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
+
+  const ANIMATION_DURATION = 60; // seconds, must match CSS
+
+  /** Read current translateX from the running CSS animation or inline transform */
+  const getTranslateX = useCallback(() => {
+    const el = trackRef.current;
+    if (!el) return 0;
+    const style = window.getComputedStyle(el);
+    const matrix = new DOMMatrix(style.transform);
+    return matrix.m41;
+  }, []);
+
+  /** Pause CSS animation and switch to manual transform */
+  const pauseAnimation = useCallback(() => {
+    const el = trackRef.current;
+    if (!el) return;
+    const tx = getTranslateX();
+    currentOffset.current = tx;
+    el.style.animation = 'none';
+    el.style.transform = `translateX(${tx}px)`;
+  }, [getTranslateX]);
+
+  /** Resume CSS animation from current offset position */
+  const resumeAnimation = useCallback(() => {
+    const el = trackRef.current;
+    if (!el) return;
+    const totalWidth = el.scrollWidth / 2; // half = one set of cards
+    const tx = currentOffset.current;
+
+    // Normalize offset into [0, -totalWidth) range for left, [-totalWidth, 0) for right
+    let normalizedTx = tx % totalWidth;
+    if (direction === 'left') {
+      if (normalizedTx > 0) normalizedTx -= totalWidth;
+    } else {
+      if (normalizedTx < -totalWidth) normalizedTx += totalWidth;
+    }
+    currentOffset.current = normalizedTx;
+
+    // Calculate what fraction of the animation cycle this offset represents
+    const progress = direction === 'left'
+      ? Math.abs(normalizedTx) / totalWidth
+      : 1 - Math.abs(normalizedTx) / totalWidth;
+    const delay = -(progress * ANIMATION_DURATION);
+
+    el.style.transform = '';
+    el.style.animation = '';
+    el.classList.remove(direction === 'left' ? 'marquee-left' : 'marquee-right');
+
+    // Force reflow to restart animation
+    void el.offsetWidth;
+
+    el.style.animationDelay = `${delay}s`;
+    el.classList.add(direction === 'left' ? 'marquee-left' : 'marquee-right');
+  }, [direction, ANIMATION_DURATION]);
+
+  const handlePointerDown = useCallback((e: React.PointerEvent) => {
+    // Only handle touch (not mouse on desktop — desktop uses hover pause)
+    if (e.pointerType === 'mouse') return;
+    dragging.current = true;
+    startX.current = e.clientX;
+    clearTimeout(resumeTimer.current);
+    pauseAnimation();
+    startOffset.current = currentOffset.current;
+    (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
+  }, [pauseAnimation]);
+
+  const handlePointerMove = useCallback((e: React.PointerEvent) => {
+    if (!dragging.current || e.pointerType === 'mouse') return;
+    const deltaX = e.clientX - startX.current;
+    const tx = startOffset.current + deltaX;
+    currentOffset.current = tx;
+    if (trackRef.current) {
+      trackRef.current.style.transform = `translateX(${tx}px)`;
+    }
+  }, []);
+
+  const handlePointerUp = useCallback((e: React.PointerEvent) => {
+    if (!dragging.current || e.pointerType === 'mouse') return;
+    dragging.current = false;
+    // Resume auto-scroll after 2s pause
+    resumeTimer.current = setTimeout(resumeAnimation, 2000);
+  }, [resumeAnimation]);
+
+  useEffect(() => {
+    return () => clearTimeout(resumeTimer.current);
+  }, []);
 
   return (
-    <section aria-label="Отзывы клиентов" className="py-12 sm:py-16 bg-gray-50">
-      <div className="max-w-5xl mx-auto px-4 sm:px-6">
-        <RevealSection>
-          <h2 className="text-2xl sm:text-3xl font-bold text-gray-900 text-center mb-8 sm:mb-10">
-            Что говорят селлеры
-          </h2>
-        </RevealSection>
+    <div className="overflow-hidden">
+      <div
+        ref={trackRef}
+        className={`marquee-track ${direction === 'left' ? 'marquee-left' : 'marquee-right'}`}
+        style={{ touchAction: 'pan-y' }}
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={handlePointerUp}
+        onPointerCancel={handlePointerUp}
+      >
+        {doubled.map((t, i) => (
+          <TestimonialCard key={`${t.author}-${i}`} t={t} />
+        ))}
+      </div>
+    </div>
+  );
+}
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {reviews.map((r, i) => (
-            <RevealSection key={r.author} delay={i * 120}>
-              <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 sm:p-8 hover:shadow-md transition-shadow duration-300 text-left h-full flex flex-col justify-between">
-                <p className="text-gray-600 text-sm sm:text-base leading-relaxed italic">
-                  {r.text}
-                </p>
-                <div className="border-t border-gray-100 mt-4 pt-4 flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-semibold text-gray-900">{r.author}</p>
-                    <p className="text-xs text-gray-400">{r.role}</p>
-                  </div>
-                  <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${r.badgeClass}`}>
-                    {r.badge}
-                  </span>
-                </div>
-              </div>
-            </RevealSection>
-          ))}
-        </div>
+function SocialProofSection() {
+  return (
+    <section aria-label="Отзывы клиентов" className="py-14 sm:py-20 bg-gray-50 overflow-hidden">
+      {/* Header */}
+      <div className="max-w-5xl mx-auto px-4 sm:px-6 mb-10 sm:mb-14">
+        <RevealSection>
+          <div className="text-center">
+            <p className="text-sm font-medium text-indigo-600 mb-2 tracking-wide uppercase">
+              Отзывы продавцов
+            </p>
+            <h2 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-gray-900 mb-3">
+              Что говорят те, кто уже считает прибыль
+            </h2>
+            <p className="text-gray-500 text-sm sm:text-base max-w-2xl mx-auto">
+              Селлеры витаминов, БАДов и косметики делятся результатами работы с RevioMP
+            </p>
+          </div>
+        </RevealSection>
+      </div>
+
+      {/* Marquee rows */}
+      <div className="space-y-4 sm:space-y-6 relative">
+        {/* Fade edges */}
+        <div className="pointer-events-none absolute inset-y-0 left-0 w-16 sm:w-32 bg-gradient-to-r from-gray-50 to-transparent z-10" />
+        <div className="pointer-events-none absolute inset-y-0 right-0 w-16 sm:w-32 bg-gradient-to-l from-gray-50 to-transparent z-10" />
+
+        <MarqueeRow testimonials={TESTIMONIALS_ROW_1} direction="left" />
+        <MarqueeRow testimonials={TESTIMONIALS_ROW_2} direction="right" />
       </div>
     </section>
   );

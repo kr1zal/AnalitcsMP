@@ -124,6 +124,53 @@ cd backend && source venv/bin/activate && uvicorn app.main:app --reload --port 8
 cd frontend && npm run dev  # port 5173. НИКОГДА npm run dev для ПРОВЕРКИ — только npm run build
 ```
 
+## Agent Pipeline (ОБЯЗАТЕЛЬНО для средних и больших задач)
+
+Проект имеет систему кастомных агентов в `.claude/agents/`. **Ты (главный агент) = Tech Director.** Для задач, затрагивающих 3+ файлов или требующих UI-дизайна — **ОБЯЗАТЕЛЬНО** делегируй работу агентам через `Task` tool.
+
+### Доступные агенты
+| Агент | subagent_type | Роль | Когда использовать |
+|-------|---------------|------|--------------------|
+| `team-lead` | `team-lead` | Оркестратор pipeline | Большие фичи (8+ файлов), full-stack задачи |
+| `investigator` | `investigator` | Находит ВСЕ связанные файлы | Перед любой задачей средней+ сложности |
+| `designer` | `designer` | UI/UX spec: ASCII mockups, Tailwind классы | Новые UI компоненты, редизайн |
+| `frontend-worker` | `frontend-worker` | Реализация React/TS | Фронтенд-код |
+| `backend-worker` | `general-purpose` | Реализация Python/FastAPI | Backend-код, миграции, sync |
+| `reviewer` | `reviewer` | Код-ревью: security, architecture, types | После реализации средних+ задач |
+| `ui-reviewer` | `ui-reviewer` | Визуальный ревью: responsive, a11y | После UI-изменений |
+| `debugger` | `debugger` | Диагностика и фикс багов | Когда что-то сломалось |
+
+### Pipeline файлы (контекст между агентами)
+```
+.claude/pipeline/
+  investigation.md ← investigator пишет, все читают
+  design.md        ← designer пишет, workers + ui-reviewer читают
+  plan.md          ← team-lead пишет, tech director читает
+  review.md        ← reviewer/ui-reviewer пишут
+```
+
+### Когда какой подход
+| Сложность | Файлов | Подход |
+|-----------|--------|--------|
+| **Мелкая** (баг, 1 файл) | 1-2 | Делай сам, без агентов |
+| **Средняя** (фича, компонент) | 3-8 | investigator → frontend/backend-worker → build check |
+| **Большая** (новая страница, full-stack) | 8+ | team-lead оркестрирует полный pipeline |
+
+### Как запускать агентов
+```
+Task(subagent_type="team-lead", mode="bypassPermissions", prompt="[задача]")
+Task(subagent_type="investigator", mode="bypassPermissions", prompt="Исследуй [фичу]. Запиши отчёт в investigation.md")
+Task(subagent_type="frontend-worker", mode="bypassPermissions", prompt="Прочитай investigation.md. Реализуй [задачу].")
+```
+
+**КРИТИЧНО:** Всегда используй `mode="bypassPermissions"` при запуске агентов — иначе агент будет спрашивать разрешение на каждое действие.
+
+### Правила делегирования
+1. **НЕ делай сам** то, что должен делать агент — если задача средняя+, запусти pipeline
+2. **НЕ пиши код сам** при наличии team-lead — дай ему координировать
+3. **ВСЕГДА** включай в промпт агента: путь к pipeline файлам, конкретные файлы и строки кода
+4. **Деплой — ТОЛЬКО пользователь** (через /deploy), агенты НЕ деплоят
+
 ## Документация
 | Файл | Содержимое |
 |------|-----------|

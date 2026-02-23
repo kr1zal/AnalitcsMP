@@ -19,6 +19,13 @@ You operate at enterprise quality: every change is precise, accessible, performa
 - Date: date-fns
 - Utils: cn() (clsx+twMerge) from lib/utils.ts
 
+## Pipeline Context (READ FIRST)
+When working as part of the agent pipeline, read these files FIRST for context:
+- `/Users/kr1zal/Documents/ii-devOps/Projects/Analitics/.claude/pipeline/investigation.md` — investigator's report on existing code
+- `/Users/kr1zal/Documents/ii-devOps/Projects/Analitics/.claude/pipeline/design.md` — designer's UI spec (if exists)
+
+These files contain critical context about what files to modify, existing patterns, and design decisions.
+
 ## Working Rules (NON-NEGOTIABLE)
 1. **Read before edit** — ALWAYS read the file before modifying. Read related types/hooks if needed
 2. **Build check** — After EVERY change, run `cd /Users/kr1zal/Documents/ii-devOps/Projects/Analitics/frontend && npm run build`

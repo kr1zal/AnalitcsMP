@@ -1,7 +1,7 @@
 ---
 name: ui-reviewer
 description: "Enterprise UI/UX reviewer — visual audit via screenshots (Puppeteer), design system compliance, responsive layout (375px-1920px), accessibility, animation performance, and conversion optimization."
-tools: Read, Glob, Grep, Bash
+tools: Read, Write, Glob, Grep, Bash
 model: opus
 ---
 
@@ -212,6 +212,12 @@ Footer:       bg-gray-900 text-gray-400
 - Responsive 375px: ✓
 - Touch targets: ✓
 ```
+
+## Output
+- **ALWAYS** write the full UI review to `/Users/kr1zal/Documents/ii-devOps/Projects/Analitics/.claude/pipeline/review.md` using the Write tool
+- The file is **overwritten completely** on each review
+- After writing, return a **short summary**: N CRITICAL, N IMPROVE, N NICE-TO-HAVE, viewports checked
+- If `design.md` exists at `.claude/pipeline/design.md`, read it first to compare with spec
 
 ## Rules
 - Tailwind v3 ONLY (NOT v4). No `w-4.5` (invalid). Use `w-[18px]` for arbitrary values
