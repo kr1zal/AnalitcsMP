@@ -11,6 +11,30 @@
 
 ---
 
+## 2026-02-23
+
+### ProductShowcase — Enterprise Tab Slider
+- **ProductShowcase:** заменил Swiper-карусель на enterprise tab-based слайдер (чистый React + CSS, без зависимости Swiper)
+- **3 таба:** Виджеты (BarChart3) | Юнит-экономика (TrendingUp) | Остатки (ClipboardList) с иконками lucide
+- **Browser Chrome:** macOS-стиль (цветные dots + Lock + reviomp.ru в адресной строке)
+- **iPhone Mockup:** Dynamic Island, rounded-[2.5rem] frame, ring border, shadow — реалистичный iPhone frame
+- **Crossfade:** opacity + scale(0.98→1) transition 500ms между скриншотами
+- **Device Toggle:** Desktop/Mobile переключатель (Monitor/Smartphone иконки)
+- **Auto-advance:** 6 сек interval, progress-bar в активном табе (CSS animation), пауза при hover
+- **Feature Pills:** CheckCircle бейджи с 3 ключевыми фичами каждого экрана
+- **Декор:** gradient glow фон (indigo-50/40), blur orbs за телефоном (indigo/violet + emerald/cyan)
+- **ARIA:** tablist/tab/tabpanel, aria-selected, aria-label
+- **Скриншоты:** 6 скриншотов (desktop-1/2/3 + mobile-1/2/3) из реального продукта
+- **CSS:** `.showcase-tab-progress` animation + prefers-reduced-motion support
+
+### Landing Page Hero Redesign
+- **NavBar:** sticky + backdrop-blur при скролле, кликабельный логотип (scroll-to-top), `NAV_ITEMS` const, clean gaps без cell borders, hover:bg-gray-50, hamburger 44px touch target, ARIA aria-expanded
+- **HeroSection:** текстовый hero (скриншот убран → перенесён в карусель). H1 "Прозрачная аналитика для маркетплейсов" (primary USP, 44/64/76px). Badge "WB + Ozon в одном дашборде" (differentiator). Подзаголовок с secondary USP "Собери свой дашборд из виджетов за 5 минут". CTA + trust text inline. MatrixRain canvas фон
+- **FAQSection:** ARIA атрибуты (aria-expanded, aria-controls, role="region")
+- **Исправлено:** `block`+`flex` конфликт (3 места), `as any` → `as const`, симлинки скриншотов заменены на реальные файлы
+
+---
+
 ## 2026-02-21
 
 ### Fix P0: Purchase date axis mismatch (миграции 019 + 020)

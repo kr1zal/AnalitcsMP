@@ -5,15 +5,10 @@
  */
 import { useState, useEffect, useRef, useCallback, type ReactNode, type MouseEvent } from 'react';
 import { Link } from 'react-router-dom';
-import { Swiper, SwiperSlide } from 'swiper/react';
-import { Pagination, Autoplay } from 'swiper/modules';
-import 'swiper/css';
-import 'swiper/css/pagination';
 import {
   BarChart3,
   TrendingUp,
   ShieldCheck,
-  Zap,
   RefreshCw,
   PieChart,
   ClipboardList,
@@ -29,6 +24,8 @@ import {
   LineChart,
   Database,
   Globe,
+  Monitor,
+  Smartphone,
 } from 'lucide-react';
 
 /* ──────────────────────────────────────────────
@@ -42,6 +39,12 @@ function useRevealOnScroll(threshold = 0.15) {
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
+    // Elements already in viewport on load — reveal immediately, no animation
+    const rect = el.getBoundingClientRect();
+    if (rect.top < window.innerHeight && rect.bottom > 0) {
+      el.classList.add('revealed', 'no-transition');
+      return;
+    }
     const observer = new IntersectionObserver(
       ([entry]) => {
         if (entry.isIntersecting) {
@@ -209,6 +212,7 @@ function MatrixRain() {
   return (
     <canvas
       ref={canvasRef}
+      aria-hidden="true"
       className="absolute inset-0 w-full h-full pointer-events-none"
       style={{
         maskImage: 'radial-gradient(ellipse 70% 60% at 50% 45%, transparent 15%, rgba(0,0,0,0.4) 40%, black 70%)',
@@ -234,55 +238,83 @@ function useSpotlight() {
    NAVBAR
    ────────────────────────────────────────────── */
 
+const NAV_ITEMS = [
+  { label: 'Возможности', id: 'features' },
+  { label: 'Тарифы', id: 'pricing' },
+  { label: 'Безопасность', id: 'security' },
+  { label: 'FAQ', id: 'faq' },
+] as const;
+
 function NavBar() {
   const [mobileOpen, setMobileOpen] = useState(false);
+  const headerRef = useRef<HTMLElement>(null);
+
+  useEffect(() => {
+    let prev = false;
+    const onScroll = () => {
+      const now = window.scrollY > 0;
+      if (now !== prev) {
+        prev = now;
+        const h = headerRef.current;
+        if (!h) return;
+        h.classList.toggle('border-b', now);
+        h.classList.toggle('border-gray-200/60', now);
+        h.classList.toggle('bg-white/80', now);
+        h.classList.toggle('backdrop-blur-xl', now);
+        h.classList.toggle('bg-white', !now);
+      }
+    };
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => window.removeEventListener('scroll', onScroll);
+  }, []);
 
   const scrollTo = (id: string) => {
     document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' });
     setMobileOpen(false);
   };
 
+  const scrollToTop = () => {
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+    setMobileOpen(false);
+  };
+
   return (
-    <header className="bg-white">
-      <div className="max-w-6xl mx-auto px-4 sm:px-6 border-b border-gray-200">
+    <header ref={headerRef} className="bg-white sticky top-0 z-50 transition-[background-color,backdrop-filter] duration-200">
+      <div className="max-w-6xl mx-auto px-4 sm:px-6">
         <div className="flex items-center justify-between h-16">
-          <div className="flex items-center gap-2.5">
+          {/* Logo — clickable, scrolls to top */}
+          <button onClick={scrollToTop} className="flex items-center gap-2.5 hover:opacity-80 transition-opacity">
             <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-indigo-600 to-violet-600 flex items-center justify-center">
-              <BarChart3 className="w-4.5 h-4.5 text-white" />
+              <BarChart3 className="w-[18px] h-[18px] text-white" />
             </div>
             <span className="font-bold text-lg tracking-tight text-gray-900">
               Revio<span className="text-indigo-600">MP</span>
             </span>
-          </div>
+          </button>
 
-          {/* Desktop nav — cell structure with visible borders */}
-          <nav className="hidden md:flex items-center h-full border-l border-gray-200">
-            {[
-              { label: 'Возможности', id: 'features' },
-              { label: 'Тарифы', id: 'pricing' },
-              { label: 'Безопасность', id: 'security' },
-              { label: 'FAQ', id: 'faq' },
-            ].map((item) => (
+          {/* Desktop nav — clean gaps, no cell borders */}
+          <nav className="hidden md:flex items-center gap-1">
+            {NAV_ITEMS.map((item) => (
               <button
                 key={item.id}
                 onClick={() => scrollTo(item.id)}
-                className="text-sm font-medium text-gray-600 hover:text-gray-900 px-5 h-full flex items-center border-r border-gray-200 hover:bg-white hover:shadow-[0_2px_12px_rgba(0,0,0,0.1)] hover:z-10 transition-all duration-200"
+                className="text-sm font-medium text-gray-500 hover:text-gray-900 px-3.5 py-2 rounded-lg hover:bg-gray-50 transition-colors duration-150"
               >
                 {item.label}
               </button>
             ))}
           </nav>
 
-          <div className="hidden md:flex items-center h-full">
+          <div className="hidden md:flex items-center gap-3">
             <Link
               to="/login"
-              className="text-sm font-medium text-gray-700 hover:text-gray-900 px-5 h-full flex items-center border-x border-gray-200 hover:bg-white hover:shadow-[0_2px_12px_rgba(0,0,0,0.1)] hover:z-10 transition-all duration-200"
+              className="text-sm font-medium text-gray-600 hover:text-gray-900 px-3.5 py-2 rounded-lg hover:bg-gray-50 transition-colors duration-150"
             >
               Войти
             </Link>
             <Link
               to="/login?signup=1"
-              className="text-sm font-semibold text-white bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-700 hover:to-violet-700 px-5 py-2.5 rounded-xl transition-all shadow-md shadow-indigo-200/50 hover:shadow-lg hover:shadow-indigo-300/50 ml-4"
+              className="text-sm font-semibold text-white bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-700 hover:to-violet-700 px-5 py-2 rounded-lg transition-all shadow-sm hover:shadow-md"
             >
               Начать бесплатно
             </Link>
@@ -291,9 +323,10 @@ function NavBar() {
           {/* Mobile hamburger */}
           <button
             type="button"
-            className="md:hidden p-2 text-gray-600 hover:text-gray-900"
+            className="md:hidden p-2.5 min-w-[44px] min-h-[44px] flex items-center justify-center text-gray-600 hover:text-gray-900"
             onClick={() => setMobileOpen(!mobileOpen)}
             aria-label="Меню"
+            aria-expanded={mobileOpen}
           >
             {mobileOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
           </button>
@@ -302,28 +335,23 @@ function NavBar() {
 
       {/* Mobile dropdown */}
       {mobileOpen && (
-        <div className="md:hidden bg-white border-t border-gray-100 px-4 py-4 space-y-1 animate-fade-in">
-          {[
-            { label: 'Возможности', id: 'features' },
-            { label: 'Тарифы', id: 'pricing' },
-            { label: 'Безопасность', id: 'security' },
-            { label: 'FAQ', id: 'faq' },
-          ].map((item) => (
+        <div className="md:hidden bg-white/95 backdrop-blur-xl border-t border-gray-100 px-4 py-4 space-y-1 animate-fade-in">
+          {NAV_ITEMS.map((item) => (
             <button
               key={item.id}
               onClick={() => scrollTo(item.id)}
-              className="block w-full text-left text-sm text-gray-700 hover:text-indigo-600 py-2.5 px-2 rounded-lg hover:bg-indigo-50/50 transition-colors"
+              className="block w-full text-left text-sm text-gray-600 hover:text-gray-900 py-2.5 px-3 rounded-lg hover:bg-gray-50 transition-colors"
             >
               {item.label}
             </button>
           ))}
           <hr className="border-gray-100 my-2" />
-          <Link to="/login" className="block text-sm text-gray-700 py-2.5 px-2">
+          <Link to="/login" className="text-sm text-gray-600 py-2.5 px-3 min-h-[44px] flex items-center hover:text-gray-900">
             Войти
           </Link>
           <Link
             to="/login?signup=1"
-            className="block text-center text-sm font-semibold text-white bg-gradient-to-r from-indigo-600 to-violet-600 px-4 py-3 rounded-xl transition-colors"
+            className="flex items-center justify-center text-sm font-semibold text-white bg-gradient-to-r from-indigo-600 to-violet-600 px-4 py-3 rounded-xl transition-colors"
           >
             Начать бесплатно
           </Link>
@@ -339,34 +367,38 @@ function NavBar() {
 
 function HeroSection() {
   return (
-    <section className="relative pt-12 pb-16 sm:pt-16 sm:pb-24 overflow-hidden">
+    <section className="relative pt-6 pb-16 sm:pt-8 sm:pb-20 overflow-hidden">
       {/* Background gradient */}
-      <div className="absolute inset-0 bg-gradient-to-b from-indigo-50/80 via-white to-white" />
+      <div className="absolute inset-0 bg-gradient-to-b from-indigo-50/60 via-white to-white" />
 
       {/* Matrix digital rain animation */}
       <MatrixRain />
 
-      <div className="relative max-w-6xl mx-auto px-4 sm:px-6 text-center">
+      <div className="relative max-w-5xl mx-auto px-4 sm:px-6 text-center">
         {/* Badge */}
-        <div className="animate-fade-up inline-flex items-center gap-2 px-4 py-1.5 bg-indigo-50 border border-indigo-100 rounded-full mb-6">
+        <div className="animate-fade-up inline-flex items-center gap-2 px-4 py-1.5 bg-indigo-50 border border-indigo-100 rounded-full mb-10 sm:mb-14">
           <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
           <span className="text-xs font-medium text-indigo-700">
             WB + Ozon в одном дашборде
           </span>
         </div>
 
-        <h1 className="animate-fade-up delay-100 text-[42px] sm:text-6xl lg:text-7xl font-extrabold leading-[1.08] tracking-tight max-w-4xl mx-auto">
-          <span className="text-gray-900">Прозрачная аналитика </span>
+        {/* H1 */}
+        <h1 className="animate-fade-up delay-100 text-[44px] sm:text-[64px] lg:text-[76px] font-extrabold leading-[1.08] tracking-tight max-w-4xl mx-auto">
+          <span className="text-gray-900">Прозрачная аналитика</span>
+          <br />
           <span className="bg-gradient-to-r from-indigo-600 to-violet-600 bg-clip-text text-transparent">
             для маркетплейсов
           </span>
         </h1>
 
-        <p className="animate-fade-up delay-200 mt-6 text-lg sm:text-xl text-gray-600 max-w-2xl mx-auto leading-relaxed">
-          Выручка, прибыль, удержания, реклама и&nbsp;остатки — в&nbsp;реальном
-          времени. Без&nbsp;Excel и&nbsp;ручных расчётов.
+        {/* Subheadline — 2 lines max on desktop */}
+        <p className="animate-fade-up delay-200 mt-5 text-lg sm:text-xl text-gray-500 max-w-2xl mx-auto leading-relaxed">
+          Выручка, прибыль, удержания, реклама и&nbsp;остатки — в&nbsp;реальном времени.
+          Собери свой дашборд из&nbsp;виджетов за&nbsp;5 минут.
         </p>
 
+        {/* CTA + trust inline */}
         <div className="animate-fade-up delay-300 mt-8 flex flex-col sm:flex-row items-center justify-center gap-4">
           <Link
             to="/login?signup=1"
@@ -375,7 +407,9 @@ function HeroSection() {
             Начать бесплатно
             <ArrowRight className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" />
           </Link>
-          <p className="text-sm text-gray-500">Бесплатно навсегда. Без привязки карты.</p>
+          <span className="text-sm text-gray-400">
+            Бесплатно навсегда. Без привязки карты.
+          </span>
         </div>
       </div>
     </section>
@@ -399,19 +433,19 @@ function TrustBar() {
       </div>
       <div key={`${prefix}-pg`} className="flex items-center gap-2.5 mx-8 sm:mx-10 shrink-0">
         <Database className="w-4 h-4 text-gray-400" />
-        <span className="text-sm font-semibold text-gray-400 whitespace-nowrap">PostgreSQL</span>
+        <span className="text-sm font-semibold text-gray-400 whitespace-nowrap">Данные зашифрованы</span>
       </div>
       <div key={`${prefix}-rest`} className="flex items-center gap-2.5 mx-8 sm:mx-10 shrink-0">
         <Globe className="w-4 h-4 text-gray-400" />
-        <span className="text-sm font-semibold text-gray-400 whitespace-nowrap">REST API</span>
+        <span className="text-sm font-semibold text-gray-400 whitespace-nowrap">Только чтение данных</span>
       </div>
       <div key={`${prefix}-ssl`} className="flex items-center gap-2.5 mx-8 sm:mx-10 shrink-0">
         <ShieldCheck className="w-4 h-4 text-gray-400" />
-        <span className="text-sm font-semibold text-gray-400 whitespace-nowrap">SSL / TLS</span>
+        <span className="text-sm font-semibold text-gray-400 whitespace-nowrap">Безопасное соединение</span>
       </div>
       <div key={`${prefix}-fernet`} className="flex items-center gap-2.5 mx-8 sm:mx-10 shrink-0">
         <Lock className="w-4 h-4 text-gray-400" />
-        <span className="text-sm font-semibold text-gray-400 whitespace-nowrap">Fernet</span>
+        <span className="text-sm font-semibold text-gray-400 whitespace-nowrap">Ваши ключи защищены</span>
       </div>
     </>
   );
@@ -429,228 +463,328 @@ function TrustBar() {
 }
 
 /* ──────────────────────────────────────────────
-   DASHBOARD CAROUSEL (Swiper)
+   PRODUCT SHOWCASE — Enterprise Tab Slider
    ────────────────────────────────────────────── */
 
-/** Slide 1 – Main dashboard overview */
-function SlideDashboard() {
+interface ShowcaseSlideData {
+  id: string;
+  tab: string;
+  icon: typeof BarChart3;
+  title: string;
+  description: string;
+  highlights: string[];
+  desktop: string;
+  mobile: string;
+}
+
+const SHOWCASE_SLIDES: ShowcaseSlideData[] = [
+  {
+    id: 'widgets',
+    tab: 'Виджеты',
+    icon: BarChart3,
+    title: 'Настраиваемый дашборд',
+    description: 'Drag & drop виджеты — соберите свою панель аналитики за 5 минут',
+    highlights: ['16+ метрик', 'WB + Ozon', 'Автосинхронизация'],
+    desktop: '/screenshots/desktop-1.png',
+    mobile: '/screenshots/mobile-3.png',
+  },
+  {
+    id: 'unit-economics',
+    tab: 'Юнит-экономика',
+    icon: TrendingUp,
+    title: 'Прибыль по каждому товару',
+    description: 'Себестоимость, маржа, ДРР — до копейки по каждому SKU',
+    highlights: ['FBO / FBS разбивка', 'Водопад затрат', 'По маркетплейсам'],
+    desktop: '/screenshots/desktop-2.png',
+    mobile: '/screenshots/mobile-1.png',
+  },
+  {
+    id: 'stocks',
+    tab: 'Остатки',
+    icon: ClipboardList,
+    title: 'Запасы под контролем',
+    description: 'Прогноз по дням, OOS-алерты, все склады в одной таблице',
+    highlights: ['Прогноз 30 дней', 'OOS-алерты', 'Все склады'],
+    desktop: '/screenshots/desktop-3.png',
+    mobile: '/screenshots/mobile-2.png',
+  },
+];
+
+const SHOWCASE_AUTOPLAY_MS = 6000;
+
+/** macOS-style browser chrome frame */
+function BrowserFrame({ children }: { children: ReactNode }) {
   return (
-    <div className="bg-white rounded-2xl shadow-2xl border border-gray-100 overflow-hidden">
-      {/* Browser chrome */}
-      <div className="flex items-center gap-2 px-4 py-3 bg-gray-50 border-b border-gray-100">
+    <div className="bg-white rounded-2xl shadow-2xl shadow-gray-200/60 border border-gray-200/80 overflow-hidden">
+      <div className="flex items-center gap-2 px-4 py-2.5 bg-gray-50/80 border-b border-gray-100">
         <div className="flex gap-1.5">
-          <div className="w-3 h-3 rounded-full bg-red-400" />
-          <div className="w-3 h-3 rounded-full bg-amber-400" />
-          <div className="w-3 h-3 rounded-full bg-green-400" />
+          <div className="w-3 h-3 rounded-full bg-[#FF5F57]" />
+          <div className="w-3 h-3 rounded-full bg-[#FEBC2E]" />
+          <div className="w-3 h-3 rounded-full bg-[#28C840]" />
         </div>
-        <div className="flex-1 ml-3">
-          <div className="bg-white rounded-md px-3 py-1 text-xs text-gray-400 border border-gray-200 max-w-xs">
-            reviomp.ru
+        <div className="flex-1 ml-3 max-w-[280px] mx-auto">
+          <div className="flex items-center gap-2 bg-white rounded-lg px-3 py-1.5 border border-gray-200">
+            <Lock className="w-3 h-3 text-green-500" />
+            <span className="text-xs text-gray-500 font-medium">reviomp.ru</span>
           </div>
         </div>
       </div>
-      {/* Content */}
-      <div className="p-5 sm:p-6">
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="text-sm font-semibold text-gray-800">Дашборд — Обзор</h3>
-          <span className="text-xs text-gray-400">01 — 31 янв 2026</span>
-        </div>
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          {[
-            { label: 'Продажи', value: '124,567 ₽', color: 'from-indigo-500 to-indigo-600', change: '+12.5%', positive: true },
-            { label: 'Прибыль', value: '34,890 ₽', color: 'from-emerald-500 to-emerald-600', change: '+8.2%', positive: true },
-            { label: 'ДРР', value: '5.4%', color: 'from-amber-500 to-amber-600', change: '-1.2%', positive: true },
-            { label: 'Реклама', value: '6,780 ₽', color: 'from-blue-500 to-blue-600', change: '+3.1%', positive: false },
-          ].map((card) => (
-            <div key={card.label} className="rounded-xl p-3 sm:p-4 bg-gray-50 border border-gray-100">
-              <p className="text-xs text-gray-500 font-medium">{card.label}</p>
-              <p className={`text-lg sm:text-xl font-bold mt-1 bg-gradient-to-r ${card.color} bg-clip-text text-transparent`}>
-                {card.value}
-              </p>
-              <p className={`text-xs font-medium mt-1 ${card.positive ? 'text-emerald-600' : 'text-red-500'}`}>
-                {card.change} к пред.
-              </p>
-            </div>
-          ))}
-        </div>
-        {/* Bar chart */}
-        <div className="mt-4 bg-gray-50 rounded-xl border border-gray-100 h-28 sm:h-36 flex items-end px-4 pb-3 gap-1">
-          {[35, 48, 30, 55, 70, 45, 75, 60, 85, 65, 80, 92, 50, 68].map((h, i) => (
-            <div
-              key={i}
-              className="flex-1 rounded-t-md bg-gradient-to-t from-indigo-500 to-indigo-400 opacity-80 hover:opacity-100 transition-opacity"
-              style={{ height: `${h}%` }}
-            />
-          ))}
+      <div className="relative">
+        {children}
+        <div className="absolute bottom-0 left-0 right-0 h-16 bg-gradient-to-t from-white via-white/70 to-transparent pointer-events-none" />
+      </div>
+    </div>
+  );
+}
+
+/** iPhone-style phone mockup frame */
+function PhoneMockup({ children }: { children: ReactNode }) {
+  return (
+    <div className="bg-gray-950 rounded-[2.5rem] p-2 shadow-2xl shadow-gray-900/20 ring-1 ring-gray-700/50">
+      <div className="overflow-hidden rounded-[2.1rem] bg-white relative">
+        {/* Dynamic Island */}
+        <div className="absolute top-1.5 left-1/2 -translate-x-1/2 w-[90px] h-[24px] bg-gray-950 rounded-full z-10" />
+        <div className="relative">
+          {children}
+          <div className="absolute bottom-0 left-0 right-0 h-12 bg-gradient-to-t from-white via-white/70 to-transparent pointer-events-none" />
         </div>
       </div>
     </div>
   );
 }
 
-/** Slide 2 – Costs tree */
-function SlideCostsTree() {
-  const rows = [
-    { label: 'Комиссия МП', wb: '12,340 ₽', ozon: '8,920 ₽', icon: PieChart },
-    { label: 'Логистика', wb: '5,670 ₽', ozon: '4,110 ₽', icon: RefreshCw },
-    { label: 'Хранение', wb: '2,890 ₽', ozon: '1,560 ₽', icon: ClipboardList },
-    { label: 'Штрафы', wb: '340 ₽', ozon: '0 ₽', icon: Zap },
-    { label: 'Реклама', wb: '3,450 ₽', ozon: '2,120 ₽', icon: Megaphone },
-  ];
+function ProductShowcase() {
+  const [activeIndex, setActiveIndex] = useState(0);
+  const [device, setDevice] = useState<'desktop' | 'mobile'>('desktop');
+  const [paused, setPaused] = useState(false);
+  const [progressKey, setProgressKey] = useState(0);
+
+  const slide = SHOWCASE_SLIDES[activeIndex];
+
+  // Auto-advance
+  useEffect(() => {
+    if (paused) return;
+    const t = setTimeout(() => {
+      setActiveIndex(i => (i + 1) % SHOWCASE_SLIDES.length);
+      setProgressKey(k => k + 1);
+    }, SHOWCASE_AUTOPLAY_MS);
+    return () => clearTimeout(t);
+  }, [activeIndex, paused]);
+
+  const goTo = useCallback((idx: number) => {
+    setActiveIndex(idx);
+    setProgressKey(k => k + 1);
+  }, []);
 
   return (
-    <div className="bg-white rounded-2xl shadow-2xl border border-gray-100 overflow-hidden">
-      <div className="flex items-center gap-2 px-4 py-3 bg-gray-50 border-b border-gray-100">
-        <div className="flex gap-1.5">
-          <div className="w-3 h-3 rounded-full bg-red-400" />
-          <div className="w-3 h-3 rounded-full bg-amber-400" />
-          <div className="w-3 h-3 rounded-full bg-green-400" />
+    <RevealSection className="py-20 sm:py-28">
+      <div className="max-w-6xl mx-auto px-4 sm:px-6">
+        {/* Section header */}
+        <div className="text-center mb-10 sm:mb-14">
+          <p className="text-sm font-semibold text-indigo-600 uppercase tracking-wider mb-3">
+            Продукт
+          </p>
+          <h2 className="text-3xl sm:text-4xl lg:text-[44px] font-bold text-gray-900 leading-tight">
+            Посмотрите, как это работает
+          </h2>
+          <p className="mt-4 text-lg text-gray-500 max-w-2xl mx-auto">
+            Три ключевых экрана, которые заменят Excel и&nbsp;ручные отчёты
+          </p>
         </div>
-        <div className="flex-1 ml-3">
-          <div className="bg-white rounded-md px-3 py-1 text-xs text-gray-400 border border-gray-200 max-w-xs">
-            reviomp.ru/dashboard
-          </div>
-        </div>
-      </div>
-      <div className="p-5 sm:p-6">
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="text-sm font-semibold text-gray-800">Дерево удержаний</h3>
-          <div className="flex gap-2">
-            <span className="text-xs font-medium text-purple-700 bg-purple-50 px-2 py-0.5 rounded-md">WB</span>
-            <span className="text-xs font-medium text-blue-700 bg-blue-50 px-2 py-0.5 rounded-md">Ozon</span>
-          </div>
-        </div>
-        <div className="space-y-2">
-          {rows.map((row) => {
-            const Icon = row.icon;
+
+        {/* Tab navigation with progress indicator */}
+        <div
+          className="flex justify-center gap-2 sm:gap-3 mb-8 sm:mb-10"
+          role="tablist"
+          aria-label="Экраны продукта"
+        >
+          {SHOWCASE_SLIDES.map((s, i) => {
+            const Icon = s.icon;
+            const isActive = i === activeIndex;
             return (
-              <div key={row.label} className="flex items-center justify-between py-2.5 px-3 bg-gray-50 rounded-lg border border-gray-100">
-                <div className="flex items-center gap-2.5">
-                  <div className="w-7 h-7 rounded-md bg-indigo-50 flex items-center justify-center">
-                    <Icon className="w-3.5 h-3.5 text-indigo-600" />
-                  </div>
-                  <span className="text-sm text-gray-700 font-medium">{row.label}</span>
-                </div>
-                <div className="flex gap-4">
-                  <span className="text-sm font-semibold text-purple-700">{row.wb}</span>
-                  <span className="text-sm font-semibold text-blue-600">{row.ozon}</span>
-                </div>
-              </div>
+              <button
+                key={s.id}
+                role="tab"
+                aria-selected={isActive}
+                onClick={() => goTo(i)}
+                onMouseEnter={() => setPaused(true)}
+                onMouseLeave={() => setPaused(false)}
+                className={`
+                  relative flex items-center gap-2 px-4 sm:px-5 py-2.5 rounded-xl text-sm font-medium
+                  transition-all duration-300 overflow-hidden
+                  ${isActive
+                    ? 'bg-white text-gray-900 shadow-lg shadow-gray-200/50 border border-gray-200'
+                    : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50 border border-transparent'}
+                `}
+              >
+                <Icon className="w-4 h-4 shrink-0" />
+                <span className="hidden sm:inline">{s.tab}</span>
+                {isActive && !paused && (
+                  <span
+                    key={progressKey}
+                    className="absolute bottom-0 left-0 h-0.5 bg-indigo-500 showcase-tab-progress"
+                  />
+                )}
+              </button>
             );
           })}
         </div>
-        <div className="mt-3 flex items-center justify-between py-3 px-3 bg-indigo-50 rounded-lg border border-indigo-100">
-          <span className="text-sm font-semibold text-gray-900">Итого удержания</span>
-          <span className="text-sm font-bold text-indigo-700">41,400 ₽</span>
-        </div>
-      </div>
-    </div>
-  );
-}
 
-/** Slide 3 – Sales chart */
-function SlideSalesChart() {
-  return (
-    <div className="bg-white rounded-2xl shadow-2xl border border-gray-100 overflow-hidden">
-      <div className="flex items-center gap-2 px-4 py-3 bg-gray-50 border-b border-gray-100">
-        <div className="flex gap-1.5">
-          <div className="w-3 h-3 rounded-full bg-red-400" />
-          <div className="w-3 h-3 rounded-full bg-amber-400" />
-          <div className="w-3 h-3 rounded-full bg-green-400" />
-        </div>
-        <div className="flex-1 ml-3">
-          <div className="bg-white rounded-md px-3 py-1 text-xs text-gray-400 border border-gray-200 max-w-xs">
-            reviomp.ru/dashboard
-          </div>
-        </div>
-      </div>
-      <div className="p-5 sm:p-6">
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="text-sm font-semibold text-gray-800">Динамика продаж</h3>
-          <span className="text-xs text-gray-400">за 30 дней</span>
-        </div>
-        {/* Line chart mockup */}
-        <div className="relative h-40 sm:h-48 bg-gray-50 rounded-xl border border-gray-100 overflow-hidden p-4">
-          {/* Grid lines */}
-          {[0, 1, 2, 3].map((i) => (
-            <div key={i} className="absolute left-0 right-0 border-t border-dashed border-gray-200" style={{ top: `${25 * i + 12}%` }} />
-          ))}
-          {/* WB line mockup */}
-          <svg className="absolute inset-4 w-[calc(100%-2rem)] h-[calc(100%-2rem)]" viewBox="0 0 300 120" fill="none" preserveAspectRatio="none">
-            <path
-              d="M0,90 C20,80 40,60 60,65 C80,70 100,40 120,35 C140,30 160,50 180,45 C200,40 220,25 240,20 C260,15 280,30 300,10"
-              stroke="url(#wb-gradient)"
-              strokeWidth="2.5"
-              fill="none"
-            />
-            <path
-              d="M0,90 C20,80 40,60 60,65 C80,70 100,40 120,35 C140,30 160,50 180,45 C200,40 220,25 240,20 C260,15 280,30 300,10 L300,120 L0,120Z"
-              fill="url(#wb-fill)"
-              opacity="0.15"
-            />
-            <path
-              d="M0,100 C20,95 40,85 60,88 C80,90 100,70 120,72 C140,75 160,60 180,65 C200,68 220,55 240,50 C260,48 280,60 300,45"
-              stroke="url(#ozon-gradient)"
-              strokeWidth="2.5"
-              fill="none"
-            />
-            <path
-              d="M0,100 C20,95 40,85 60,88 C80,90 100,70 120,72 C140,75 160,60 180,65 C200,68 220,55 240,50 C260,48 280,60 300,45 L300,120 L0,120Z"
-              fill="url(#ozon-fill)"
-              opacity="0.1"
-            />
-            <defs>
-              <linearGradient id="wb-gradient" x1="0" x2="300" y1="0" y2="0" gradientUnits="userSpaceOnUse">
-                <stop stopColor="#8B3FFD" />
-                <stop offset="1" stopColor="#A855F7" />
-              </linearGradient>
-              <linearGradient id="wb-fill" x1="0" x2="0" y1="0" y2="120" gradientUnits="userSpaceOnUse">
-                <stop stopColor="#8B3FFD" />
-                <stop offset="1" stopColor="#8B3FFD" stopOpacity="0" />
-              </linearGradient>
-              <linearGradient id="ozon-gradient" x1="0" x2="300" y1="0" y2="0" gradientUnits="userSpaceOnUse">
-                <stop stopColor="#005BFF" />
-                <stop offset="1" stopColor="#3B82F6" />
-              </linearGradient>
-              <linearGradient id="ozon-fill" x1="0" x2="0" y1="0" y2="120" gradientUnits="userSpaceOnUse">
-                <stop stopColor="#005BFF" />
-                <stop offset="1" stopColor="#005BFF" stopOpacity="0" />
-              </linearGradient>
-            </defs>
-          </svg>
-        </div>
-        {/* Legend */}
-        <div className="mt-3 flex items-center justify-center gap-6">
-          <div className="flex items-center gap-2">
-            <div className="w-3 h-3 rounded-sm bg-gradient-to-r from-purple-500 to-purple-600" />
-            <span className="text-xs font-medium text-gray-600">Wildberries</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <div className="w-3 h-3 rounded-sm bg-gradient-to-r from-blue-500 to-blue-600" />
-            <span className="text-xs font-medium text-gray-600">Ozon</span>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
+        {/* Screenshot showcase */}
+        <div
+          className="relative"
+          onMouseEnter={() => setPaused(true)}
+          onMouseLeave={() => setPaused(false)}
+        >
+          {/* Background glow */}
+          <div className="absolute -inset-8 sm:-inset-12 bg-gradient-to-b from-indigo-50/40 via-transparent to-transparent rounded-3xl pointer-events-none" />
 
-function DashboardCarousel() {
-  return (
-    <RevealSection className="mt-14 sm:mt-20 max-w-4xl mx-auto px-4 sm:px-6">
-      <Swiper
-        modules={[Pagination, Autoplay]}
-        pagination={{ clickable: true }}
-        autoplay={{ delay: 5000, disableOnInteraction: true }}
-        spaceBetween={24}
-        slidesPerView={1}
-        className="landing-swiper !pb-10"
-      >
-        <SwiperSlide><SlideDashboard /></SwiperSlide>
-        <SwiperSlide><SlideCostsTree /></SwiperSlide>
-        <SwiperSlide><SlideSalesChart /></SwiperSlide>
-      </Swiper>
+          {device === 'desktop' ? (
+            <div className="relative mx-auto max-w-5xl transition-all duration-500 ease-in-out">
+              <BrowserFrame>
+                <div className="relative overflow-hidden" style={{ aspectRatio: '16/10' }}>
+                  {SHOWCASE_SLIDES.map((s, i) => (
+                    <img
+                      key={s.id}
+                      src={s.desktop}
+                      alt={s.title}
+                      loading={i === 0 ? 'eager' : 'lazy'}
+                      decoding="async"
+                      className={`absolute inset-0 w-full h-full object-cover object-top transition-all duration-500 ease-in-out ${
+                        i === activeIndex ? 'opacity-100 scale-100' : 'opacity-0 scale-[0.98]'
+                      }`}
+                    />
+                  ))}
+                </div>
+              </BrowserFrame>
+            </div>
+          ) : (
+            <div className="relative flex justify-center py-8">
+              {/* Decorative orbs behind phone */}
+              <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[500px] rounded-full bg-gradient-to-br from-indigo-100/60 to-violet-100/40 blur-3xl pointer-events-none" />
+              <div className="absolute top-1/3 right-1/4 w-[200px] h-[200px] rounded-full bg-gradient-to-br from-emerald-100/40 to-cyan-100/30 blur-2xl pointer-events-none" />
+              <div className="relative w-[300px] sm:w-[340px] md:w-[380px]">
+                <PhoneMockup>
+                  <div className="relative overflow-hidden" style={{ aspectRatio: '9/18' }}>
+                    {SHOWCASE_SLIDES.map((s, i) => (
+                      <img
+                        key={s.id}
+                        src={s.mobile}
+                        alt={s.title}
+                        loading="lazy"
+                        decoding="async"
+                        className={`absolute inset-0 w-full h-full object-cover object-top transition-all duration-500 ease-in-out ${
+                          i === activeIndex ? 'opacity-100 scale-100' : 'opacity-0 scale-[0.98]'
+                        }`}
+                      />
+                    ))}
+                  </div>
+                </PhoneMockup>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Feature details + device toggle */}
+        <div className="mt-8 sm:mt-10 flex flex-col sm:flex-row items-center justify-between gap-6 max-w-4xl mx-auto">
+          <div className="text-center sm:text-left min-w-0">
+            <h3 className="text-lg font-semibold text-gray-900">{slide.title}</h3>
+            <p className="mt-1 text-sm text-gray-500">{slide.description}</p>
+            <div className="mt-3 flex flex-wrap gap-2 justify-center sm:justify-start">
+              {slide.highlights.map(h => (
+                <span
+                  key={h}
+                  className="inline-flex items-center gap-1.5 text-xs text-gray-600 bg-gray-50 px-3 py-1.5 rounded-full border border-gray-100"
+                >
+                  <CheckCircle className="w-3 h-3 text-emerald-500 shrink-0" />
+                  {h}
+                </span>
+              ))}
+            </div>
+          </div>
+
+          {/* Device toggle */}
+          <div className="flex items-center bg-gray-100 rounded-lg p-1 shrink-0">
+            <button
+              onClick={() => setDevice('desktop')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
+                device === 'desktop' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+              }`}
+              aria-label="Десктоп"
+            >
+              <Monitor className="w-3.5 h-3.5" />
+              Desktop
+            </button>
+            <button
+              onClick={() => setDevice('mobile')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
+                device === 'mobile' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+              }`}
+              aria-label="Мобильный"
+            >
+              <Smartphone className="w-3.5 h-3.5" />
+              Mobile
+            </button>
+          </div>
+        </div>
+      </div>
     </RevealSection>
+  );
+}
+
+/* ──────────────────────────────────────────────
+   SOCIAL PROOF
+   ────────────────────────────────────────────── */
+
+function SocialProofSection() {
+  const reviews: Array<{ text: string; author: string; role: string; badge: string; badgeClass: string }> = [
+    {
+      text: '«Наконец-то вижу реальную прибыль по каждому товару. Раньше в Excel считал 3 часа, сейчас всё автоматически.»',
+      author: 'Алексей М.',
+      role: 'Продавец витаминов, WB',
+      badge: 'WB',
+      badgeClass: 'bg-violet-100 text-violet-700',
+    },
+    {
+      text: '«Дерево удержаний — это то, чего не хватало. Теперь понимаю, куда уходят деньги на маркетплейсе.»',
+      author: 'Екатерина С.',
+      role: 'Селлер БАДов, Ozon',
+      badge: 'Ozon',
+      badgeClass: 'bg-blue-100 text-blue-700',
+    },
+  ];
+
+  return (
+    <section aria-label="Отзывы клиентов" className="py-12 sm:py-16 bg-gray-50">
+      <div className="max-w-5xl mx-auto px-4 sm:px-6">
+        <RevealSection>
+          <h2 className="text-2xl sm:text-3xl font-bold text-gray-900 text-center mb-8 sm:mb-10">
+            Что говорят селлеры
+          </h2>
+        </RevealSection>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {reviews.map((r, i) => (
+            <RevealSection key={r.author} delay={i * 120}>
+              <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 sm:p-8 hover:shadow-md transition-shadow duration-300 text-left h-full flex flex-col justify-between">
+                <p className="text-gray-600 text-sm sm:text-base leading-relaxed italic">
+                  {r.text}
+                </p>
+                <div className="border-t border-gray-100 mt-4 pt-4 flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-semibold text-gray-900">{r.author}</p>
+                    <p className="text-xs text-gray-400">{r.role}</p>
+                  </div>
+                  <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${r.badgeClass}`}>
+                    {r.badge}
+                  </span>
+                </div>
+              </div>
+            </RevealSection>
+          ))}
+        </div>
+      </div>
+    </section>
   );
 }
 
@@ -665,17 +799,17 @@ function StatsBar() {
         <RevealSection>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-6 sm:gap-8 text-center">
             {[
-              { value: 2, suffix: '', label: 'Маркетплейса', extra: 'WB + Ozon' },
-              { value: 6, suffix: '+', label: 'Типов отчётов', extra: 'Продажи, удержания...' },
-              { value: 4, suffix: 'x', label: 'Синхронизация', extra: 'В день (Pro)' },
-              { value: 990, suffix: ' ₽', label: 'Pro тариф', extra: 'В месяц' },
+              { value: 100, suffix: '%', label: 'Точность расчётов', extra: 'Проверено аудитом' },
+              { value: 15, suffix: '+', label: 'Типов отчётов', extra: 'Продажи, остатки, реклама...' },
+              { value: 4, suffix: '', label: 'Синхронизации в день', extra: 'Данные всегда актуальны' },
+              { value: 5, suffix: '', label: 'Минут на настройку', extra: 'API-ключ и готово' },
             ].map((stat) => (
               <div key={stat.label}>
                 <p className="text-3xl sm:text-4xl font-extrabold bg-gradient-to-r from-indigo-600 to-violet-600 bg-clip-text text-transparent">
                   <AnimatedNumber target={stat.value} suffix={stat.suffix} />
                 </p>
                 <p className="mt-1 text-sm font-semibold text-gray-900">{stat.label}</p>
-                <p className="text-xs text-gray-500 mt-0.5">{stat.extra}</p>
+                <p className="text-xs text-gray-600 mt-0.5">{stat.extra}</p>
               </div>
             ))}
           </div>
@@ -922,7 +1056,7 @@ function DataFlowSectionV3() {
     opacity: proActive ? 1 : 0,
     transform: proActive ? 'scale(1)' : 'scale(0.5)',
     transition: `opacity 0.35s cubic-bezier(.4,0,.2,1) ${proActive ? d : 0}s, transform 0.35s cubic-bezier(.4,0,.2,1) ${proActive ? d : 0}s`,
-    transformBox: 'fill-box' as any,
+    transformBox: 'fill-box' as const,
     transformOrigin: 'center',
   });
 
@@ -1738,7 +1872,7 @@ function PricingSection() {
               </div>
               <Link
                 to="/login?signup=1"
-                className="mt-4 sm:mt-6 block text-center px-2 sm:px-4 py-2 sm:py-3 border border-gray-300 text-xs sm:text-sm font-semibold text-gray-700 rounded-xl hover:bg-gray-50 hover:border-gray-400 transition-all"
+                className="mt-4 sm:mt-6 text-center px-2 sm:px-4 py-2 sm:py-3 min-h-[44px] flex items-center justify-center border border-gray-300 text-xs sm:text-sm font-semibold text-gray-700 rounded-xl hover:bg-gray-50 hover:border-gray-400 transition-all"
               >
                 Начать бесплатно
               </Link>
@@ -1769,7 +1903,7 @@ function PricingSection() {
               </div>
               <Link
                 to="/login?signup=1&plan=pro"
-                className="mt-4 sm:mt-6 block text-center px-2 sm:px-4 py-2 sm:py-3 bg-gradient-to-r from-indigo-600 to-violet-600 text-xs sm:text-sm font-semibold text-white rounded-xl hover:from-indigo-700 hover:to-violet-700 transition-all shadow-md shadow-indigo-200/50"
+                className="mt-4 sm:mt-6 text-center px-2 sm:px-4 py-2 sm:py-3 min-h-[44px] flex items-center justify-center bg-gradient-to-r from-indigo-600 to-violet-600 text-xs sm:text-sm font-semibold text-white rounded-xl hover:from-indigo-700 hover:to-violet-700 transition-all shadow-md shadow-indigo-200/50"
               >
                 Попробовать Pro
               </Link>
@@ -1834,8 +1968,9 @@ function PricingSection() {
    FAQ
    ────────────────────────────────────────────── */
 
-function FAQItem({ question, answer }: { question: string; answer: string }) {
+function FAQItem({ question, answer, id }: { question: string; answer: string; id: string }) {
   const [open, setOpen] = useState(false);
+  const panelId = `faq-panel-${id}`;
 
   return (
     <div className="border-b border-gray-200">
@@ -1843,6 +1978,8 @@ function FAQItem({ question, answer }: { question: string; answer: string }) {
         type="button"
         className="flex items-center justify-between w-full py-4 text-left group"
         onClick={() => setOpen(!open)}
+        aria-expanded={open}
+        aria-controls={panelId}
       >
         <span className="text-sm font-semibold text-gray-900 pr-4 group-hover:text-indigo-600 transition-colors">
           {question}
@@ -1852,7 +1989,9 @@ function FAQItem({ question, answer }: { question: string; answer: string }) {
         />
       </button>
       <div
-        className={`overflow-hidden transition-all duration-300 ${open ? 'max-h-48 pb-4' : 'max-h-0'}`}
+        id={panelId}
+        role="region"
+        className={`overflow-hidden transition-all duration-300 ${open ? 'max-h-96 pb-4' : 'max-h-0'}`}
       >
         <div className="text-sm text-gray-600 leading-relaxed">{answer}</div>
       </div>
@@ -1904,8 +2043,8 @@ function FAQSection() {
         </RevealSection>
         <RevealSection className="mt-10">
           <div>
-            {faqs.map((faq) => (
-              <FAQItem key={faq.question} {...faq} />
+            {faqs.map((faq, i) => (
+              <FAQItem key={faq.question} {...faq} id={String(i)} />
             ))}
           </div>
         </RevealSection>
@@ -1931,7 +2070,7 @@ function FinalCTASection() {
             Начните считать прибыль правильно
           </h2>
           <p className="mt-4 text-indigo-100 text-lg leading-relaxed">
-            Подключите маркетплейсы за 2 минуты и увидьте реальную картину бизнеса.
+            Подключите маркетплейсы за 2 минуты и увидите реальную картину бизнеса.
           </p>
           <Link
             to="/login?signup=1"
@@ -1953,33 +2092,66 @@ function FinalCTASection() {
    ────────────────────────────────────────────── */
 
 function FooterSection() {
+  const scrollTo = (id: string) => {
+    document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' });
+  };
+
   return (
-    <footer className="py-10 bg-gray-900">
-      <div className="max-w-6xl mx-auto px-4 sm:px-6">
-        <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
-          <div className="flex items-center gap-2.5">
-            <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-indigo-500 to-violet-500 flex items-center justify-center">
-              <BarChart3 className="w-3.5 h-3.5 text-white" />
-            </div>
-            <span className="font-bold text-white tracking-tight">
-              Revio<span className="text-indigo-400">MP</span>
-            </span>
+    <footer className="bg-gray-900 border-t border-gray-800">
+      <div className="max-w-6xl mx-auto px-4 sm:px-6 py-12 sm:py-16">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-8 sm:gap-12">
+          {/* Колонка 1 — Продукт */}
+          <div>
+            <h3 className="text-sm font-semibold text-white uppercase tracking-wider mb-4">Продукт</h3>
+            <ul className="space-y-3">
+              {(['features', 'pricing', 'security', 'faq'] as const).map((id) => (
+                <li key={id}>
+                  <button
+                    onClick={() => scrollTo(id)}
+                    className="text-sm text-gray-400 hover:text-white transition-colors"
+                  >
+                    {({ features: 'Возможности', pricing: 'Тарифы', security: 'Безопасность', faq: 'FAQ' } as const)[id]}
+                  </button>
+                </li>
+              ))}
+            </ul>
           </div>
-          <div className="flex items-center gap-6 text-sm text-gray-400">
-            <a href="mailto:support@reviomp.ru" className="hover:text-white transition-colors">
-              support@reviomp.ru
-            </a>
+          {/* Колонка 2 — Поддержка */}
+          <div>
+            <h3 className="text-sm font-semibold text-white uppercase tracking-wider mb-4">Поддержка</h3>
+            <ul className="space-y-3">
+              <li>
+                <a href="mailto:support@reviomp.ru" className="text-sm text-gray-400 hover:text-white transition-colors">
+                  support@reviomp.ru
+                </a>
+              </li>
+              <li>
+                <a href="https://t.me/reviomp" target="_blank" rel="noopener noreferrer" className="text-sm text-gray-400 hover:text-white transition-colors">
+                  Telegram: @reviomp
+                </a>
+              </li>
+            </ul>
+          </div>
+          {/* Колонка 3 — О компании */}
+          <div>
+            <h3 className="text-sm font-semibold text-white uppercase tracking-wider mb-4">О компании</h3>
+            <p className="text-sm text-gray-400 leading-relaxed">ИП Виноградов А.В.</p>
+            <p className="text-sm text-gray-400 mt-1">ИНН&nbsp;575307312014</p>
+            <div className="flex flex-wrap gap-x-4 gap-y-1 mt-3">
+              <Link to="/legal" className="text-xs text-gray-500 hover:text-gray-300 transition-colors">Соглашение</Link>
+              <Link to="/policy" className="text-xs text-gray-500 hover:text-gray-300 transition-colors">Оплата</Link>
+              <Link to="/privacy" className="text-xs text-gray-500 hover:text-gray-300 transition-colors">Конфиденциальность</Link>
+            </div>
           </div>
         </div>
-        <div className="mt-6 pt-6 border-t border-gray-800 flex flex-col sm:flex-row items-center justify-between gap-3">
-          <div className="flex flex-wrap items-center justify-center gap-4 text-xs text-gray-500">
-            <Link to="/legal" className="hover:text-gray-300 transition-colors">Пользовательское соглашение</Link>
-            <Link to="/policy" className="hover:text-gray-300 transition-colors">Оплата и возврат</Link>
-            <Link to="/privacy" className="hover:text-gray-300 transition-colors">Конфиденциальность</Link>
+        <div className="border-t border-gray-800 mt-10 pt-8 flex flex-col sm:flex-row items-center justify-between gap-4">
+          <div className="flex items-center gap-2">
+            <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center">
+              <BarChart3 className="w-4 h-4 text-white" />
+            </div>
+            <span className="text-sm font-semibold text-white">RevioMP</span>
           </div>
-          <div className="text-xs text-gray-500">
-            &copy; {new Date().getFullYear()} ИП Виноградов А.В. ИНН 575307312014
-          </div>
+          <p className="text-xs text-gray-500">&copy; {new Date().getFullYear()} RevioMP. Все права защищены.</p>
         </div>
       </div>
     </footer>
@@ -2002,7 +2174,8 @@ export function LandingPage() {
       <NavBar />
       <HeroSection />
       <TrustBar />
-      <DashboardCarousel />
+      <ProductShowcase />
+      <SocialProofSection />
       <SectionDivider />
       <StatsBar />
       <SectionDivider />
