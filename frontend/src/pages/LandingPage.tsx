@@ -482,9 +482,9 @@ const SHOWCASE_SLIDES: ShowcaseSlideData[] = [
     id: 'widgets',
     tab: 'Виджеты',
     icon: BarChart3,
-    title: 'Настраиваемый дашборд',
-    description: 'Drag & drop виджеты — соберите свою панель аналитики за 5 минут',
-    highlights: ['16+ метрик', 'WB + Ozon', 'Автосинхронизация'],
+    title: 'Дашборд, который подстраивается под вас',
+    description: 'Drag\u00A0&\u00A0drop виджеты — выберите нужные метрики и\u00A0расставьте как удобно',
+    highlights: ['16+ виджетов', 'WB + Ozon в\u00A0одном окне', 'Обновление каждые 30\u00A0мин'],
     desktop: '/screenshots/desktop-1.png',
     mobile: '/screenshots/mobile-3.png',
   },
@@ -492,9 +492,9 @@ const SHOWCASE_SLIDES: ShowcaseSlideData[] = [
     id: 'unit-economics',
     tab: 'Юнит-экономика',
     icon: TrendingUp,
-    title: 'Прибыль по каждому товару',
-    description: 'Себестоимость, маржа, ДРР — до копейки по каждому SKU',
-    highlights: ['FBO / FBS разбивка', 'Водопад затрат', 'По маркетплейсам'],
+    title: 'Прибыль по каждому товару — до копейки',
+    description: 'Себестоимость, маржа и\u00A0ДРР\u00A0— точная картина по\u00A0каждому SKU',
+    highlights: ['Разбивка FBO\u00A0/\u00A0FBS', 'Водопад затрат', 'Отдельно по\u00A0маркетплейсам'],
     desktop: '/screenshots/desktop-2.png',
     mobile: '/screenshots/mobile-1.png',
   },
@@ -502,9 +502,9 @@ const SHOWCASE_SLIDES: ShowcaseSlideData[] = [
     id: 'stocks',
     tab: 'Остатки',
     icon: ClipboardList,
-    title: 'Запасы под контролем',
-    description: 'Прогноз по дням, OOS-алерты, все склады в одной таблице',
-    highlights: ['Прогноз 30 дней', 'OOS-алерты', 'Все склады'],
+    title: 'Запасы под контролем — без\u00A0OOS',
+    description: 'Прогноз остатков, алерты при\u00A0нуле, все склады WB и\u00A0Ozon в\u00A0одной таблице',
+    highlights: ['Прогноз на 30\u00A0дней', 'Алерты при\u00A00\u00A0остатков', 'Все склады WB\u00A0+\u00A0Ozon'],
     desktop: '/screenshots/desktop-3.png',
     mobile: '/screenshots/mobile-2.png',
   },
@@ -515,23 +515,23 @@ const SHOWCASE_AUTOPLAY_MS = 6000;
 /** macOS-style browser chrome frame */
 function BrowserFrame({ children }: { children: ReactNode }) {
   return (
-    <div className="bg-white rounded-2xl shadow-2xl shadow-gray-200/60 border border-gray-200/80 overflow-hidden">
-      <div className="flex items-center gap-2 px-4 py-2.5 bg-gray-50/80 border-b border-gray-100">
+    <div className="bg-white rounded-2xl shadow-[0_8px_60px_-12px_rgba(0,0,0,0.12)] ring-1 ring-gray-900/[0.07] overflow-hidden">
+      <div className="flex items-center gap-2 px-4 py-2.5 bg-gray-50/80 border-b border-gray-200/60" aria-hidden="true">
         <div className="flex gap-1.5">
-          <div className="w-3 h-3 rounded-full bg-[#FF5F57]" />
-          <div className="w-3 h-3 rounded-full bg-[#FEBC2E]" />
-          <div className="w-3 h-3 rounded-full bg-[#28C840]" />
+          <div className="w-2.5 h-2.5 rounded-full bg-[#FF5F57]" />
+          <div className="w-2.5 h-2.5 rounded-full bg-[#FEBC2E]" />
+          <div className="w-2.5 h-2.5 rounded-full bg-[#28C840]" />
         </div>
-        <div className="flex-1 ml-3 max-w-[280px] mx-auto">
-          <div className="flex items-center gap-2 bg-white rounded-lg px-3 py-1.5 border border-gray-200">
-            <Lock className="w-3 h-3 text-green-500" />
-            <span className="text-xs text-gray-500 font-medium">reviomp.ru</span>
+        <div className="flex-1 ml-3 max-w-[260px] mx-auto">
+          <div className="flex items-center gap-2 bg-white/80 rounded-lg px-3 py-1 border border-gray-200/60">
+            <Lock className="w-3 h-3 text-emerald-500" />
+            <span className="text-[11px] text-gray-500 font-medium tracking-wide">reviomp.ru</span>
           </div>
         </div>
       </div>
       <div className="relative">
         {children}
-        <div className="absolute bottom-0 left-0 right-0 h-16 bg-gradient-to-t from-white via-white/70 to-transparent pointer-events-none" />
+        <div className="absolute bottom-0 left-0 right-0 h-12 bg-gradient-to-t from-white via-white/60 to-transparent pointer-events-none" />
       </div>
     </div>
   );
@@ -576,25 +576,44 @@ function ProductShowcase() {
     setProgressKey(k => k + 1);
   }, []);
 
+  // Keyboard navigation for tabs (WAI-ARIA Tabs Pattern)
+  const handleTabKeyDown = useCallback((e: React.KeyboardEvent, idx: number) => {
+    let next = idx;
+    if (e.key === 'ArrowRight') next = (idx + 1) % SHOWCASE_SLIDES.length;
+    else if (e.key === 'ArrowLeft') next = (idx - 1 + SHOWCASE_SLIDES.length) % SHOWCASE_SLIDES.length;
+    else if (e.key === 'Home') next = 0;
+    else if (e.key === 'End') next = SHOWCASE_SLIDES.length - 1;
+    else return;
+    e.preventDefault();
+    goTo(next);
+    // Focus the new tab
+    const tablist = (e.target as HTMLElement).parentElement;
+    const buttons = tablist?.querySelectorAll<HTMLButtonElement>('[role="tab"]');
+    buttons?.[next]?.focus();
+  }, [goTo]);
+
   return (
     <RevealSection className="py-20 sm:py-28">
       <div className="max-w-6xl mx-auto px-4 sm:px-6">
-        {/* Section header */}
-        <div className="text-center mb-10 sm:mb-14">
-          <p className="text-sm font-semibold text-indigo-600 uppercase tracking-wider mb-3">
-            Продукт
-          </p>
-          <h2 className="text-3xl sm:text-4xl lg:text-[44px] font-bold text-gray-900 leading-tight">
-            Посмотрите, как это работает
+        {/* Section header — enterprise */}
+        <div className="text-center mb-12 sm:mb-16">
+          <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-indigo-600 uppercase tracking-[0.12em] bg-indigo-50 px-3.5 py-1.5 rounded-full mb-5" aria-hidden="true">
+            Ключевые экраны
+          </span>
+          <h2 className="text-[28px] sm:text-4xl lg:text-[46px] font-extrabold text-gray-900 leading-[1.15] tracking-tight">
+            Вся аналитика —{' '}
+            <span className="bg-gradient-to-r from-indigo-600 to-violet-600 bg-clip-text text-transparent">
+              в&nbsp;трёх экранах
+            </span>
           </h2>
-          <p className="mt-4 text-lg text-gray-500 max-w-2xl mx-auto">
-            Три ключевых экрана, которые заменят Excel и&nbsp;ручные отчёты
+          <p className="mt-5 text-base sm:text-lg text-gray-500 max-w-xl mx-auto leading-relaxed">
+            Дашборд, юнит-экономика и&nbsp;остатки — всё для&nbsp;принятия решений
           </p>
         </div>
 
-        {/* Tab navigation with progress indicator */}
+        {/* Tab navigation — enhanced active state + progress + full ARIA */}
         <div
-          className="flex justify-center gap-2 sm:gap-3 mb-8 sm:mb-10"
+          className="flex justify-center gap-1.5 sm:gap-2 mb-10 sm:mb-12"
           role="tablist"
           aria-label="Экраны продукта"
         >
@@ -605,24 +624,29 @@ function ProductShowcase() {
               <button
                 key={s.id}
                 role="tab"
+                id={`showcase-tab-${s.id}`}
                 aria-selected={isActive}
+                aria-controls={`showcase-panel-${s.id}`}
+                tabIndex={isActive ? 0 : -1}
                 onClick={() => goTo(i)}
+                onKeyDown={e => handleTabKeyDown(e, i)}
                 onMouseEnter={() => setPaused(true)}
                 onMouseLeave={() => setPaused(false)}
                 className={`
-                  relative flex items-center gap-2 px-4 sm:px-5 py-2.5 rounded-xl text-sm font-medium
-                  transition-all duration-300 overflow-hidden
+                  relative flex items-center gap-2 px-4 sm:px-6 min-h-[44px] rounded-xl text-sm font-medium
+                  transition-all duration-300 overflow-hidden select-none
+                  focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2
                   ${isActive
-                    ? 'bg-white text-gray-900 shadow-lg shadow-gray-200/50 border border-gray-200'
-                    : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50 border border-transparent'}
+                    ? 'bg-white text-gray-900 shadow-lg shadow-indigo-500/[0.08] ring-1 ring-gray-900/[0.08]'
+                    : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50/80'}
                 `}
               >
-                <Icon className="w-4 h-4 shrink-0" />
+                <Icon className={`w-4 h-4 shrink-0 transition-colors duration-300 ${isActive ? 'text-indigo-600' : ''}`} />
                 <span className="hidden sm:inline">{s.tab}</span>
                 {isActive && !paused && (
                   <span
                     key={progressKey}
-                    className="absolute bottom-0 left-0 h-0.5 bg-indigo-500 showcase-tab-progress"
+                    className="absolute bottom-0 left-0 h-[3px] bg-gradient-to-r from-indigo-500 to-violet-500 rounded-full showcase-tab-progress"
                   />
                 )}
               </button>
@@ -630,14 +654,18 @@ function ProductShowcase() {
           })}
         </div>
 
-        {/* Screenshot showcase */}
+        {/* Screenshot showcase — tabpanel */}
         <div
-          className="relative"
+          id={`showcase-panel-${slide.id}`}
+          role="tabpanel"
+          aria-labelledby={`showcase-tab-${slide.id}`}
+          className="relative overflow-hidden"
           onMouseEnter={() => setPaused(true)}
           onMouseLeave={() => setPaused(false)}
         >
-          {/* Background glow */}
-          <div className="absolute -inset-8 sm:-inset-12 bg-gradient-to-b from-indigo-50/40 via-transparent to-transparent rounded-3xl pointer-events-none" />
+          {/* Background glow — decorative */}
+          <div className="absolute -inset-4 sm:-inset-12 bg-gradient-to-b from-indigo-50/50 via-violet-50/20 to-transparent rounded-[2rem] pointer-events-none" aria-hidden="true" />
+          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-[600px] h-[400px] rounded-full bg-indigo-100/30 blur-[80px] pointer-events-none" aria-hidden="true" />
 
           {device === 'desktop' ? (
             <div className="relative mx-auto max-w-5xl transition-all duration-500 ease-in-out">
@@ -660,7 +688,6 @@ function ProductShowcase() {
             </div>
           ) : (
             <div className="relative flex justify-center py-8">
-              {/* Decorative orbs behind phone */}
               <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[500px] rounded-full bg-gradient-to-br from-indigo-100/60 to-violet-100/40 blur-3xl pointer-events-none" />
               <div className="absolute top-1/3 right-1/4 w-[200px] h-[200px] rounded-full bg-gradient-to-br from-emerald-100/40 to-cyan-100/30 blur-2xl pointer-events-none" />
               <div className="relative w-[300px] sm:w-[340px] md:w-[380px]">
@@ -685,46 +712,64 @@ function ProductShowcase() {
           )}
         </div>
 
-        {/* Feature details + device toggle */}
-        <div className="mt-8 sm:mt-10 flex flex-col sm:flex-row items-center justify-between gap-6 max-w-4xl mx-auto">
-          <div className="text-center sm:text-left min-w-0">
-            <h3 className="text-lg font-semibold text-gray-900">{slide.title}</h3>
-            <p className="mt-1 text-sm text-gray-500">{slide.description}</p>
-            <div className="mt-3 flex flex-wrap gap-2 justify-center sm:justify-start">
+        {/* Feature details + device toggle + CTA */}
+        <div className="mt-10 sm:mt-12 max-w-4xl mx-auto">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-5">
+            {/* Left: slide info */}
+            <div className="text-center sm:text-left min-w-0 flex-1">
+              <h3 className="text-lg sm:text-xl font-bold text-gray-900 leading-snug">{slide.title}</h3>
+              <p className="mt-1.5 text-sm sm:text-[15px] text-gray-500 leading-relaxed">{slide.description}</p>
+            </div>
+
+            {/* Right: device toggle */}
+            <div className="flex items-center gap-3 shrink-0 self-center sm:self-auto">
+              <div className="flex items-center bg-gray-100/80 rounded-lg p-0.5" role="group" aria-label="Устройство просмотра">
+                <button
+                  onClick={() => setDevice('desktop')}
+                  className={`flex items-center gap-1.5 px-3 min-h-[36px] rounded-md text-xs font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${
+                    device === 'desktop' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+                  }`}
+                  aria-label="Десктоп"
+                  aria-pressed={device === 'desktop'}
+                >
+                  <Monitor className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline">Desktop</span>
+                </button>
+                <button
+                  onClick={() => setDevice('mobile')}
+                  className={`flex items-center gap-1.5 px-3 min-h-[36px] rounded-md text-xs font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${
+                    device === 'mobile' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+                  }`}
+                  aria-label="Мобильный"
+                  aria-pressed={device === 'mobile'}
+                >
+                  <Smartphone className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline">Mobile</span>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* Highlights + CTA row */}
+          <div className="mt-4 flex flex-col sm:flex-row items-center sm:items-center justify-between gap-4">
+            <div className="flex flex-wrap gap-2 justify-center sm:justify-start">
               {slide.highlights.map(h => (
                 <span
                   key={h}
-                  className="inline-flex items-center gap-1.5 text-xs text-gray-600 bg-gray-50 px-3 py-1.5 rounded-full border border-gray-100"
+                  className="inline-flex items-center gap-1.5 text-xs font-medium text-gray-600 bg-gray-50/80 px-3 py-1.5 rounded-full ring-1 ring-gray-900/[0.06]"
                 >
-                  <CheckCircle className="w-3 h-3 text-emerald-500 shrink-0" />
+                  <CheckCircle className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
                   {h}
                 </span>
               ))}
             </div>
-          </div>
-
-          {/* Device toggle */}
-          <div className="flex items-center bg-gray-100 rounded-lg p-1 shrink-0">
-            <button
-              onClick={() => setDevice('desktop')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
-                device === 'desktop' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
-              }`}
-              aria-label="Десктоп"
+            <Link
+              to="/login?signup=1"
+              className="inline-flex items-center gap-1.5 text-sm font-semibold text-indigo-600 hover:text-indigo-700 transition-colors shrink-0 group focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 rounded-md"
             >
-              <Monitor className="w-3.5 h-3.5" />
-              Desktop
-            </button>
-            <button
-              onClick={() => setDevice('mobile')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
-                device === 'mobile' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
-              }`}
-              aria-label="Мобильный"
-            >
-              <Smartphone className="w-3.5 h-3.5" />
-              Mobile
-            </button>
+              Попробовать бесплатно
+              <ArrowRight className="w-4 h-4 transition-transform group-hover:translate-x-0.5" />
+            </Link>
           </div>
         </div>
       </div>
@@ -2407,7 +2452,7 @@ function FooterSection() {
 
 export function LandingPage() {
   return (
-    <div className="min-h-screen bg-white">
+    <div className="min-h-screen bg-white overflow-x-hidden">
       {/* Vertical guide lines at container edges (desktop only, Stripe-style) */}
       <div className="hidden lg:block pointer-events-none fixed inset-y-0 left-0 right-0 z-30" style={{ mixBlendMode: 'darken' }}>
         <div className="absolute left-12 top-0 bottom-0 w-px bg-gray-200" />

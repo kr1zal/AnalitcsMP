@@ -85,6 +85,8 @@ Read and follow coding standards: .claude/rules/coding-standards.md
 44. **Ozon реклама — DELETE before INSERT:** `mp_ad_costs` для Ozon имеет `product_id=NULL` (account-level). PostgreSQL: `NULL != NULL` в UNIQUE → UPSERT = INSERT дубликаты. Решение: DELETE за период перед INSERT в `sync_ads_ozon`. НЕ использовать UPSERT с NULL product_id для Ozon рекламы.
 45. **Landing Hero:** текстовый hero БЕЗ скриншота (скрин перенесён в карусель). H1 = primary USP "Прозрачная аналитика для маркетплейсов". Badge = differentiator "WB + Ozon в одном дашборде". Подзаголовок = secondary USP "Собери свой дашборд из виджетов". CTA + trust text inline (одна строка). Скриншот продукта ТОЛЬКО в DashboardCarousel (3 слайда: Дашборд, UE, Остатки). НЕ добавлять скриншот в hero
 46. **Landing NavBar:** sticky + backdrop-blur при скролле (classList.toggle, НЕ useState). Кликабельный логотип (scroll-to-top). `NAV_ITEMS` const. Clean gaps (hover:bg-gray-50, НЕ box-shadow). Hamburger 44px touch target. ARIA aria-expanded
+47. **ProductShowcase:** pill badge "Ключевые экраны" (bg-indigo-50). Gradient title (indigo→violet). Tab progress bar h-[3px] gradient (НЕ h-0.5 solid). Active tab: ring-1 + shadow-indigo + icon text-indigo-600. BrowserFrame: ring-1 ring-gray-900/[0.07] + shadow-[0_8px_60px]. CTA "Попробовать бесплатно →" (text link, НЕ button). Device toggle скрывает текст Desktop/Mobile на мобилке (hidden sm:inline)
+48. **Landing mobile overflow:** Root wrapper LandingPage ОБЯЗАН иметь `overflow-x-hidden`. Showcase container — `overflow-hidden`. Blur orbs: `w-full max-w-[Npx]` (НИКОГДА fixed `w-[600px]`). Negative inset на мобилке: `-inset-4` (НЕ `-inset-10`), desktop `sm:-inset-12`
 
 ## Формулы (КРИТИЧНО)
 ```
