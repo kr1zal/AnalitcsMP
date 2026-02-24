@@ -182,54 +182,24 @@ body {
    ======================================== */
 
 .data-flow-section {
-  background: linear-gradient(180deg, #080C1A 0%, #0D1225 50%, #080C1A 100%);
+  background: linear-gradient(180deg,
+    #060A16 0%, #0A0F1F 25%, #0D1225 50%, #0A0F1F 75%, #060A16 100%);
+  position: relative;
 }
-
-.data-flow-grid {
-  background-image: radial-gradient(circle, rgba(99, 102, 241, 0.06) 1px, transparent 1px);
-  background-size: 20px 20px;
+.data-flow-section::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(ellipse 600px 400px at 15% 30%, rgba(99,102,241,0.08) 0%, transparent 70%),
+    radial-gradient(ellipse 500px 350px at 80% 60%, rgba(139,92,246,0.06) 0%, transparent 70%),
+    radial-gradient(ellipse 400px 300px at 50% 80%, rgba(14,165,233,0.05) 0%, transparent 70%);
+  pointer-events: none;
+  z-index: 0;
 }
 
 @keyframes flow-dash {
   to { stroke-dashoffset: -16; }
-}
-
-.flow-line {
-  stroke-dasharray: 6 10;
-  fill: none;
-  animation: flow-dash 1s linear infinite;
-}
-
-@keyframes hub-pulse {
-  0%, 100% { opacity: 0.85; }
-  50% { opacity: 1; }
-}
-
-.flow-hub-rect {
-  animation: hub-pulse 3s ease-in-out infinite;
-}
-
-/* V2 pulsing hub — scale breathing effect */
-.flow-hub-pulse rect:first-child {
-  animation: hub-pulse 3s ease-in-out infinite;
-}
-.flow-hub-pulse {
-  transform-origin: center;
-  transform-box: fill-box;
-  animation: hub-scale-pulse 2s ease-in-out infinite;
-}
-@keyframes hub-scale-pulse {
-  0%, 100% { transform: scale(1); }
-  50% { transform: scale(1.03); }
-}
-
-@keyframes label-fade {
-  from { opacity: 0; }
-  to { opacity: 1; }
-}
-
-.flow-label-enter {
-  animation: label-fade 0.5s ease-out;
 }
 
 /* ========================================
@@ -338,11 +308,7 @@ body {
     transform: none;
     transition: none;
   }
-  .flow-line,
-  .flow-hub-rect,
-  .flow-label-enter {
-    animation: none;
-  }
+  /* (V1/V2 flow animations removed in V4) */
   .trust-marquee-track {
     animation: none;
   }
@@ -733,17 +699,6 @@ body {
    DataFlow V3 — Stripe-inspired styles
    ======================================== */
 
-/* Dot grid background (adapted from Stripe Rule 2) */
-.v3-dot-grid {
-  background-image: url("data:image/svg+xml;utf8,<svg width='10' height='10' xmlns='http://www.w3.org/2000/svg'><rect x='0' y='0' width='2' height='2' fill='%236366f1'/></svg>");
-  background-size: 10px 10px;
-  background-position: 0 0;
-  opacity: 0.08;
-  -webkit-mask-image: linear-gradient(180deg, hsla(0, 0%, 85%, 0), #737373 50%, hsla(0, 0%, 85%, 0));
-  mask-image: linear-gradient(180deg, hsla(0, 0%, 85%, 0), #737373 50%, hsla(0, 0%, 85%, 0));
-  pointer-events: none;
-}
-
 /* Animated gradient border for hub — smooth continuous spin */
 .v3-hub-border {
   animation: v3-gradient-rotate 2s linear infinite;
@@ -768,11 +723,6 @@ body {
   50% { opacity: 1; r: 4.5; }
 }
 
-/* ── Line opacity pulses (3 variants = organic, never synchronized) ── */
-.v3-line-a { animation: v3-line-glow 3s ease-in-out infinite; }
-.v3-line-b { animation: v3-line-glow 4s ease-in-out 1s infinite; }
-.v3-line-c { animation: v3-line-glow 3.5s ease-in-out 0.5s infinite; }
-
 @keyframes v3-line-glow {
   0%, 100% { stroke-opacity: 0.6; }
   50% { stroke-opacity: 1; }
@@ -783,37 +733,7 @@ body {
 .v4-flow-b { animation: flow-dash 1.3s linear infinite, v3-line-glow 4s ease-in-out 1s infinite; }
 .v4-flow-c { animation: flow-dash 1.1s linear infinite, v3-line-glow 3.5s ease-in-out 0.5s infinite; }
 
-/* ── Output label-change animations (each output uses a DIFFERENT one) ── */
-
-/* Output 1: simple crossfade */
-.v3-fade-in {
-  animation: v3-anim-fade 0.6s ease both;
-}
-@keyframes v3-anim-fade {
-  from { opacity: 0; }
-  to { opacity: 1; }
-}
-
-/* Output 2: scale bounce (appears with overshoot) */
-.v3-scale-in {
-  transform-box: fill-box;
-  transform-origin: center;
-  animation: v3-anim-scale 0.5s cubic-bezier(.4,0,.2,1) both;
-}
-@keyframes v3-anim-scale {
-  0% { opacity: 0; transform: scale(0.7); }
-  60% { transform: scale(1.06); }
-  100% { opacity: 1; transform: scale(1); }
-}
-
-/* Output 3: slide up from below */
-.v3-slide-up {
-  animation: v3-anim-slide 0.5s ease both;
-}
-@keyframes v3-anim-slide {
-  from { opacity: 0; transform: translateY(8px); }
-  to { opacity: 1; transform: translateY(0); }
-}
+/* (V3 cycling label animations removed in V4) */
 
 /* ── Badge micro-animations (every badge = unique behavior) ── */
 
@@ -839,40 +759,7 @@ body {
   96% { opacity: 0.85; }
 }
 
-/* Excel: subtle tilt wobble (±1.5deg) */
-.v3-wobble {
-  transform-box: fill-box;
-  transform-origin: center;
-  animation: v3-anim-wobble 5s ease-in-out infinite;
-}
-@keyframes v3-anim-wobble {
-  0%, 100% { transform: rotate(0deg); }
-  25% { transform: rotate(1.5deg); }
-  75% { transform: rotate(-1.5deg); }
-}
-
-/* PDF: slow opacity breathe */
-.v3-breathe {
-  animation: v3-anim-breathe 3.5s ease-in-out infinite;
-}
-@keyframes v3-anim-breathe {
-  0%, 100% { opacity: 0.65; }
-  50% { opacity: 1; }
-}
-
-/* Output 3: card-flip entrance (Отчёт → Excel → Презентация) */
-.v3-flip {
-  transform-box: fill-box;
-  transform-origin: center;
-  animation: v3-anim-flip 0.6s cubic-bezier(.4,0,.2,1) both;
-}
-@keyframes v3-anim-flip {
-  0% { opacity: 0; transform: scaleX(0); }
-  60% { opacity: 0.8; transform: scaleX(1.06); }
-  100% { opacity: 1; transform: scaleX(1); }
-}
-
-/* Excel/PDF badges: continuous 3D card flip (Stripe-style) */
+/* Excel/PDF badges: continuous CSS card flip (Stripe-style). Pills use RAF instead — see v3-pill-flip-base */
 .v3-flip-loop {
   transform-box: fill-box;
   transform-origin: center;
@@ -886,9 +773,14 @@ body {
   36% { transform: scaleX(0); }
   42% { transform: scaleX(1); }
 }
+/* Pill groups: geometry for RAF-driven flip (transform set by JS, no CSS animation) */
+.v3-pill-flip-base {
+  transform-box: fill-box;
+  transform-origin: center;
+}
 
 /* WB source: intermittent purple glow pulse */
-.v3-wb-pulse {
+.v4-source-pulse-wb {
   transform-box: fill-box;
   transform-origin: center;
   animation: v3-anim-wb-pulse 4s ease-in-out infinite;
@@ -931,27 +823,22 @@ body {
   100% { r: 24; stroke-opacity: 0; stroke-width: 0.5; }
 }
 
-/* Pro subscription: golden pulse glow */
-.v3-pro-glow {
-  animation: v3-anim-pro-glow 2s ease-in-out infinite;
+/* V4 data type pill glow */
+.v4-pill-glow {
+  animation: v4-anim-pill-glow 4s ease-in-out infinite;
 }
-@keyframes v3-anim-pro-glow {
-  0%, 100% { stroke-opacity: 0.15; }
-  50% { stroke-opacity: 0.45; }
+@keyframes v4-anim-pill-glow {
+  0%, 70%, 100% { filter: drop-shadow(0 0 0 transparent); }
+  35% { filter: drop-shadow(0 0 4px rgba(99,102,241,0.2)); }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .v3-hub-border, .v3-status-pulse,
-  .v3-line-a, .v3-line-b, .v3-line-c,
   .v4-flow-a, .v4-flow-b, .v4-flow-c,
-  .v3-fade-in, .v3-scale-in, .v3-slide-up, .v3-flip,
-  .v3-float, .v3-blink, .v3-wobble, .v3-breathe,
-  .v3-flip-loop, .v3-wb-pulse, .v3-ozon-tilt,
-  .v3-wb-ring, .v3-ozon-ring, .v3-pro-glow {
+  .v3-float, .v3-blink,
+  .v3-flip-loop, .v4-source-pulse-wb, .v3-ozon-tilt,
+  .v3-wb-ring, .v3-ozon-ring, .v4-pill-glow {
     animation: none;
-  }
-  .v3-dot-grid {
-    opacity: 0.05;
   }
 }
 
