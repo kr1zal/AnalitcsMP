@@ -41,6 +41,14 @@ class Settings(BaseSettings):
     # Production: дефолт https://reviomp.ru
     frontend_url: str = "https://reviomp.ru"
 
+    # Telegram bot
+    telegram_bot_token: str = ""
+    telegram_webhook_secret: str = ""
+    telegram_support_group_id: str = "-1003297306836"
+
+    # Anthropic AI (Claude Haiku for Telegram bot AI features)
+    anthropic_api_key: str = ""
+
     # Admin user IDs (UUID list)
     admin_user_ids: list[str] = Field(
         default_factory=lambda: ["e2db2023-4ce3-4182-96d3-7a194657cb4a"]

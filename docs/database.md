@@ -27,9 +27,9 @@
 | СУБД | PostgreSQL 15 |
 | Проект | `reviomp` (xpushkwswfbkdkbmghux) |
 | Pooler | `aws-1-eu-west-1.pooler.supabase.com:5432` |
-| Таблиц | **15** (префикс `mp_`) |
+| Таблиц | **18** (15 `mp_` + 3 `tg_support_`) |
 | RPC-функций | **4** |
-| Миграций | **17** (001-017) |
+| Миграций | **24** (001-024) |
 | RLS | Включена на всех таблицах |
 
 ### Архитектура доступа
@@ -40,7 +40,7 @@ Frontend (anon key) ──→ Supabase (RLS: user_id = auth.uid()) ──→ Pos
 Backend (service_role) ──┘  обходит RLS, но ВСЕГДА фильтрует по user_id в коде
 ```
 
-- **RLS** (Row Level Security) включена на всех 15 таблицах как **safety net**.
+- **RLS** (Row Level Security) включена на всех 18 таблицах как **safety net**.
 - **Backend** использует `service_role_key`, который обходит RLS, но **всегда** передает `user_id` в запросы явно.
 - **RPC-функции** принимают `p_user_id UUID DEFAULT NULL` — backend передает UUID текущего пользователя.
 - **Миграции** применяются вручную через Supabase SQL Editor (нет CLI-миграций).
@@ -542,6 +542,74 @@ Backend (service_role) ──┘  обходит RLS, но ВСЕГДА филь
 
 ---
 
+### 2.17. `tg_support_sessions` -- Сессии поддержки Telegram
+
+Каждая сессия поддержки — один обращение пользователя в Telegram бот. Lifecycle: active -> resolved/escalated -> closed.
+
+| Столбец | Тип | Nullable | Default | Описание |
+|---|---|---|---|---|
+| `session_id` | `UUID` | NO | `gen_random_uuid()` | **PK** |
+| `chat_id` | `BIGINT` | NO | — | Telegram chat ID |
+| `user_id` | `UUID` | YES | — | FK -> `auth.users(id) ON DELETE SET NULL` |
+| `status` | `VARCHAR(20)` | NO | `'active'` | `active` / `resolved` / `escalated` / `closed` |
+| `created_at` | `TIMESTAMPTZ` | NO | `now()` | — |
+| `last_message_at` | `TIMESTAMPTZ` | NO | `now()` | Время последнего сообщения |
+| `resolved_at` | `TIMESTAMPTZ` | YES | — | Когда пользователь нажал "Вопрос решён" |
+| `closed_at` | `TIMESTAMPTZ` | YES | — | Когда сессия закрыта (auto-close или CSAT) |
+| `conversation_summary` | `TEXT` | YES | — | Кэшированное summary диалога (Claude Haiku) |
+| `escalation_reason` | `VARCHAR(100)` | YES | — | Причина эскалации |
+| `message_count` | `INT` | NO | `0` | Счётчик сообщений |
+| `ai_confidence_avg` | `FLOAT` | NO | `0.0` | Средняя уверенность AI |
+
+**Ограничения:**
+- `CHECK (status IN ('active', 'resolved', 'escalated', 'closed'))`
+
+**Индексы:**
+- `idx_tg_sessions_chat_status` -- `(chat_id, status)`
+- `idx_tg_sessions_status_last` -- `(status, last_message_at)`
+
+**RLS:** `FOR ALL USING (true)` для service_role. Бот работает через backend service_role.
+
+---
+
+### 2.18. `tg_support_messages` -- Сообщения поддержки
+
+Все сообщения в сессии: user, bot (AI), operator.
+
+| Столбец | Тип | Nullable | Default | Описание |
+|---|---|---|---|---|
+| `id` | `BIGSERIAL` | NO | auto | **PK** |
+| `session_id` | `UUID` | NO | — | FK -> `tg_support_sessions(session_id) ON DELETE CASCADE` |
+| `role` | `VARCHAR(20)` | NO | — | `user` / `bot` / `operator` |
+| `content` | `TEXT` | NO | — | Текст сообщения |
+| `confidence` | `FLOAT` | YES | — | Уверенность AI (только для role=bot) |
+| `created_at` | `TIMESTAMPTZ` | NO | `now()` | — |
+
+**Ограничения:**
+- `CHECK (role IN ('user', 'bot', 'operator'))`
+
+**Индексы:**
+- `idx_tg_messages_session` -- `(session_id, created_at)`
+
+---
+
+### 2.19. `tg_support_csat` -- CSAT-рейтинг
+
+Оценка пользователя после закрытия сессии поддержки.
+
+| Столбец | Тип | Nullable | Default | Описание |
+|---|---|---|---|---|
+| `id` | `SERIAL` | NO | auto | **PK** |
+| `session_id` | `UUID` | NO | — | FK -> `tg_support_sessions(session_id) ON DELETE CASCADE` |
+| `rating` | `INT` | NO | — | Оценка (1-5) |
+| `feedback` | `TEXT` | YES | — | Текстовый отзыв |
+| `created_at` | `TIMESTAMPTZ` | NO | `now()` | — |
+
+**Ограничения:**
+- `CHECK (rating >= 1 AND rating <= 5)`
+
+---
+
 ## 3. RPC-функции
 
 Все RPC-функции выполняются на стороне PostgreSQL через `supabase.rpc()`. Помечены как `STABLE` (не изменяют данные). Принимают `p_user_id UUID DEFAULT NULL` для multi-tenant изоляции.
@@ -690,7 +758,7 @@ get_costs_tree_combined(
 
 ## 4. RLS-политики
 
-Все 15 таблиц имеют RLS. Стандартная политика для большинства таблиц:
+Все 18 таблиц имеют RLS. Стандартная политика для большинства таблиц:
 
 ```sql
 -- SELECT
@@ -718,6 +786,9 @@ CREATE POLICY "Users delete own {table}" ON mp_{table}
 | `mp_sync_queue` | Только SELECT для обычных пользователей. Запись через service_role. |
 | `mp_payments` | SELECT для пользователей + `FOR ALL USING (true)` для service_role (webhook). |
 | `mp_stock_snapshots` | SELECT для пользователей + `FOR ALL USING (true)` для service_role (sync). |
+| `tg_support_sessions` | `FOR ALL USING (true)` для service_role. Бот работает через backend. |
+| `tg_support_messages` | `FOR ALL USING (true)` для service_role. Бот работает через backend. |
+| `tg_support_csat` | `FOR ALL USING (true)` для service_role. Бот работает через backend. |
 
 ### Модель безопасности
 
@@ -757,6 +828,13 @@ Backend ──────→  │ Supabase (service)   │ ──→ RLS обх
 | 015 | `015_sales_plan_marketplace.sql` | Колонка `marketplace` в `mp_sales_plan`. Пересоздание UNIQUE constraint. | 2026-02 |
 | 016 | `016_sales_plan_summary.sql` | Таблица `mp_sales_plan_summary` (total/wb/ozon уровень). RLS. | 2026-02 |
 | 017 | `017_stock_snapshots.sql` | Таблица `mp_stock_snapshots`. Ежедневные снимки остатков. 2 индекса (DESC). | 2026-02 |
+| 018 | `018_fulfillment_type.sql` | Колонка `fulfillment_type VARCHAR(10) DEFAULT 'FBO'` в 6 таблицах. UNIQUE constraints обновлены. RPC с `p_fulfillment_type`. | 2026-02 |
+| 019 | `019_ozon_settled_qty.sql` | Колонка `settled_qty` в `mp_costs`. Очистка дублей `mp_ad_costs` Ozon. | 2026-02 |
+| 020 | `020_rpc_order_based_purchase.sql` | RPC `get_dashboard_summary` откат на order-based purchase для всех МП. | 2026-02 |
+| 021 | `021_dashboard_layout.sql` | Таблица `mp_dashboard_layout` — конфигурация виджетного дашборда. | 2026-02 |
+| 022 | `022_dashboard_layout_config.sql` | Расширение `mp_dashboard_layout`: config API для DnD-виджетов. | 2026-02 |
+| 023 | `023_telegram_links.sql` | Таблицы `mp_telegram_links`, `mp_telegram_link_tokens` — привязка Telegram аккаунтов. | 2026-02 |
+| 024 | `024_support_sessions.sql` | Таблицы `tg_support_sessions`, `tg_support_messages`, `tg_support_csat`. Сессии поддержки в Telegram. 4 индекса. RLS. | 2026-02 |
 
 **Справочный файл:** `FULL_SCHEMA_NEW_PROJECT.sql` — объединенная схема (миграции 001-012 + RPC) для разворачивания нового проекта Supabase с нуля.
 
@@ -820,6 +898,7 @@ Backend ──────→  │ Supabase (service)   │ ──→ RLS обх
 | **Планирование** | `mp_sales_plan`, `mp_sales_plan_summary` | План продаж (3 уровня) |
 | **Каталог** | `mp_products` | Мастер-данные товаров |
 | **Пользователи** | `mp_user_tokens`, `mp_user_subscriptions`, `mp_payments` | Учетные записи, подписки, платежи |
+| **Telegram** | `tg_support_sessions`, `tg_support_messages`, `tg_support_csat` | AI-поддержка в Telegram |
 | **Инфра** | `mp_sync_log`, `mp_sync_queue` | Синхронизация и логирование |
 
 ---
@@ -846,6 +925,9 @@ Backend ──────→  │ Supabase (service)   │ ──→ RLS обх
 | `mp_sync_queue` | 2 | `(priority, next_sync_at)`, `status` |
 | `mp_sync_log` | 1 | `user_id` |
 | `mp_payments` | 2 | `yookassa_payment_id`, `user_id` |
+| `tg_support_sessions` | 2 | `(chat_id, status)`, `(status, last_message_at)` |
+| `tg_support_messages` | 1 | `(session_id, created_at)` |
+| `tg_support_csat` | 0 | FK constraint на session_id |
 
 ### Стратегия индексирования
 
@@ -935,4 +1017,4 @@ pace_daily = actual / days_elapsed
 
 ---
 
-> Документ сгенерирован на основе 17 миграций, 4 RPC-функций и backend-кода проекта Analytics Dashboard.
+> Документ сгенерирован на основе 24 миграций, 4 RPC-функций и backend-кода проекта Analytics Dashboard. Обновлено: 25.02.2026.
