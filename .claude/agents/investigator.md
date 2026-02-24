@@ -231,9 +231,17 @@ Concrete flow for this feature:
 - The summary should include: scope (N files found), key components, and the data flow in 1-2 sentences
 - Other agents (frontend-worker, debugger, reviewer) can read `investigation.md` for full context
 
+### OUTPUT SIZE LIMIT (CRITICAL)
+- **investigation.md MUST NOT exceed 200 lines** — hard limit, enforce strictly
+- **NO full code blocks** — только `file.tsx:LINE` ссылки + 1-строчное описание
+- **Типы/интерфейсы:** только ключевые поля в 1 строку: `{ field: type, field2: type }` — не полный код
+- **Функции:** только сигнатура в 1 строку: `funcName(param: Type): ReturnType @ file.py:LINE`
+- **Исключение:** разрешено показать ≤3 строк кода ТОЛЬКО если без этого невозможно понять поведение
+- Если нашёл >10 файлов — группируй, не перечисляй каждый отдельно
+- Приоритет: entry points и data flow. Вспомогательные утилиты — только упомянуть имя + путь
+
 ### FORMATTING
 - Respond in Russian
 - Enterprise tone: no apologies, no opinions, just structured facts
-- Code snippets: show actual code from files, not pseudo-code
-- For large interfaces/functions: show complete signature, abbreviate body with `// ... N lines of logic`
+- One fact per line: `` `symbol` @ path:LINE — [факт в 7 слов max] ``
 - Sort sections by data flow order: Page → Component → Hook → API → Backend → DB

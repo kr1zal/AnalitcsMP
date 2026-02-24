@@ -1256,21 +1256,48 @@ function FeaturesSection() {
 }
 
 
+
 /* ──────────────────────────────────────────────
-   DATAFLOW V3 — LIVING ECOSYSTEM
-   Every element has its own rhythm and animation type.
-   No synchronized breathing — organic, independent motion.
-   Traveling dots on lines, varied label transitions,
-   unique micro-animations per badge.
+   DATAFLOW V4 — ENTERPRISE DATA PIPELINE
+   5 sources, 6 data types, central hub,
+   5 outputs, grouped integrations + exports.
+   Static pills, smooth bezier curves, dot grid.
    ────────────────────────────────────────────── */
 
-function DataFlowSectionV3() {
-  const SHOW_PRO = false; // flip to true when Order Monitor is ready
+function DataFlowSectionV4() {
   const [triggered, setTriggered] = useState(false);
   const [alive, setAlive] = useState(false);
-  const [proActive, setProActive] = useState(false);
   const [tick, setTick] = useState(-1);
   const sectionRef = useRef<HTMLDivElement>(null);
+  const prefersReducedMotion = useRef(
+    typeof window !== 'undefined'
+      ? window.matchMedia('(prefers-reduced-motion: reduce)').matches
+      : false
+  );
+
+  /* ── Pill flip refs: direct DOM manipulation for smooth scaleX (no React re-render per frame) ── */
+  const pillRefD0 = useRef<SVGGElement>(null);
+  const pillRefD1 = useRef<SVGGElement>(null);
+  const pillRefD2 = useRef<SVGGElement>(null);
+  const pillRefM0 = useRef<SVGGElement>(null);
+  const pillRefM1 = useRef<SVGGElement>(null);
+  const pillRefM2 = useRef<SVGGElement>(null);
+  const pillRefsDesktop = [pillRefD0, pillRefD1, pillRefD2];
+  const pillRefsMobile  = [pillRefM0, pillRefM1, pillRefM2];
+
+  /* ── SPP sequence animation refs ── */
+  const sppPillRefD = useRef<SVGGElement>(null);
+  const sppLineRefD = useRef<SVGPathElement>(null);
+  const sppDotRefD  = useRef<SVGCircleElement>(null);
+  const sppPillRefM = useRef<SVGGElement>(null);
+  const sppLineRefM = useRef<SVGPathElement>(null);
+  const sppDotRefM  = useRef<SVGCircleElement>(null);
+  const sppClipRectD = useRef<SVGRectElement>(null);
+  const sppClipRectM = useRef<SVGRectElement>(null);
+  /* label index per pill: 0=labelA, 1=labelB — mutated by RAF, read by render */
+  const pillLabelIdxRef = useRef([0, 0, 0]);
+  /* incremented to trigger React re-render exactly when text changes */
+  const [_pillFlipTick, setPillFlipTick] = useState(0);
 
   /* ── Scroll trigger ── */
   useEffect(() => {
@@ -1278,7 +1305,7 @@ function DataFlowSectionV3() {
     if (!el) return;
     const obs = new IntersectionObserver(
       ([e]) => { if (e.isIntersecting) { setTriggered(true); obs.unobserve(el); } },
-      { threshold: 0.15 },
+      { threshold: 0.12 },
     );
     obs.observe(el);
     return () => obs.disconnect();
@@ -1287,11 +1314,11 @@ function DataFlowSectionV3() {
   /* ── Alive flag: micro-animations start after entrance completes ── */
   useEffect(() => {
     if (!triggered) return;
-    const t = setTimeout(() => setAlive(true), 3200);
+    const t = setTimeout(() => setAlive(true), 2500);
     return () => clearTimeout(t);
   }, [triggered]);
 
-  /* ── Master tick (1s interval, drives all label cycling) ── */
+  /* ── Tick counter for cycling labels (Отчёт ↔ Презентация) ── */
   useEffect(() => {
     if (!alive) return;
     setTick(0);
@@ -1299,691 +1326,831 @@ function DataFlowSectionV3() {
     return () => clearInterval(t);
   }, [alive]);
 
-  /* ── Content derivation (each output cycles at its own rate + offset) ── */
-  const o1Labels = ['Дашборд', 'Графики', 'Аналитика'];
-  const o2Labels = ['Прибыль', 'Маржа', 'ROI'];
-  const o3Labels = ['Отчёт', 'Презентация'];
-  const roiValues = ['+42%', '+38%', '+55%', '+47%'];
+  const reportLabels = ['Отчёт', 'Презентация'] as const;
+  const reportCycle = tick >= 0 ? Math.floor((tick + 1) / 5) : -1;
+  const reportLabel = tick >= 0 ? reportLabels[reportCycle % 2] : reportLabels[0];
 
-  const o1 = tick >= 0 ? o1Labels[Math.floor(tick / 4) % 3] : o1Labels[0];
-  const o2 = tick >= 0 ? o2Labels[Math.floor((tick + 2) / 3) % 3] : o2Labels[0];
-  const o3Cycle = tick >= 0 ? Math.floor((tick + 1) / 5) : -1;
-  const o3 = tick >= 0 ? o3Labels[o3Cycle % 2] : o3Labels[0];
-  const roi = tick >= 0 ? roiValues[Math.floor((tick + 3) / 4) % 4] : roiValues[0];
-
-  /* ── Shelf: cycling data categories from V2 (3 cards) ── */
-  const shelfLabels = [
-    ['Продажи', 'Заказы', 'Выкупы'],
-    ['Остатки', 'FBO', 'Склады'],
-    ['Реклама', 'Удержания', 'Комиссия'],
+  /* ── Pill flip labels (pairs per pill) ── */
+  const pillFlipLabels: [string, string][] = [
+    ['Продажи', 'Заказы'],
+    ['Остатки', 'Склады'],
+    ['Реклама', 'Комиссии'],
   ];
-  const shelfCX = [310, 440, 570];          // card centers X (spread to avoid line crossings)
-  const shelfCycle = tick >= 0 ? Math.floor(tick / 3) : 0;
-  const shelf = shelfLabels.map((labels, i) =>
-    tick >= 0 ? labels[(shelfCycle + i) % 3] : labels[0]
+
+  /* ── RAF pill flip: single source of truth for both scaleX and text change.
+     Each pill has a staggered start delay (0 / 1.7s / 3.4s) so flips never overlap.
+     scaleX is mutated directly on the DOM — zero React re-renders per frame.
+     Text changes ONLY at the instant scaleX≈0 (phase 0.34–0.38), then React re-renders once. ── */
+  useEffect(() => {
+    if (!alive || prefersReducedMotion.current) return;
+
+    const PERIOD    = 5000;          // full flip cycle, ms
+    const DELAYS_MS = [0, 1700, 3400]; // stagger offsets per pill
+    const FLIP_IN_LO  = 0.30;        // compress starts
+    const FLIP_PEAK   = 0.36;        // scaleX = 0 here → text changes
+    const FLIP_OUT_HI = 0.42;        // expand ends
+    const WIN_LO      = 0.34;        // text-change gate open
+    const WIN_HI      = 0.38;        // text-change gate close
+
+    /* quadratic easing for snappy Stripe-style flip */
+    const easeIn  = (t: number) => t * t;
+    const easeOut = (t: number) => 1 - (1 - t) * (1 - t);
+
+    function getScale(phase: number): number {
+      if (phase < FLIP_IN_LO)  return 1;
+      if (phase <= FLIP_PEAK)  { const t = (phase - FLIP_IN_LO) / (FLIP_PEAK - FLIP_IN_LO);  return 1 - easeIn(t);  }
+      if (phase <= FLIP_OUT_HI){ const t = (phase - FLIP_PEAK)  / (FLIP_OUT_HI - FLIP_PEAK); return easeOut(t); }
+      return 1;
+    }
+
+    const start  = performance.now();
+    const atZero = [false, false, false]; // debounce: fired this peak window?
+    let raf: number;
+
+    function frame(now: number) {
+      const elapsed = now - start;
+      let needsRender = false;
+
+      for (let i = 0; i < 3; i++) {
+        const t = elapsed - DELAYS_MS[i];
+        if (t < 0) continue;
+
+        const phase  = (t % PERIOD) / PERIOD;
+        const scaleX = getScale(phase);
+        const tf     = `scaleX(${scaleX.toFixed(4)})`;
+
+        /* direct DOM mutation — bypasses React reconciler for smooth 60fps */
+        if (pillRefsDesktop[i].current) pillRefsDesktop[i].current!.style.transform = tf;
+        if (pillRefsMobile[i].current)  pillRefsMobile[i].current!.style.transform  = tf;
+
+        /* text gate: change label EXACTLY when scaleX≈0, never while pill is visible */
+        const inWindow = phase >= WIN_LO && phase < WIN_HI;
+        if (inWindow && !atZero[i]) {
+          atZero[i] = true;
+          pillLabelIdxRef.current[i] = (pillLabelIdxRef.current[i] + 1) % 2;
+          needsRender = true;
+        } else if (!inWindow) {
+          atZero[i] = false;
+        }
+      }
+
+      if (needsRender) setPillFlipTick(v => v + 1); // triggers one render for text update
+
+      // ── SPP cycle: pill in → line grows (pill→hub) → dot travels → line erases (hub→pill) → pill out → pause ──
+      // CYCLE 7000ms:
+      //   [0-600]     PILL fades in — no line yet
+      //   [600-1800]  LINE extends A→B (pill→hub): dashed, directional clip reveal
+      //   [1800-3200] STABLE: dot travels on full dashed line, pill visible
+      //   [3200-4400] LINE erases B→A (hub→pill): dashed, directional clip erase
+      //   [4400-5000] PILL fades out (line already gone)
+      //   [5000-7000] 2s PAUSE — all invisible
+      const SPP_CYCLE = 7000;
+      const sppS = [0, 600, 1800, 3200, 4400, 5000, 7000] as const;
+      const sppSs = (t: number) => t * t * (3 - 2 * t); // smoothstep
+
+      const sppT = elapsed % SPP_CYCLE;
+
+      let sppPillOp = 0;
+      let sppDotOp  = 0;
+      let sppDotP   = 0;
+      // clip mode: 'none'=rect width 0, 'extend'=growing, 'erase'=shrinking, 'full'=max width
+      let sppClipMode: 'none' | 'extend' | 'erase' | 'full' = 'none';
+      let sppClipP = 0; // progress 0→1
+
+      if (sppT < sppS[1]) {
+        // 0-600ms: pill fades in
+        sppPillOp = sppSs(sppT / sppS[1]);
+        sppClipMode = 'none';
+      } else if (sppT < sppS[2]) {
+        // 600-1800ms: line extends pill→hub
+        sppPillOp = 1;
+        sppClipMode = 'extend';
+        sppClipP = sppSs((sppT - sppS[1]) / (sppS[2] - sppS[1]));
+      } else if (sppT < sppS[3]) {
+        // 1800-3200ms: stable — dot travels
+        sppPillOp = 1;
+        sppClipMode = 'full';
+        sppDotOp = 1;
+        sppDotP = sppSs((sppT - sppS[2]) / (sppS[3] - sppS[2]));
+      } else if (sppT < sppS[4]) {
+        // 3200-4400ms: line erases hub→pill, dot fades quickly
+        const p = (sppT - sppS[3]) / (sppS[4] - sppS[3]);
+        sppPillOp = 1;
+        sppClipMode = 'erase';
+        sppClipP = sppSs(p);
+        sppDotOp = Math.max(0, 1 - sppSs(Math.min(1, p * 2)));
+        sppDotP = 1;
+      } else if (sppT < sppS[5]) {
+        // 4400-5000ms: pill fades out
+        sppPillOp = 1 - sppSs((sppT - sppS[4]) / (sppS[5] - sppS[4]));
+        sppClipMode = 'none';
+      } else {
+        // 5000-7000ms: pause
+        sppPillOp = 0;
+        sppClipMode = 'none';
+      }
+
+      // Helper: apply SPP state via clipRect + line opacity + dot position + pill opacity
+      // pillAtLeft=true: pill is at LEFT side (desktop — pill x≈340, hub x≈440, grows left→right)
+      // pillAtLeft=false: pill is at RIGHT side (mobile — pill x≈209, hub x≈160, grows right→left)
+      const applySpp = (
+        lineEl:     SVGPathElement | null,
+        dotEl:      SVGCircleElement | null,
+        pillEl:     SVGGElement | null,
+        clipRectEl: SVGRectElement | null,
+        clipX0:     number,   // leftmost x of bounding box (with 2px padding)
+        clipW:      number,   // total width of bounding box
+        pillAtLeft: boolean,  // growth direction
+      ) => {
+        if (!lineEl) return;
+
+        // ── Clip rect: directional grow/erase ──
+        if (clipRectEl) {
+          if (sppClipMode === 'none') {
+            clipRectEl.setAttribute('width', '0');
+          } else if (sppClipMode === 'full') {
+            clipRectEl.setAttribute('x', String(clipX0));
+            clipRectEl.setAttribute('width', String(clipW));
+          } else if (sppClipMode === 'extend') {
+            const w = (sppClipP * clipW).toFixed(1);
+            if (pillAtLeft) {
+              // Desktop: grow leftward (pill) → rightward (hub)
+              clipRectEl.setAttribute('x', String(clipX0));
+            } else {
+              // Mobile: grow rightward (pill) → leftward (hub)
+              clipRectEl.setAttribute('x', (clipX0 + clipW - sppClipP * clipW).toFixed(1));
+            }
+            clipRectEl.setAttribute('width', w);
+          } else { // 'erase'
+            const w = ((1 - sppClipP) * clipW).toFixed(1);
+            if (pillAtLeft) {
+              // Desktop: shrink from right (hub disappears first, pill stays last)
+              clipRectEl.setAttribute('x', String(clipX0));
+            } else {
+              // Mobile: shrink from left (hub disappears first)
+              clipRectEl.setAttribute('x', (clipX0 + sppClipP * clipW).toFixed(1));
+            }
+            clipRectEl.setAttribute('width', w);
+          }
+        }
+
+        // ── Line: always dashed, visibility via clip ──
+        lineEl.style.strokeDasharray = '8 8';
+        lineEl.style.strokeDashoffset = '0';
+        lineEl.style.opacity = sppClipMode === 'none' ? '0' : '1';
+
+        // ── Dot: position via getPointAtLength ──
+        if (dotEl) {
+          if (sppDotOp > 0) {
+            const pLen = lineEl.getTotalLength();
+            const pt = lineEl.getPointAtLength(sppDotP * pLen);
+            dotEl.setAttribute('cx', pt.x.toFixed(1));
+            dotEl.setAttribute('cy', pt.y.toFixed(1));
+            dotEl.style.opacity = String(sppDotOp.toFixed(3));
+          } else {
+            dotEl.style.opacity = '0';
+          }
+        }
+
+        if (pillEl) pillEl.style.opacity = String(sppPillOp.toFixed(3));
+      };
+
+      // Desktop: P.pill5ToHub = 'M340,336 C390,336 410,245 440,240'
+      //   bbox x: 338–442 (w=104), y: 236–340 (h=104), pill at LEFT
+      applySpp(
+        sppLineRefD.current, sppDotRefD.current, sppPillRefD.current, sppClipRectD.current,
+        338, 104, true,
+      );
+      // Mobile: PM.pill5ToHub = 'M209,144 C209,158 160,158 160,170'
+      //   bbox x: 158–211 (w=53), y: 140–172 (h=32), pill at RIGHT
+      applySpp(
+        sppLineRefM.current, sppDotRefM.current, sppPillRefM.current, sppClipRectM.current,
+        158, 53, false,
+      );
+
+      raf = requestAnimationFrame(frame); // ← continue loop
+    }
+
+    raf = requestAnimationFrame(frame); // ← start loop
+    return () => cancelAnimationFrame(raf);
+  }, [alive]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  /* current label per pill — re-read from ref on each render (cheap) */
+  const pillFlipCurrent = pillFlipLabels.map(([a, b], i) =>
+    pillLabelIdxRef.current[i] % 2 === 0 ? a : b
   );
-  const activeSlot = tick >= 0 ? shelfCycle % 3 : -1;
 
   /* ── Entrance helper (one-shot, staggered) ── */
   const show = (delay: number): React.CSSProperties => ({
     opacity: triggered ? 1 : 0,
-    transform: triggered ? 'scale(1)' : 'scale(0.8)',
+    transform: triggered ? 'scale(1)' : 'scale(0.85)',
     transition: triggered
-      ? `opacity 0.5s cubic-bezier(.4,0,.2,1) ${delay}s, transform 0.5s cubic-bezier(.4,0,.2,1) ${delay}s`
+      ? `opacity 0.6s cubic-bezier(.4,0,.2,1) ${delay}s, transform 0.6s cubic-bezier(.4,0,.2,1) ${delay}s`
       : 'none',
   });
 
-  /* ── Line draw-on helper (draws once, stays with varied dash pattern) ── */
-  const draw = (delay: number, len: number, dashPat = '2 4') => ({
-    strokeDasharray: triggered ? dashPat : `${len}`,
-    strokeDashoffset: triggered ? 0 : len,
+  /* ── Line draw-on helper (draws once as dashed from the start, no solid→dashed jump) ── */
+  const draw = (delay: number, len: number, dashPat = '6 10') => ({
+    strokeDasharray: dashPat,
+    strokeDashoffset: triggered ? 0 : len * 3,
     style: {
       transition: triggered
-        ? `stroke-dashoffset 1.2s cubic-bezier(.66,0,.34,1) ${delay}s, stroke-dasharray 0.01s linear ${delay + 1.2}s`
+        ? `stroke-dashoffset 1.2s cubic-bezier(.66,0,.34,1) ${delay}s`
         : 'none',
     } as React.CSSProperties,
   });
 
-  /* ── Pro-tree entrance/exit helpers ── */
-  const proShow = (d: number): React.CSSProperties => ({
-    opacity: proActive ? 1 : 0,
-    transform: proActive ? 'scale(1)' : 'scale(0.5)',
-    transition: `opacity 0.35s cubic-bezier(.4,0,.2,1) ${proActive ? d : 0}s, transform 0.35s cubic-bezier(.4,0,.2,1) ${proActive ? d : 0}s`,
-    transformBox: 'fill-box' as const,
-    transformOrigin: 'center',
-  });
-
-  const proDraw = (d: number, len: number) => ({
-    strokeDasharray: proActive ? '3 4' : `${len}`,
-    strokeDashoffset: proActive ? 0 : len,
-    style: {
-      transition: proActive
-        ? `stroke-dashoffset 0.5s ease ${d}s, stroke-dasharray 0.01s linear ${d + 0.5}s`
-        : `stroke-dashoffset 0.3s ease 0s, stroke-dasharray 0.01s linear 0s`,
-    } as React.CSSProperties,
-  });
-
-  /* ── Path definitions ── */
+  /* ── Path definitions (V4 smooth cubic bezier) ── */
   const P = {
-    wbToHub:   'M178,173 L298,173 L298,238 L416,238',
-    ozonToHub: 'M178,348 L298,348 L298,288 L416,288',
-    ymToHub:   'M168,465 L340,465 L340,308 L416,308',
-    hubToD:    'M594,238 L648,238 L648,120 L700,120',
-    hubToP:    'M594,263 L700,263',
-    hubToE:    'M594,288 L648,288 L648,410 L700,410',
-    dToB1:     'M830,108 L858,108 L858,84  L882,84',
-    dToB2:     'M830,132 L858,132 L858,150 L882,150',
-    pToB3:     'M830,263 L882,263',
-    eToB4:     'M830,400 L858,400 L858,390 L882,390',
-    eToB5:     'M830,420 L858,420 L858,436 L882,436',
-    hubToAPI:    'M505,312 L505,465',
-    hubToSpp:    'M594,218 L594,90 L710,90 L710,56',     // hub top-right → up → right (above card top y=98) → СПП
-    shelf1ToHub: 'M310,56 L310,150 L445,150 L445,218', // left card → hub (2 bends)
-    shelf2ToHub: 'M440,56 L440,130 L475,130 L475,218', // center card → hub (2 bends)
-    shelf3ToHub: 'M570,56 L570,110 L520,110 L520,218', // right card → hub (2 bends)
+    // Sources -> Pills (WB→pill1,pill2; Ozon→pill3,pill4)
+    wbToPill1:    'M165,78  C195,78  210,80  230,80',
+    wbToPill2:    'M165,92  C195,92  210,144 230,144',
+    ozonToPill3:  'M165,162 C195,162 210,208 230,208',
+    ozonToPill4:  'M165,178 C200,178 210,272 230,272',
+    // Pills -> Hub (5 pills: y-centers 80,144,208,272,336; endpoint x=440 = outer dashed border)
+    pill1ToHub:    'M340,80  C390,80  410,185 440,190',
+    pill2ToHub:    'M340,144 C385,144 410,200 440,205',
+    pill3ToHub:    'M340,208 C380,208 410,215 440,215',
+    pill4ToHub:    'M340,272 C385,272 410,230 440,225',
+    pill5ToHub:    'M340,336 C390,336 410,245 440,240',
+    // Hub -> Outputs
+    hubToDash:     'M640,185 C670,185 680,74  710,74',
+    hubToPnl:      'M640,195 C670,195 680,142 710,142',
+    hubToStocks:   'M640,210 C670,210 680,210 710,210',
+    hubToReport:   'M640,225 C670,225 680,278 710,278',
+    hubToPlan:     'M640,235 C670,235 680,346 710,346',
+    // Outputs -> Integrations
+    dashToTelegram: 'M850,66  C875,66  895,76  920,76',
+    dashToWebhook:  'M850,82  C875,82  895,124 920,124',
+    pnlToApi:       'M850,142 C875,142 895,172 920,172',
+    // Outputs -> Exports
+    reportToExcel: 'M850,286 C875,286 895,294 920,294',
+    reportToPdf:   'M850,286 C875,286 895,342 920,342',
   };
 
-  /* ── Pro-tree paths ── */
-  const proP = {
-    trunk:  'M765,500 L765,520',
-    left:   'M765,520 L665,548',
-    center: 'M765,520 L765,548',
-    right:  'M765,520 L865,548',
+  /* ── Mobile path definitions ── */
+  const PM = {
+    wbToRow1:    'M83,52  C83,62  62,68  62,78',
+    wbToRow1b:   'M83,52  C83,62  160,62 160,78',
+    ozonToRow1:  'M237,52 C237,62 258,68 258,78',
+    ozonToRow1b: 'M237,52 C237,62 160,62 160,78',
+    // pill→hub endpoints y=170 = outer top border; hub→out y=242 = outer bottom border
+    pill1ToHub:  'M62,106  C62,140 160,140 160,170',
+    pill2ToHub:  'M160,106 L160,170',
+    pill3ToHub:  'M258,106 C258,140 160,140 160,170',
+    pill4ToHub:  'M111,144 C111,158 160,158 160,170',
+    pill5ToHub:  'M209,144 C209,158 160,158 160,170',
+    hubToOut1:   'M160,242 C160,256 62,256  62,275',
+    hubToOut2:   'M160,242 C160,256 160,256 160,275',
+    hubToOut3:   'M160,242 C160,256 258,256 258,275',
+    hubToOut4:   'M160,242 C160,266 102,296 102,316',
+    hubToOut5:   'M160,242 C160,266 218,296 218,316',
+    out1ToBdg1:  'M62,305  L62,380',
+    out2ToBdg2:  'M160,305 L160,380',
+    out3ToBdg3:  'M258,305 L258,380',
+    out4ToBdg4:  'M102,346 C102,362 111,370 111,414',
+    out5ToBdg5:  'M218,346 C218,362 209,370 209,414',
   };
 
-  /* ── Traveling data packet configs ── */
+  /* ── Traveling data packet configs (desktop) ── */
   const packets = [
-    { path: P.wbToHub,   c: '#8b5cf6', r: 2.5, op: 0.7,  dur: '2.5s', begin: '0s' },
-    { path: P.wbToHub,   c: '#8b5cf6', r: 1.5, op: 0.35, dur: '2.5s', begin: '1.2s' },
-    { path: P.ozonToHub, c: '#3b82f6', r: 2.5, op: 0.65, dur: '3s',   begin: '0.5s' },
-    { path: P.ozonToHub, c: '#3b82f6', r: 1.5, op: 0.3,  dur: '3s',   begin: '2s' },
-    { path: P.hubToD,    c: '#6366f1', r: 2,   op: 0.5,  dur: '2s',   begin: '0.3s' },
-    { path: P.hubToP,    c: '#6366f1', r: 2,   op: 0.5,  dur: '1.2s', begin: '0.8s' },
-    { path: P.hubToE,    c: '#6366f1', r: 2,   op: 0.5,  dur: '2s',   begin: '1.3s' },
-    { path: P.dToB1,     c: '#0ea5e9', r: 1.5, op: 0.4,  dur: '1.5s', begin: '0.2s' },
-    { path: P.dToB2,     c: '#10b981', r: 1.5, op: 0.4,  dur: '1.5s', begin: '0.7s' },
-    { path: P.pToB3,     c: '#d97706', r: 1.5, op: 0.4,  dur: '1s',   begin: '0.6s' },
-    { path: P.hubToAPI,  c: '#10b981', r: 2,   op: 0.5,  dur: '2.2s', begin: '0.4s' },
-    { path: P.shelf1ToHub, c: '#818cf8', r: 2, op: 0.45, dur: '2.8s', begin: '0.5s' },
-    { path: P.shelf2ToHub, c: '#818cf8', r: 2, op: 0.45, dur: '2.2s', begin: '1s' },
-    { path: P.shelf3ToHub, c: '#818cf8', r: 2, op: 0.45, dur: '2.8s', begin: '1.5s' },
+    // Sources -> Pills
+    { path: P.wbToPill1,      c: '#8b5cf6', r: 3,   op: 0.6,  dur: '2s',   begin: '0s' },
+    { path: P.wbToPill2,      c: '#8b5cf6', r: 2,   op: 0.4,  dur: '2.8s', begin: '1.4s' },
+    { path: P.ozonToPill3,    c: '#3b82f6', r: 3,   op: 0.6,  dur: '2.5s', begin: '0.5s' },
+    { path: P.ozonToPill4,    c: '#3b82f6', r: 2,   op: 0.4,  dur: '3s',   begin: '1.8s' },
+    // Pills -> Hub
+    { path: P.pill1ToHub,     c: '#6366f1', r: 2.5, op: 0.5,  dur: '2.5s', begin: '0.3s' },
+    { path: P.pill2ToHub,     c: '#818cf8', r: 2,   op: 0.45, dur: '2.2s', begin: '1s' },
+    { path: P.pill3ToHub,     c: '#818cf8', r: 2,   op: 0.45, dur: '2.8s', begin: '0.7s' },
+    { path: P.pill4ToHub,     c: '#818cf8', r: 2,   op: 0.45, dur: '2.2s', begin: '1.5s' },
+    // Hub -> Outputs
+    { path: P.hubToDash,      c: '#6366f1', r: 2.5, op: 0.5,  dur: '2s',   begin: '0.3s' },
+    { path: P.hubToPnl,       c: '#6366f1', r: 2.5, op: 0.5,  dur: '1.5s', begin: '0.8s' },
+    { path: P.hubToStocks,    c: '#6366f1', r: 2,   op: 0.45, dur: '1.8s', begin: '1.3s' },
+    { path: P.hubToReport,    c: '#6366f1', r: 2,   op: 0.45, dur: '2s',   begin: '0.6s' },
+    { path: P.hubToPlan,      c: '#8b5cf6', r: 2,   op: 0.4,  dur: '2.3s', begin: '1.1s' },
+    // Outputs -> Integrations
+    { path: P.dashToTelegram,  c: '#38bdf8', r: 1.5, op: 0.5,  dur: '1.2s', begin: '0.2s' },
+    { path: P.dashToWebhook,   c: '#34d399', r: 1.5, op: 0.5,  dur: '1.4s', begin: '0.9s' },
+    { path: P.pnlToApi,        c: '#818cf8', r: 1.5, op: 0.45, dur: '1.3s', begin: '0.4s' },
   ];
 
-  const outY = [120, 263, 410];
-  const outTexts = [o1, o2, o3];
-  /* Each output: DIFFERENT CSS enter animation (fade / scale-bounce / slide-up) */
-  const outAnim = ['v3-fade-in', 'v3-scale-in', 'v3-flip'];
-  const outDelay = [1.5, 1.7, 1.9];
-
-  const badgeData = [
-    { x: 882, y: 70, w: 92, h: 28, fill: 'rgba(14,165,233,0.12)', stroke: 'rgba(14,165,233,0.35)', color: '#38bdf8', text: 'Telegram', anim: 'v3-float' },
-    { x: 882, y: 137, w: 92, h: 28, fill: 'rgba(16,185,129,0.12)', stroke: 'rgba(16,185,129,0.35)', color: '#34d399', text: 'Webhook', anim: 'v3-blink' },
-    { x: 882, y: 250, w: 78, h: 26, fill: 'rgba(217,119,6,0.12)', stroke: 'rgba(217,119,6,0.35)', color: '#fbbf24', text: roi, anim: 'v3-scale-in', dynamic: true },
-    { x: 882, y: 377, w: 86, h: 28, fill: 'rgba(34,197,94,0.15)', stroke: 'rgba(34,197,94,0.4)', color: '#4ade80', text: 'Excel', anim: 'v3-flip-loop' },
-    { x: 882, y: 423, w: 80, h: 28, fill: 'rgba(239,68,68,0.15)', stroke: 'rgba(239,68,68,0.4)', color: '#f87171', text: 'PDF', anim: 'v3-flip-loop v3-flip-delay' },
+  /* ── Mobile traveling packets ── */
+  const mobilePackets = [
+    // Sources -> Pills
+    { path: PM.wbToRow1,    c: '#8b5cf6', r: 2,   op: 0.6,  dur: '1.8s', begin: '0s' },
+    { path: PM.wbToRow1b,   c: '#8b5cf6', r: 1.5, op: 0.35, dur: '2.2s', begin: '1.1s' },
+    { path: PM.ozonToRow1,  c: '#3b82f6', r: 2,   op: 0.6,  dur: '1.8s', begin: '0.3s' },
+    { path: PM.ozonToRow1b, c: '#3b82f6', r: 1.5, op: 0.35, dur: '2.2s', begin: '1.4s' },
+    // Pills -> Hub
+    { path: PM.pill1ToHub,  c: '#6366f1', r: 1.5, op: 0.5,  dur: '1.5s', begin: '0.2s' },
+    { path: PM.pill2ToHub,  c: '#6366f1', r: 1.5, op: 0.5,  dur: '1.2s', begin: '0.6s' },
+    { path: PM.pill3ToHub,  c: '#6366f1', r: 1.5, op: 0.5,  dur: '1.5s', begin: '0.9s' },
+    { path: PM.pill4ToHub,  c: '#818cf8', r: 1.5, op: 0.4,  dur: '1.3s', begin: '0.4s' },
+    // Hub -> Outputs
+    { path: PM.hubToOut1,   c: '#6366f1', r: 1.5, op: 0.5,  dur: '2s',   begin: '0.1s' },
+    { path: PM.hubToOut2,   c: '#6366f1', r: 1.5, op: 0.45, dur: '1s',   begin: '0.5s' },
+    { path: PM.hubToOut3,   c: '#6366f1', r: 1.5, op: 0.5,  dur: '2s',   begin: '0.9s' },
+    { path: PM.hubToOut4,   c: '#8b5cf6', r: 1.5, op: 0.4,  dur: '1.4s', begin: '0.7s' },
+    { path: PM.hubToOut5,   c: '#8b5cf6', r: 1.5, op: 0.4,  dur: '1.6s', begin: '1.2s' },
+    // Outputs -> Badges
+    { path: PM.out1ToBdg1,  c: '#38bdf8', r: 1.5, op: 0.5,  dur: '1.2s', begin: '0.3s' },
+    { path: PM.out2ToBdg2,  c: '#34d399', r: 1.5, op: 0.5,  dur: '1s',   begin: '0.8s' },
+    { path: PM.out3ToBdg3,  c: '#818cf8', r: 1.5, op: 0.45, dur: '1.3s', begin: '0.5s' },
   ];
-  const badgeDelay = [2.2, 2.3, 2.4, 2.5, 2.6];
+
+  /* ── Data type pills config (5 pills, 3 flip + 2 static) ── */
+  const pillData = [
+    { flip: true,  fill: 'rgba(99,102,241,0.08)',  stroke: 'rgba(99,102,241,0.20)',  text: '#a5b4fc', dot: 'rgba(99,102,241,0.4)' },
+    { flip: true,  fill: 'rgba(14,165,233,0.08)',   stroke: 'rgba(14,165,233,0.20)',  text: '#7dd3fc', dot: 'rgba(14,165,233,0.4)' },
+    { flip: true,  fill: 'rgba(245,158,11,0.08)',   stroke: 'rgba(245,158,11,0.20)',  text: '#fcd34d', dot: 'rgba(245,158,11,0.4)' },
+    { flip: false, fill: 'rgba(20,184,166,0.08)',    stroke: 'rgba(20,184,166,0.20)',  text: '#5eead4', dot: 'rgba(20,184,166,0.4)', label: 'Логистика' },
+    { flip: false, fill: 'rgba(244,63,94,0.08)',     stroke: 'rgba(244,63,94,0.20)',   text: '#fda4af', dot: 'rgba(244,63,94,0.4)',  label: 'СПП' },
+  ];
+  const pillYs = [62, 126, 190, 254, 318];
+
+  /* ── Output cards config ── */
+  const outputData = [
+    { label: 'Дашборд', accent: '#6366f1', icon: 'M1,8 L1,3 L3,3 L3,8 M4,8 L4,1 L6,1 L6,8 M7,8 L7,5 L9,5 L9,8', delay: 1.3 },
+    { label: 'Прибыль', accent: '#10b981', icon: 'M0,6 L3,3 L5,5 L8,1', delay: 1.4 },
+    { label: 'Остатки', accent: '#0ea5e9', icon: 'M1,1 L7,1 L7,3 L1,3 Z M1,4 L7,4 L7,6 L1,6 Z M1,7 L7,7', delay: 1.5 },
+    { label: 'reportCycle', accent: '#6366f1', icon: 'M0,0 L5,0 L8,3 L8,10 L0,10 Z M5,0 L5,3 L8,3', delay: 1.6 },
+    { label: 'План',    accent: '#8b5cf6', icon: 'M2,0 L7,0 L7,9 L2,9 Z M4,3 L6,3 M4,5 L6,5 M4,7 L5,7', delay: 1.7 },
+  ];
+  const outputYs = [50, 118, 186, 254, 322];
 
   return (
-    <section ref={sectionRef} className="data-flow-section py-16 sm:py-24 overflow-hidden">
-      <div className="max-w-5xl mx-auto px-4 sm:px-6">
+    <section ref={sectionRef} id="dataflow" className="data-flow-section py-16 sm:py-24 overflow-hidden relative"
+      aria-label="Схема потока данных от маркетплейсов к аналитике">
+      <div className="max-w-6xl mx-auto px-4 sm:px-6 relative z-10">
         <RevealSection>
-          <div className="text-center mb-10 sm:mb-14">
-            <h2 className="text-2xl sm:text-3xl font-bold text-white">
-              Единая платформа аналитики
+          <div className="text-center mb-12 sm:mb-16">
+            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-indigo-500/10 border border-indigo-500/20 text-xs font-medium text-indigo-300 mb-4">
+              <span className="w-1.5 h-1.5 rounded-full bg-indigo-400 animate-pulse" />
+              Data Pipeline
+            </span>
+            <h2 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-white">
+              Как данные становятся прибылью
             </h2>
             <p className="mt-3 text-sm sm:text-base text-gray-400 max-w-lg mx-auto">
-              Подключите маркетплейсы — получите готовую аналитику за минуты
+              От маркетплейсов к аналитике за 2 минуты
             </p>
           </div>
         </RevealSection>
 
         {/* ── Desktop diagram ── */}
-        <div className="hidden sm:block relative p-6 sm:p-10 overflow-hidden">
+        <div className="hidden sm:block relative">
 
-          <svg viewBox="0 0 1000 590" className="w-full h-auto relative" fill="none">
+          <svg viewBox="0 0 1100 520" className="w-full h-auto" fill="none"
+            role="img" aria-label="Диаграмма: данные из маркетплейсов обрабатываются в RevioMP">
+            <title>Поток данных RevioMP</title>
+            <desc>Wildberries и Ozon подключены. Яндекс.Маркет, Авито и СберМегаМаркет скоро. Данные проходят через 6 категорий в RevioMP Analytics Hub.</desc>
             <defs>
-              <filter id="v3-hub-shadow" x="-15%" y="-15%" width="130%" height="150%">
-                <feDropShadow dx="0" dy="6" stdDeviation="14" floodColor="rgba(99,102,241,0.25)" />
+              <pattern id="v4-dot-grid" width="16" height="16" patternUnits="userSpaceOnUse">
+                <circle cx="1" cy="1" r="0.8" fill="rgba(99,102,241,0.15)" />
+              </pattern>
+              <linearGradient id="v4-fade-v" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="white" stopOpacity="0" />
+                <stop offset="15%" stopColor="white" stopOpacity="1" />
+                <stop offset="85%" stopColor="white" stopOpacity="1" />
+                <stop offset="100%" stopColor="white" stopOpacity="0" />
+              </linearGradient>
+              <mask id="v4-dot-mask">
+                <rect width="1100" height="520" fill="url(#v4-fade-v)" />
+              </mask>
+              <filter id="v4-hub-shadow" x="-20%" y="-20%" width="140%" height="160%">
+                <feDropShadow dx="0" dy="8" stdDeviation="18" floodColor="rgba(99,102,241,0.30)" />
               </filter>
-              <linearGradient id="v3-hub-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+              <linearGradient id="v4-hub-grad" x1="0%" y1="0%" x2="100%" y2="100%">
                 <stop offset="0%" stopColor="#6366f1" />
                 <stop offset="50%" stopColor="#a855f7" />
                 <stop offset="100%" stopColor="#6366f1" />
               </linearGradient>
+              {/* SPP directional clip — RAF controls rect x/width via sppClipRectD ref */}
+              <clipPath id="spp-clip-D">
+                <rect ref={sppClipRectD} x={338} y={236} width={0} height={104} />
+              </clipPath>
             </defs>
 
-            {/* ─── LINES — animated flow-dash + independent opacity pulses ─── */}
-            <path d={P.shelf1ToHub} stroke="rgba(99,102,241,0.35)" strokeWidth={1.2} vectorEffect="non-scaling-stroke" fill="none" className={alive ? 'v4-flow-a' : ''} {...draw(0.4, 300, '6 10')} />
-            <path d={P.shelf2ToHub} stroke="rgba(99,102,241,0.38)" strokeWidth={1.2} vectorEffect="non-scaling-stroke" fill="none" className={alive ? 'v4-flow-b' : ''} {...draw(0.5, 200, '6 10')} />
-            <path d={P.shelf3ToHub} stroke="rgba(99,102,241,0.35)" strokeWidth={1.2} vectorEffect="non-scaling-stroke" fill="none" className={alive ? 'v4-flow-c' : ''} {...draw(0.6, 215, '6 10')} />
+            {/* Dot grid overlay */}
+            <rect width="1100" height="520" fill="url(#v4-dot-grid)" opacity="0.4" mask="url(#v4-dot-mask)" />
 
-            <path d={P.wbToHub} stroke="rgba(139,63,253,0.3)" strokeWidth={1.2} vectorEffect="non-scaling-stroke" fill="none" className={alive ? 'v4-flow-a' : ''} {...draw(0.3, 350, '6 10')} />
-            <path d={P.ozonToHub} stroke="rgba(37,99,235,0.3)" strokeWidth={1.2} vectorEffect="non-scaling-stroke" fill="none" className={alive ? 'v4-flow-b' : ''} {...draw(0.5, 350, '6 10')} />
-            <path d={P.ymToHub} stroke="rgba(156,163,175,0.15)" strokeWidth={1.2} vectorEffect="non-scaling-stroke" fill="none" className={alive ? 'v4-flow-c' : ''} {...draw(0.8, 450, '6 10')} />
+            {/* ─── LINES: Sources -> Data Types ─── */}
+            <path d={P.wbToPill1} stroke="rgba(139,63,253,0.25)" strokeWidth={1.2} vectorEffect="non-scaling-stroke" fill="none" className={alive ? 'v4-flow-a' : ''} {...draw(0.3, 100)} />
+            <path d={P.wbToPill2} stroke="rgba(139,63,253,0.25)" strokeWidth={1.2} vectorEffect="non-scaling-stroke" fill="none" className={alive ? 'v4-flow-b' : ''} {...draw(0.35, 120)} />
+            <path d={P.ozonToPill3} stroke="rgba(37,99,235,0.25)" strokeWidth={1.2} vectorEffect="non-scaling-stroke" fill="none" className={alive ? 'v4-flow-c' : ''} {...draw(0.4, 100)} />
+            <path d={P.ozonToPill4} stroke="rgba(37,99,235,0.25)" strokeWidth={1.2} vectorEffect="non-scaling-stroke" fill="none" className={alive ? 'v4-flow-a' : ''} {...draw(0.45, 140)} />
 
-            <path d={P.hubToD} stroke="rgba(99,102,241,0.5)" strokeWidth={1.2} vectorEffect="non-scaling-stroke" fill="none" className={alive ? 'v4-flow-c' : ''} {...draw(1.0, 250, '6 10')} />
-            <path d={P.hubToP} stroke="rgba(99,102,241,0.5)" strokeWidth={1.2} vectorEffect="non-scaling-stroke" fill="none" className={alive ? 'v4-flow-a' : ''} {...draw(1.2, 110, '6 10')} />
-            <path d={P.hubToE} stroke="rgba(99,102,241,0.5)" strokeWidth={1.2} vectorEffect="non-scaling-stroke" fill="none" className={alive ? 'v4-flow-b' : ''} {...draw(1.4, 250, '6 10')} />
+            {/* ─── LINES: Data Types -> Hub ─── */}
+            <path d={P.pill1ToHub} stroke="rgba(99,102,241,0.30)" strokeWidth={1.2} vectorEffect="non-scaling-stroke" fill="none" className={alive ? 'v4-flow-a' : ''} {...draw(0.7, 200)} />
+            <path d={P.pill2ToHub} stroke="rgba(99,102,241,0.30)" strokeWidth={1.2} vectorEffect="non-scaling-stroke" fill="none" className={alive ? 'v4-flow-b' : ''} {...draw(0.75, 180)} />
+            <path d={P.pill3ToHub} stroke="rgba(99,102,241,0.30)" strokeWidth={1.2} vectorEffect="non-scaling-stroke" fill="none" className={alive ? 'v4-flow-c' : ''} {...draw(0.8, 160)} />
+            <path d={P.pill4ToHub} stroke="rgba(99,102,241,0.30)" strokeWidth={1.2} vectorEffect="non-scaling-stroke" fill="none" className={alive ? 'v4-flow-a' : ''} {...draw(0.85, 200)} />
+            {/* SPP line: always dashed, visibility and directional grow/erase via clipPath (RAF-controlled) */}
+            <path ref={sppLineRefD} d={P.pill5ToHub}
+              stroke="rgba(244,63,94,0.45)" strokeWidth={1.5} vectorEffect="non-scaling-stroke"
+              fill="none" strokeLinecap="round"
+              strokeDasharray="8 8" strokeDashoffset="0"
+              clipPath="url(#spp-clip-D)"
+            />
+            {/* SPP dot: RAF drives cx/cy/opacity; invisible until cycle starts */}
+            <circle ref={sppDotRefD} cx={340} cy={336} r={3} fill="#fda4af" opacity={0}
+              style={{ filter: 'drop-shadow(0 0 4px rgba(244,63,94,0.8))' }}
+            />
 
-            <path d={P.dToB1} stroke="rgba(14,165,233,0.25)" strokeWidth={1.2} vectorEffect="non-scaling-stroke" fill="none" className={alive ? 'v4-flow-b' : ''} {...draw(1.8, 80, '6 10')} />
-            <path d={P.dToB2} stroke="rgba(16,185,129,0.25)" strokeWidth={1.2} vectorEffect="non-scaling-stroke" fill="none" className={alive ? 'v4-flow-c' : ''} {...draw(1.9, 80, '6 10')} />
-            <path d={P.pToB3} stroke="rgba(217,119,6,0.25)" strokeWidth={1.2} vectorEffect="non-scaling-stroke" fill="none" className={alive ? 'v4-flow-a' : ''} {...draw(2.0, 52, '6 10')} />
-            <path d={P.eToB4} stroke="rgba(22,163,74,0.25)" strokeWidth={1.2} vectorEffect="non-scaling-stroke" fill="none" className={alive ? 'v4-flow-c' : ''} {...draw(2.1, 80, '6 10')} />
-            <path d={P.eToB5} stroke="rgba(220,38,38,0.25)" strokeWidth={1.2} vectorEffect="non-scaling-stroke" fill="none" className={alive ? 'v4-flow-b' : ''} {...draw(2.2, 80, '6 10')} />
-            <path d={P.hubToAPI} stroke="rgba(16,185,129,0.45)" strokeWidth={1.2} vectorEffect="non-scaling-stroke" fill="none" className={alive ? 'v4-flow-a' : ''} {...draw(1.6, 160, '6 10')} />
+            {/* Coming soon sources have no lines — they are just static cards */}
+
+            {/* ─── LINES: Hub -> Outputs ─── */}
+            <path d={P.hubToDash} stroke="rgba(99,102,241,0.40)" strokeWidth={1.2} vectorEffect="non-scaling-stroke" fill="none" className={alive ? 'v4-flow-c' : ''} {...draw(1.0, 200)} />
+            <path d={P.hubToPnl} stroke="rgba(99,102,241,0.40)" strokeWidth={1.2} vectorEffect="non-scaling-stroke" fill="none" className={alive ? 'v4-flow-a' : ''} {...draw(1.1, 180)} />
+            <path d={P.hubToStocks} stroke="rgba(99,102,241,0.40)" strokeWidth={1.2} vectorEffect="non-scaling-stroke" fill="none" className={alive ? 'v4-flow-b' : ''} {...draw(1.2, 100)} />
+            <path d={P.hubToReport} stroke="rgba(99,102,241,0.40)" strokeWidth={1.2} vectorEffect="non-scaling-stroke" fill="none" className={alive ? 'v4-flow-c' : ''} {...draw(1.3, 200)} />
+            <path d={P.hubToPlan} stroke="rgba(99,102,241,0.40)" strokeWidth={1.2} vectorEffect="non-scaling-stroke" fill="none" className={alive ? 'v4-flow-a' : ''} {...draw(1.35, 220)} />
+
+            {/* ─── LINES: Outputs -> Integrations ─── */}
+            <path d={P.dashToTelegram} stroke="rgba(14,165,233,0.20)" strokeWidth={1.2} vectorEffect="non-scaling-stroke" fill="none" className={alive ? 'v4-flow-b' : ''} {...draw(1.5, 80)} />
+            <path d={P.dashToWebhook} stroke="rgba(16,185,129,0.20)" strokeWidth={1.2} vectorEffect="non-scaling-stroke" fill="none" className={alive ? 'v4-flow-c' : ''} {...draw(1.6, 100)} />
+            <path d={P.pnlToApi} stroke="rgba(99,102,241,0.20)" strokeWidth={1.2} vectorEffect="non-scaling-stroke" fill="none" className={alive ? 'v4-flow-a' : ''} {...draw(1.7, 80)} />
+
+            {/* ─── LINES: Report → Excel / PDF (conditional on cycle) ─── */}
+            <path d={P.reportToExcel} stroke="rgba(34,197,94,0.20)" strokeWidth={1.2} vectorEffect="non-scaling-stroke" fill="none" className={alive ? 'v4-flow-c' : ''} {...draw(1.8, 80)} />
+            <path d={P.reportToPdf} stroke="rgba(239,68,68,0.20)" strokeWidth={1.2} vectorEffect="non-scaling-stroke" fill="none" className={alive ? 'v4-flow-b' : ''} {...draw(1.9, 80)} />
+
+            {/* ─── Conditional traveling packet: Отчёт→Excel, Презентация→PDF ─── */}
+            {alive && !prefersReducedMotion.current && reportLabel === 'Отчёт' && (
+              <circle r={2} fill="#22c55e" opacity={0.6}>
+                <animateMotion dur="1.5s" begin="0s" repeatCount="indefinite" path={P.reportToExcel} />
+              </circle>
+            )}
+            {alive && !prefersReducedMotion.current && reportLabel === 'Презентация' && (
+              <circle r={2} fill="#ef4444" opacity={0.6}>
+                <animateMotion dur="1.5s" begin="0s" repeatCount="indefinite" path={P.reportToPdf} />
+              </circle>
+            )}
 
             {/* ─── TRAVELING DATA PACKETS (continuous after alive) ─── */}
-            {alive && packets.map((p, i) => (
+            {alive && !prefersReducedMotion.current && packets.map((p, i) => (
               <circle key={`pkt-${i}`} r={p.r} fill={p.c} opacity={p.op}>
                 <animateMotion dur={p.dur} begin={p.begin} repeatCount="indefinite" path={p.path} />
               </circle>
             ))}
 
-            {/* ─── CONDITIONAL: Отчёт → green dot to Excel, Презентация → red dot to PDF ─── */}
-            {alive && o3 === 'Отчёт' && (
-              <circle r="1.5" fill="#16a34a" opacity="0.55">
-                <animateMotion dur="1.5s" begin="0s" repeatCount="indefinite" path={P.eToB4} />
-              </circle>
-            )}
-            {alive && o3 === 'Презентация' && (
-              <circle r="1.5" fill="#dc2626" opacity="0.55">
-                <animateMotion dur="1.5s" begin="0s" repeatCount="indefinite" path={P.eToB5} />
-              </circle>
-            )}
-
-            {/* ═══ INTEGRATION SHELF — 3 separate animated cards (V2 labels) ═══ */}
-            {shelf.map((label, i) => {
-              const cx = shelfCX[i];
-              const isActive = activeSlot === i;
-              const cardW = 112;
-              const cardH = 44;
-              const rx = cx - cardW / 2;
-              const ry = 12;
-              return (
-                <g key={`shelf-${i}`} style={show(0.3 + i * 0.12)}>
-                  {/* active glow ring */}
-                  {isActive && alive && (
-                    <rect x={rx - 3} y={ry - 3} width={cardW + 6} height={cardH + 6} rx={16}
-                      fill="none" stroke="rgba(99,102,241,0.18)" strokeWidth={2}
-                      className="v3-status-pulse" />
-                  )}
-                  {/* card body */}
-                  <rect x={rx} y={ry} width={cardW} height={cardH} rx={13}
-                    fill={isActive ? 'rgba(99,102,241,0.12)' : 'rgba(255,255,255,0.04)'}
-                    stroke={isActive ? 'rgba(99,102,241,0.45)' : 'rgba(99,102,241,0.2)'}
-                    strokeWidth={isActive ? 1.2 : 0.8} />
-                  {/* cycling label */}
-                  <text key={label} x={cx} y={ry + cardH / 2 + 4.5} textAnchor="middle"
-                    fill={isActive ? '#a78bfa' : '#818cf8'}
-                    fontSize={12} fontWeight={isActive ? '700' : '600'}
-                    fontFamily="Inter,sans-serif"
-                    opacity={isActive ? 1 : 0.6}
-                    className={tick >= 0 ? 'v3-fade-in' : ''}>
-                    {label}
-                  </text>
-                  {/* processing dot */}
-                  {isActive && alive && (
-                    <circle cx={rx + cardW - 10} cy={ry + 10} r={2.5}
-                      fill="#6366f1" className="v3-status-pulse" />
-                  )}
-                </g>
-              );
-            })}
-
-            {/* ═══ SOURCES (permanent) ═══ */}
+            {/* ═══ SOURCE CARDS ═══ */}
+            {/* WB (Active) */}
             <g style={show(0)}>
-              <g className={alive ? 'v3-wb-pulse' : ''}>
-                <rect x="48" y="148" width="130" height="50" rx="12" fill="rgba(139,63,253,0.12)" stroke="rgba(139,63,253,0.35)" strokeWidth="1" />
-                <circle cx="76" cy="173" r="13" fill="rgba(139,63,253,0.15)" stroke="rgba(139,63,253,0.25)" strokeWidth="0.75" />
-                <circle cx="76" cy="173" r="17" fill="none" stroke="rgba(139,63,253,0.2)" strokeWidth="1" strokeDasharray="4 6" className={alive ? 'v3-wb-ring' : ''} />
-                <text x="76" y="177" textAnchor="middle" fill="#a78bfa" fontSize="9" fontWeight="700" fontFamily="Inter,sans-serif">WB</text>
-                <text x="125" y="177" textAnchor="middle" fill="#a78bfa" fontSize="11.5" fontWeight="600" fontFamily="Inter,sans-serif">Wildberries</text>
-                <circle cx="170" cy="155" r="3.5" fill="#22c55e" className="v3-status-pulse" />
+              <g className={alive ? 'v4-source-pulse-wb' : ''}>
+                <rect x="20" y="60" width="145" height="56" rx="14" fill="rgba(139,63,253,0.10)" stroke="rgba(139,63,253,0.30)" strokeWidth="1" />
+                <circle cx="50" cy="88" r="14" fill="rgba(139,63,253,0.12)" stroke="rgba(139,63,253,0.25)" strokeWidth="0.75" />
+                <circle cx="50" cy="88" r="18" fill="none" stroke="rgba(139,63,253,0.15)" strokeWidth="1" strokeDasharray="4 6" className={alive ? 'v3-wb-ring' : ''} />
+                <text x="50" y="92" textAnchor="middle" fill="#a78bfa" fontSize="10" fontWeight="700" fontFamily="Inter,sans-serif">WB</text>
+                <text x="110" y="82" textAnchor="middle" fill="#c4b5fd" fontSize="12" fontWeight="600" fontFamily="Inter,sans-serif">Wildberries</text>
+                <rect x="80" y="92" width="65" height="16" rx="8" fill="rgba(34,197,94,0.12)" stroke="rgba(34,197,94,0.25)" strokeWidth="0.5" />
+                <circle cx="90" cy="100" r="2.5" fill="#22c55e" className="v3-status-pulse" />
+                <text x="118" y="104" textAnchor="middle" fill="#4ade80" fontSize="7.5" fontWeight="500" fontFamily="Inter,sans-serif">Подключён</text>
               </g>
             </g>
 
-            <g style={show(0.15)}>
+            {/* Ozon (Active) */}
+            <g style={show(0.10)}>
               <g className={alive ? 'v3-ozon-tilt' : ''}>
-                <rect x="48" y="323" width="130" height="50" rx="12" fill="rgba(0,91,255,0.12)" stroke="rgba(0,91,255,0.35)" strokeWidth="1" />
-                <circle cx="76" cy="348" r="13" fill="rgba(37,99,235,0.15)" stroke="rgba(37,99,235,0.25)" strokeWidth="0.75" />
-                {alive && <circle cx="76" cy="348" r="14" fill="none" stroke="rgba(37,99,235,0.25)" strokeWidth="1.5" className="v3-ozon-ring" />}
-                <text x="76" y="352" textAnchor="middle" fill="#60a5fa" fontSize="9" fontWeight="700" fontFamily="Inter,sans-serif">Oz</text>
-                <text x="120" y="352" textAnchor="middle" fill="#60a5fa" fontSize="11.5" fontWeight="600" fontFamily="Inter,sans-serif">Ozon</text>
-                <circle cx="170" cy="330" r="3.5" fill="#22c55e" className="v3-status-pulse" />
+                <rect x="20" y="140" width="145" height="56" rx="14" fill="rgba(0,91,255,0.10)" stroke="rgba(0,91,255,0.30)" strokeWidth="1" />
+                <circle cx="50" cy="168" r="14" fill="rgba(37,99,235,0.12)" stroke="rgba(37,99,235,0.25)" strokeWidth="0.75" />
+                {alive && <circle cx="50" cy="168" r="18" fill="none" stroke="rgba(37,99,235,0.25)" strokeWidth="1.5" className="v3-ozon-ring" />}
+                <text x="50" y="172" textAnchor="middle" fill="#60a5fa" fontSize="10" fontWeight="700" fontFamily="Inter,sans-serif">Oz</text>
+                <text x="110" y="162" textAnchor="middle" fill="#93c5fd" fontSize="12" fontWeight="600" fontFamily="Inter,sans-serif">Ozon</text>
+                <rect x="80" y="172" width="65" height="16" rx="8" fill="rgba(34,197,94,0.12)" stroke="rgba(34,197,94,0.25)" strokeWidth="0.5" />
+                <circle cx="90" cy="180" r="2.5" fill="#22c55e" className="v3-status-pulse" />
+                <text x="118" y="184" textAnchor="middle" fill="#4ade80" fontSize="7.5" fontWeight="500" fontFamily="Inter,sans-serif">Подключён</text>
               </g>
             </g>
 
-            <g style={show(0.3)}>
-              <g opacity="0.3">
-                <rect x="55" y="447" width="113" height="36" rx="10" fill="none" stroke="rgba(156,163,175,0.2)" strokeWidth="1" strokeDasharray="4 4" />
-                <text x="111" y="470" textAnchor="middle" fill="#6b7280" fontSize="10" fontWeight="500" fontFamily="Inter,sans-serif">Яндекс.Маркет</text>
-              </g>
-              <text x="111" y="498" textAnchor="middle" fill="#4b5563" fontSize="8" fontStyle="italic" fontFamily="Inter,sans-serif" opacity="0.6">скоро</text>
+            {/* Яндекс.Маркет (Coming Soon) */}
+            <g style={show(0.20)} opacity="0.35">
+              <rect x="20" y="240" width="145" height="48" rx="12" fill="none" stroke="rgba(250,204,21,0.15)" strokeWidth="1" strokeDasharray="5 5" />
+              <circle cx="46" cy="264" r="11" fill="rgba(250,204,21,0.06)" stroke="rgba(250,204,21,0.12)" strokeWidth="0.5" />
+              <text x="46" y="268" textAnchor="middle" fill="rgba(250,204,21,0.5)" fontSize="8" fontWeight="700" fontFamily="Inter,sans-serif">Я</text>
+              <text x="112" y="260" textAnchor="middle" fill="rgba(255,255,255,0.35)" fontSize="10.5" fontWeight="500" fontFamily="Inter,sans-serif">Яндекс.Маркет</text>
+              <rect x="88" y="270" width="44" height="14" rx="7" fill="rgba(255,255,255,0.04)" stroke="rgba(255,255,255,0.08)" strokeWidth="0.5" />
+              <text x="110" y="280" textAnchor="middle" fill="rgba(255,255,255,0.3)" fontSize="7" fontWeight="500" fontFamily="Inter,sans-serif">Скоро</text>
             </g>
 
-            {/* ═══ CENTRAL HUB (permanent, hub-border spins continuously) ═══ */}
-            <g style={show(0.7)}>
-              <g filter="url(#v3-hub-shadow)">
-                <rect x="420" y="218" width="170" height="90" rx="18" fill="rgba(99,102,241,0.15)" stroke="rgba(99,102,241,0.4)" strokeWidth="1.5" />
-                <rect x="416" y="214" width="178" height="98" rx="22"
-                  fill="none" stroke="url(#v3-hub-grad)" strokeWidth="1.5"
-                  strokeDasharray="8 4" strokeOpacity="0.5" className="v3-hub-border" />
-                <text x="505" y="256" textAnchor="middle" fill="white" fontSize="16" fontWeight="700" fontFamily="Inter,sans-serif">RevioMP</text>
-                <text x="505" y="278" textAnchor="middle" fill="rgba(255,255,255,0.6)" fontSize="11" fontWeight="500" fontFamily="Inter,sans-serif">Analytics Hub</text>
-              </g>
+            {/* Авито (Coming Soon) */}
+            <g style={show(0.25)} opacity="0.35">
+              <rect x="20" y="312" width="145" height="48" rx="12" fill="none" stroke="rgba(0,175,90,0.15)" strokeWidth="1" strokeDasharray="5 5" />
+              <circle cx="46" cy="336" r="11" fill="rgba(0,175,90,0.06)" stroke="rgba(0,175,90,0.12)" strokeWidth="0.5" />
+              <text x="46" y="340" textAnchor="middle" fill="rgba(0,175,90,0.5)" fontSize="8" fontWeight="700" fontFamily="Inter,sans-serif">Av</text>
+              <text x="112" y="332" textAnchor="middle" fill="rgba(255,255,255,0.35)" fontSize="10.5" fontWeight="500" fontFamily="Inter,sans-serif">Авито</text>
+              <rect x="88" y="342" width="44" height="14" rx="7" fill="rgba(255,255,255,0.04)" stroke="rgba(255,255,255,0.08)" strokeWidth="0.5" />
+              <text x="110" y="352" textAnchor="middle" fill="rgba(255,255,255,0.3)" fontSize="7" fontWeight="500" fontFamily="Inter,sans-serif">Скоро</text>
             </g>
 
+            {/* СберМегаМаркет (Coming Soon) */}
+            <g style={show(0.30)} opacity="0.35">
+              <rect x="20" y="384" width="145" height="48" rx="12" fill="none" stroke="rgba(33,160,56,0.15)" strokeWidth="1" strokeDasharray="5 5" />
+              <circle cx="46" cy="408" r="11" fill="rgba(33,160,56,0.06)" stroke="rgba(33,160,56,0.12)" strokeWidth="0.5" />
+              <text x="46" y="412" textAnchor="middle" fill="rgba(33,160,56,0.5)" fontSize="8" fontWeight="700" fontFamily="Inter,sans-serif">СМ</text>
+              <text x="112" y="404" textAnchor="middle" fill="rgba(255,255,255,0.35)" fontSize="10.5" fontWeight="500" fontFamily="Inter,sans-serif">СберМега</text>
+              <rect x="88" y="414" width="44" height="14" rx="7" fill="rgba(255,255,255,0.04)" stroke="rgba(255,255,255,0.08)" strokeWidth="0.5" />
+              <text x="110" y="424" textAnchor="middle" fill="rgba(255,255,255,0.3)" fontSize="7" fontWeight="500" fontFamily="Inter,sans-serif">Скоро</text>
+            </g>
 
-            {/* ═══ OUTPUTS — each with a DIFFERENT label-change animation ═══ */}
-            {outTexts.map((text, i) => (
-              <g key={`out-${i}`} style={show(outDelay[i])}>
-                <rect x="700" y={outY[i] - 22} width="130" height="45" rx="10" fill="rgba(255,255,255,0.04)" stroke="rgba(255,255,255,0.1)" strokeWidth="1" />
-                <text key={text} x="765" y={outY[i] + 5} textAnchor="middle"
-                  fill="white" fontSize="12" fontWeight="500" fontFamily="Inter,sans-serif"
-                  className={tick >= 0 ? outAnim[i] : ''}>
-                  {text}
-                </text>
-              </g>
-            ))}
-
-            {/* ═══ BADGES — with icons + unique micro-animations ═══ */}
-            {badgeData.map((b, i) => {
-              const hasIcon = i !== 2;
-              const cy = b.y + b.h / 2;
-              const textX = hasIcon ? b.x + b.w / 2 + 5 : b.x + b.w / 2;
+            {/* ═══ DATA TYPE PILLS (5: 3 flipping + 2 static) ═══ */}
+            {pillData.map((pill, i) => {
+              const label = pill.flip ? pillFlipCurrent[i] : pill.label;
+              const isSppPill = !pill.flip && i === 4;
               return (
-                <g key={b.dynamic ? `bdg-${i}-${b.text}` : `bdg-${i}`} style={show(badgeDelay[i])} opacity="0.85">
-                  <g className={alive ? b.anim : ''}>
-                    <rect x={b.x} y={b.y} width={b.w} height={b.h} rx="7" fill={b.fill} stroke={b.stroke} strokeWidth="0.75" />
-                    {/* Telegram — paper plane */}
-                    {i === 0 && <g transform={`translate(${b.x + 10},${cy - 4})`} opacity="0.5"><path d="M0,5 L8,0 L6,8 L4,5.5 Z" fill={b.color} /></g>}
-                    {/* Webhook — lightning bolt */}
-                    {i === 1 && <g transform={`translate(${b.x + 10},${cy - 5})`} opacity="0.55"><path d="M5,0 L2,5 L5,5 L3,10" stroke={b.color} strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" fill="none" /></g>}
-                    {/* Excel — grid/table */}
-                    {i === 3 && <g transform={`translate(${b.x + 8},${cy - 5})`} opacity="0.45">
-                      <rect width="9" height="9" rx="1.5" stroke={b.color} strokeWidth="0.8" fill="none" />
-                      <line x1="4.5" y1="0" x2="4.5" y2="9" stroke={b.color} strokeWidth="0.5" />
-                      <line x1="0" y1="4.5" x2="9" y2="4.5" stroke={b.color} strokeWidth="0.5" />
-                    </g>}
-                    {/* PDF — document with corner fold */}
-                    {i === 4 && <g transform={`translate(${b.x + 8},${cy - 5})`} opacity="0.45">
-                      <path d="M0,0 L5,0 L8,3 L8,10 L0,10 Z" stroke={b.color} strokeWidth="0.8" fill="none" />
-                      <path d="M5,0 L5,3 L8,3" stroke={b.color} strokeWidth="0.6" fill="none" />
-                    </g>}
-                    <text x={textX} y={cy + 4} textAnchor="middle"
-                      fill={b.color} fontSize="9" fontWeight="600" fontFamily="Inter,sans-serif">
-                      {b.text}
-                    </text>
+                <g key={`pill-${i}`}
+                  ref={isSppPill ? sppPillRefD : undefined}
+                  style={isSppPill ? { opacity: 0 } : show(0.30 + i * 0.06)}>
+                  {/* glow wrapper — separate from flip group */}
+                  <g className={alive ? 'v4-pill-glow' : ''} style={alive ? { animationDelay: `${i * 0.5}s` } : undefined}>
+                    {/* flip wrapper — RAF drives scaleX directly; v3-pill-flip-base sets transform geometry only */}
+                    <g ref={pill.flip ? pillRefsDesktop[i] : undefined}
+                       className={pill.flip ? 'v3-pill-flip-base' : ''}>
+                      <rect x={230} y={pillYs[i]} width={110} height={36} rx={18} fill={pill.fill} stroke={pill.stroke} strokeWidth="0.8" />
+                      <circle cx={248} cy={pillYs[i] + 18} r={3} fill={pill.dot} className={alive ? 'v3-status-pulse' : ''} />
+                      <text x={294} y={pillYs[i] + 22} textAnchor="middle" fill={pill.text} fontSize="11" fontWeight="600" fontFamily="Inter,sans-serif">{label}</text>
+                    </g>
                   </g>
                 </g>
               );
             })}
 
-            {/* ═══ СПП — cyclic: line extends from hub → badge appears → holds 2-3s → disappears → line retracts ═══ */}
-            {alive && (
-              <>
-                {/* Animated line: hub → СПП shelf position (draws on solid, switches to dashed, retracts) */}
-                <path d={P.hubToSpp}
-                  stroke="rgba(139,92,246,0.35)" strokeWidth={1.2}
-                  vectorEffect="non-scaling-stroke" fill="none"
-                  strokeDasharray="280" strokeDashoffset="280">
-                  <animate attributeName="stroke-dashoffset"
-                    values="280;0;0;280;280"
-                    keyTimes="0;0.14;0.57;0.71;1"
-                    dur="7s" repeatCount="indefinite" />
-                  <animate attributeName="stroke-dasharray"
-                    calcMode="discrete"
-                    values="280;6 10;280"
-                    keyTimes="0;0.15;0.58"
-                    dur="7s" repeatCount="indefinite" />
-                </path>
-                {/* Traveling packet on СПП line — data flows FROM СПП TO hub */}
-                <circle r={2} fill="#a78bfa" opacity="0">
-                  <animate attributeName="opacity"
-                    values="0;0;0.6;0.6;0;0"
-                    keyTimes="0;0.14;0.19;0.52;0.57;1"
-                    dur="7s" repeatCount="indefinite" />
-                  <animateMotion dur="2s" begin="0s" repeatCount="indefinite"
-                    keyPoints="1;0" keyTimes="0;1" calcMode="linear" path={P.hubToSpp} />
-                </circle>
-                {/* СПП badge — fades in after line reaches, fades out before retract */}
-                <g opacity="0">
-                  <animate attributeName="opacity"
-                    values="0;0;1;1;0;0"
-                    keyTimes="0;0.14;0.19;0.52;0.57;1"
-                    dur="7s" repeatCount="indefinite" />
-                  <rect x={654} y={12} width={112} height={44} rx={13}
-                    fill="rgba(139,92,246,0.15)" stroke="rgba(139,92,246,0.45)" strokeWidth={1.2} />
-                  <text x={710} y={40} textAnchor="middle"
-                    fill="#a78bfa" fontSize={16} fontWeight="700"
-                    fontFamily="Inter,sans-serif">
-                    СПП
-                  </text>
-                </g>
-              </>
-            )}
-
-            {/* ═══ API OUTPUT (bottom branch from hub) ═══ */}
-            <g style={show(2.0)}>
-              <g className={alive ? 'v3-float' : ''}>
-                <rect x="445" y="465" width="120" height="40" rx="10" fill="rgba(16,185,129,0.08)" stroke="rgba(16,185,129,0.35)" strokeWidth="1.2" />
-                <text x="478" y="490" textAnchor="middle" fill="#34d399" fontSize="11" fontWeight="700" fontFamily="monospace">{'</>'}</text>
-                <text x="528" y="490" textAnchor="middle" fill="#d1d5db" fontSize="11" fontWeight="600" fontFamily="Inter,sans-serif">REST API</text>
+            {/* ═══ CENTRAL HUB ═══ */}
+            <g style={show(0.6)}>
+              <g filter="url(#v4-hub-shadow)">
+                <rect x="445" y="155" width="190" height="110" rx="20" fill="rgba(99,102,241,0.12)" stroke="rgba(99,102,241,0.35)" strokeWidth="1.5" />
+                <rect x="440" y="150" width="200" height="120" rx="24"
+                  fill="none" stroke="url(#v4-hub-grad)" strokeWidth="1.5"
+                  strokeDasharray="8 4" strokeOpacity="0.5" className="v3-hub-border" />
+                <path d="M540,176 L548,184 L540,192 L532,184 Z" fill="rgba(99,102,241,0.3)" stroke="rgba(165,180,252,0.5)" strokeWidth="0.8" />
+                <text x="540" y="218" textAnchor="middle" fill="white" fontSize="18" fontWeight="700" fontFamily="Inter,sans-serif">RevioMP</text>
+                <text x="540" y="240" textAnchor="middle" fill="rgba(255,255,255,0.5)" fontSize="11" fontWeight="500" fontFamily="Inter,sans-serif">Умная аналитика</text>
               </g>
             </g>
 
-            {/* ═══ PRO SUBSCRIPTION (hidden until SHOW_PRO=true) ═══ */}
-            {SHOW_PRO && <>
-              <g style={{ ...show(2.6), cursor: alive ? 'pointer' : 'default' }}
-                 onClick={() => alive && setProActive(p => !p)}>
-                <rect x={700} y={462} width={130} height={36} rx={12}
-                  fill={proActive ? 'rgba(245,158,11,0.12)' : 'rgba(255,255,255,0.04)'}
-                  stroke={proActive ? 'rgba(245,158,11,0.45)' : 'rgba(255,255,255,0.15)'}
-                  strokeWidth={proActive ? 1.5 : 1} />
-                {proActive && <rect x={698} y={460} width={134} height={40} rx={14}
-                  fill="none" stroke="rgba(245,158,11,0.25)" strokeWidth={2.5}
-                  className="v3-pro-glow" />}
-                <text x={765} y={485} textAnchor="middle"
-                  fill={proActive ? '#fbbf24' : '#6b7280'} fontSize={11} fontWeight="700"
-                  fontFamily="Inter,sans-serif">
-                  {'\u26A1 PRO \u043F\u043E\u0434\u043F\u0438\u0441\u043A\u0430'}
-                </text>
+            {/* ═══ OUTPUT CARDS (5) ═══ */}
+            {outputData.map((out, i) => (
+              <g key={`out-${i}`} style={show(out.delay)}>
+                <rect x={710} y={outputYs[i]} width={140} height={48} rx={12} fill="rgba(255,255,255,0.04)" stroke="rgba(255,255,255,0.10)" strokeWidth="1" />
+                <rect x={710} y={outputYs[i] + 12} width={2.5} height={24} rx={1.25} fill={out.accent} opacity="0.4" />
+                <g transform={`translate(${724},${outputYs[i] + 15})`} opacity="0.5">
+                  <path d={out.icon} stroke={out.accent} strokeWidth="1" fill="none" strokeLinecap="round" />
+                </g>
+                <text x={794} y={outputYs[i] + 29} textAnchor="middle" fill="white" fontSize="11.5" fontWeight="600" fontFamily="Inter,sans-serif">{out.label === 'reportCycle' ? reportLabel : out.label}</text>
               </g>
-              {proActive && (
-                <rect x={414} y={212} width={182} height={102} rx={24}
-                  fill="none" stroke="rgba(245,158,11,0.15)" strokeWidth={2}
-                  className="v3-pro-glow" />
-              )}
-              <path d={proP.trunk} stroke="rgba(245,158,11,0.4)" strokeWidth={1.5}
-                vectorEffect="non-scaling-stroke" fill="none" {...proDraw(0.05, 20)} />
-              <path d={proP.left} stroke="rgba(245,158,11,0.3)" strokeWidth={1}
-                vectorEffect="non-scaling-stroke" fill="none" {...proDraw(0.15, 120)} />
-              <path d={proP.center} stroke="rgba(245,158,11,0.3)" strokeWidth={1}
-                vectorEffect="non-scaling-stroke" fill="none" {...proDraw(0.15, 30)} />
-              <path d={proP.right} stroke="rgba(245,158,11,0.3)" strokeWidth={1}
-                vectorEffect="non-scaling-stroke" fill="none" {...proDraw(0.2, 120)} />
-              <g style={proShow(0.25)}>
-                <rect x={615} y={544} width={100} height={30} rx={8}
-                  fill="rgba(139,92,246,0.1)" stroke="rgba(139,92,246,0.35)" strokeWidth={0.75} />
-                <text x={665} y={563} textAnchor="middle"
-                  fill="#a78bfa" fontSize={9.5} fontWeight="600" fontFamily="Inter,sans-serif">
-                  Монитор заказов
-                </text>
+            ))}
+
+            {/* ═══ INTEGRATION BADGES ═══ */}
+            <text x="970" y="46" textAnchor="middle" fill="rgba(255,255,255,0.3)" fontSize="9" fontWeight="600" fontFamily="Inter,sans-serif" letterSpacing="0.05em" style={show(1.9)}>ИНТЕГРАЦИИ</text>
+
+            <g style={show(2.0)} opacity="0.85">
+              <g className={alive ? 'v3-float' : ''}>
+                <rect x="920" y="60" width="100" height="32" rx="8" fill="rgba(14,165,233,0.12)" stroke="rgba(14,165,233,0.30)" strokeWidth="0.75" />
+                <g transform="translate(932,69)" opacity="0.5"><path d="M0,5 L8,0 L6,8 L4,5.5 Z" fill="#38bdf8" /></g>
+                <text x="978" y="80" textAnchor="middle" fill="#38bdf8" fontSize="9.5" fontWeight="600" fontFamily="Inter,sans-serif">Telegram</text>
               </g>
-              <g style={proShow(0.35)}>
-                <rect x={715} y={544} width={100} height={30} rx={8}
-                  fill="rgba(14,165,233,0.1)" stroke="rgba(14,165,233,0.35)" strokeWidth={0.75} />
-                <text x={765} y={563} textAnchor="middle"
-                  fill="#38bdf8" fontSize={9.5} fontWeight="600" fontFamily="Inter,sans-serif">
-                  Уведомления
-                </text>
+            </g>
+            <g style={show(2.1)} opacity="0.85">
+              <g className={alive ? 'v3-blink' : ''}>
+                <rect x="920" y="108" width="100" height="32" rx="8" fill="rgba(16,185,129,0.12)" stroke="rgba(16,185,129,0.30)" strokeWidth="0.75" />
+                <g transform="translate(932,117)" opacity="0.55"><path d="M5,0 L2,5 L5,5 L3,10" stroke="#34d399" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" fill="none" /></g>
+                <text x="978" y="128" textAnchor="middle" fill="#34d399" fontSize="9.5" fontWeight="600" fontFamily="Inter,sans-serif">Webhook</text>
               </g>
-              <g style={proShow(0.45)}>
-                <rect x={815} y={544} width={100} height={30} rx={8}
-                  fill="rgba(16,185,129,0.1)" stroke="rgba(16,185,129,0.35)" strokeWidth={0.75} />
-                <text x={865} y={563} textAnchor="middle"
-                  fill="#34d399" fontSize={9.5} fontWeight="600" fontFamily="Inter,sans-serif">
-                  Авто-отчёты
-                </text>
+            </g>
+            <g style={show(2.2)} opacity="0.85">
+              <g className={alive ? 'v3-float' : ''}>
+                <rect x="920" y="156" width="100" height="32" rx="8" fill="rgba(99,102,241,0.12)" stroke="rgba(99,102,241,0.30)" strokeWidth="0.75" />
+                <text x="948" y="176" textAnchor="middle" fill="#818cf8" fontSize="10" fontWeight="700" fontFamily="monospace">{'</>'}</text>
+                <text x="988" y="176" textAnchor="middle" fill="#818cf8" fontSize="9.5" fontWeight="600" fontFamily="Inter,sans-serif">REST API</text>
               </g>
-              {proActive && alive && <>
-                <circle r={1.5} fill="#f59e0b" opacity={0.5}>
-                  <animateMotion dur="1.2s" begin="0s" repeatCount="indefinite" path={proP.left} />
-                </circle>
-                <circle r={1.5} fill="#f59e0b" opacity={0.5}>
-                  <animateMotion dur="0.8s" begin="0.3s" repeatCount="indefinite" path={proP.center} />
-                </circle>
-                <circle r={1.5} fill="#f59e0b" opacity={0.5}>
-                  <animateMotion dur="1.2s" begin="0.6s" repeatCount="indefinite" path={proP.right} />
-                </circle>
-              </>}
-            </>}
+            </g>
+
+            {/* ═══ EXPORT BADGES ═══ */}
+            <text x="970" y="264" textAnchor="middle" fill="rgba(255,255,255,0.3)" fontSize="9" fontWeight="600" fontFamily="Inter,sans-serif" letterSpacing="0.05em" style={show(2.2)}>ЭКСПОРТ</text>
+
+            <g style={show(2.3)} opacity="0.85">
+              <g className={alive ? 'v3-flip-loop' : ''}>
+                <rect x="920" y="278" width="100" height="32" rx="8" fill="rgba(34,197,94,0.15)" stroke="rgba(34,197,94,0.35)" strokeWidth="0.75" />
+                <g transform="translate(932,287)" opacity="0.45">
+                  <rect width="9" height="9" rx="1.5" stroke="#4ade80" strokeWidth="0.8" fill="none" />
+                  <line x1="4.5" y1="0" x2="4.5" y2="9" stroke="#4ade80" strokeWidth="0.5" />
+                  <line x1="0" y1="4.5" x2="9" y2="4.5" stroke="#4ade80" strokeWidth="0.5" />
+                </g>
+                <text x="978" y="298" textAnchor="middle" fill="#4ade80" fontSize="9.5" fontWeight="600" fontFamily="Inter,sans-serif">Excel</text>
+              </g>
+            </g>
+            <g style={show(2.4)} opacity="0.85">
+              <g className={alive ? 'v3-flip-loop v3-flip-delay' : ''}>
+                <rect x="920" y="326" width="100" height="32" rx="8" fill="rgba(239,68,68,0.15)" stroke="rgba(239,68,68,0.35)" strokeWidth="0.75" />
+                <g transform="translate(932,335)" opacity="0.45">
+                  <path d="M0,0 L5,0 L8,3 L8,10 L0,10 Z" stroke="#f87171" strokeWidth="0.8" fill="none" />
+                  <path d="M5,0 L5,3 L8,3" stroke="#f87171" strokeWidth="0.6" fill="none" />
+                </g>
+                <text x="978" y="346" textAnchor="middle" fill="#f87171" fontSize="9.5" fontWeight="600" fontFamily="Inter,sans-serif">PDF</text>
+              </g>
+            </g>
           </svg>
         </div>
 
-        {/* ── Mobile: full-featured vertical flow with all desktop elements ── */}
+        {/* ── Mobile: vertical flow ── */}
         <div className="sm:hidden relative p-2 overflow-hidden">
-          <svg viewBox="0 0 300 450" className="w-full h-auto max-w-[340px] mx-auto relative" fill="none">
+          <svg viewBox="0 0 320 580" className="w-full h-auto max-w-[360px] mx-auto" fill="none"
+            role="img" aria-label="Диаграмма: данные из маркетплейсов обрабатываются в RevioMP">
+            <title>Поток данных RevioMP</title>
+            <desc>Wildberries и Ozon подключены. Данные проходят через RevioMP Analytics Hub в аналитику.</desc>
             <defs>
-              <linearGradient id="v3-hub-grad-m" x1="0%" y1="0%" x2="100%" y2="100%">
+              <pattern id="v4-dot-grid-m" width="8" height="8" patternUnits="userSpaceOnUse">
+                <circle cx="1" cy="1" r="0.6" fill="rgba(99,102,241,0.15)" />
+              </pattern>
+              <linearGradient id="v4-fade-v-m" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="white" stopOpacity="0" />
+                <stop offset="10%" stopColor="white" stopOpacity="1" />
+                <stop offset="90%" stopColor="white" stopOpacity="1" />
+                <stop offset="100%" stopColor="white" stopOpacity="0" />
+              </linearGradient>
+              <mask id="v4-dot-mask-m">
+                <rect width="320" height="580" fill="url(#v4-fade-v-m)" />
+              </mask>
+              <linearGradient id="v4-hub-grad-m" x1="0%" y1="0%" x2="100%" y2="100%">
                 <stop offset="0%" stopColor="#6366f1" />
                 <stop offset="50%" stopColor="#a855f7" />
                 <stop offset="100%" stopColor="#6366f1" />
               </linearGradient>
-              <filter id="v3-hub-shadow-m" x="-10%" y="-10%" width="120%" height="130%">
+              <filter id="v4-hub-shadow-m" x="-10%" y="-10%" width="120%" height="130%">
                 <feDropShadow dx="0" dy="4" stdDeviation="8" floodColor="rgba(99,102,241,0.2)" />
               </filter>
+              {/* SPP directional clip — RAF controls rect x/width via sppClipRectM ref */}
+              <clipPath id="spp-clip-M">
+                <rect ref={sppClipRectM} x={158} y={140} width={0} height={32} />
+              </clipPath>
             </defs>
 
-            {/* ─── STAGE LINES: Sources → Shelf (draw-on + flow-dash) ─── */}
-            <path d="M77,48 C77,58 52,58 52,70" stroke="rgba(139,63,253,0.3)" strokeWidth={1} vectorEffect="non-scaling-stroke" fill="none" className={alive ? 'v4-flow-a' : ''} {...draw(0.3, 60, '4 8')} />
-            <path d="M77,48 C77,58 150,58 150,70" stroke="rgba(139,63,253,0.2)" strokeWidth={1} vectorEffect="non-scaling-stroke" fill="none" className={alive ? 'v4-flow-b' : ''} {...draw(0.4, 100, '4 8')} />
-            <path d="M222,48 C222,58 150,58 150,70" stroke="rgba(37,99,235,0.2)" strokeWidth={1} vectorEffect="non-scaling-stroke" fill="none" className={alive ? 'v4-flow-c' : ''} {...draw(0.4, 100, '4 8')} />
-            <path d="M222,48 C222,58 248,58 248,70" stroke="rgba(37,99,235,0.3)" strokeWidth={1} vectorEffect="non-scaling-stroke" fill="none" className={alive ? 'v4-flow-a' : ''} {...draw(0.3, 60, '4 8')} />
+            {/* Dot grid */}
+            <rect width="320" height="580" fill="url(#v4-dot-grid-m)" opacity="0.3" mask="url(#v4-dot-mask-m)" />
 
-            {/* ─── STAGE LINES: Shelf → Hub ─── */}
-            <path d="M52,104 C52,118 150,118 150,132" stroke="rgba(99,102,241,0.35)" strokeWidth={1} vectorEffect="non-scaling-stroke" fill="none" className={alive ? 'v4-flow-b' : ''} {...draw(0.6, 140, '4 8')} />
-            <path d="M150,104 L150,132" stroke="rgba(99,102,241,0.4)" strokeWidth={1} vectorEffect="non-scaling-stroke" fill="none" className={alive ? 'v4-flow-c' : ''} {...draw(0.7, 30, '4 8')} />
-            <path d="M248,104 C248,118 150,118 150,132" stroke="rgba(99,102,241,0.35)" strokeWidth={1} vectorEffect="non-scaling-stroke" fill="none" className={alive ? 'v4-flow-a' : ''} {...draw(0.6, 140, '4 8')} />
+            {/* ─── MOBILE LINES: Sources -> Pills ─── */}
+            <path d={PM.wbToRow1} stroke="rgba(139,63,253,0.25)" strokeWidth={1} vectorEffect="non-scaling-stroke" fill="none" className={alive ? 'v4-flow-a' : ''} {...draw(0.3, 60, '4 8')} />
+            <path d={PM.wbToRow1b} stroke="rgba(139,63,253,0.15)" strokeWidth={1} vectorEffect="non-scaling-stroke" fill="none" className={alive ? 'v4-flow-b' : ''} {...draw(0.35, 100, '4 8')} />
+            <path d={PM.ozonToRow1} stroke="rgba(37,99,235,0.25)" strokeWidth={1} vectorEffect="non-scaling-stroke" fill="none" className={alive ? 'v4-flow-c' : ''} {...draw(0.35, 60, '4 8')} />
+            <path d={PM.ozonToRow1b} stroke="rgba(37,99,235,0.15)" strokeWidth={1} vectorEffect="non-scaling-stroke" fill="none" className={alive ? 'v4-flow-a' : ''} {...draw(0.4, 100, '4 8')} />
 
-            {/* ─── STAGE LINES: Hub → Outputs ─── */}
-            <path d="M150,204 C150,218 52,218 52,232" stroke="rgba(99,102,241,0.45)" strokeWidth={1} vectorEffect="non-scaling-stroke" fill="none" className={alive ? 'v4-flow-c' : ''} {...draw(1.0, 140, '4 8')} />
-            <path d="M150,204 L150,232" stroke="rgba(99,102,241,0.5)" strokeWidth={1} vectorEffect="non-scaling-stroke" fill="none" className={alive ? 'v4-flow-a' : ''} {...draw(1.1, 30, '4 8')} />
-            <path d="M150,204 C150,218 248,218 248,232" stroke="rgba(99,102,241,0.45)" strokeWidth={1} vectorEffect="non-scaling-stroke" fill="none" className={alive ? 'v4-flow-b' : ''} {...draw(1.0, 140, '4 8')} />
+            {/* ─── MOBILE LINES: Pills -> Hub ─── */}
+            <path d={PM.pill1ToHub} stroke="rgba(99,102,241,0.30)" strokeWidth={1} vectorEffect="non-scaling-stroke" fill="none" className={alive ? 'v4-flow-b' : ''} {...draw(0.5, 140, '4 8')} />
+            <path d={PM.pill2ToHub} stroke="rgba(99,102,241,0.35)" strokeWidth={1} vectorEffect="non-scaling-stroke" fill="none" className={alive ? 'v4-flow-c' : ''} {...draw(0.55, 70, '4 8')} />
+            <path d={PM.pill3ToHub} stroke="rgba(99,102,241,0.30)" strokeWidth={1} vectorEffect="non-scaling-stroke" fill="none" className={alive ? 'v4-flow-a' : ''} {...draw(0.5, 140, '4 8')} />
+            <path d={PM.pill4ToHub} stroke="rgba(99,102,241,0.25)" strokeWidth={1} vectorEffect="non-scaling-stroke" fill="none" className={alive ? 'v4-flow-b' : ''} {...draw(0.6, 100, '4 8')} />
+            {/* Mobile SPP line: always dashed, clipPath controls directional grow/erase */}
+            <path ref={sppLineRefM} d={PM.pill5ToHub}
+              stroke="rgba(244,63,94,0.45)" strokeWidth={1.2} vectorEffect="non-scaling-stroke"
+              fill="none" strokeLinecap="round"
+              strokeDasharray="8 8" strokeDashoffset="0"
+              clipPath="url(#spp-clip-M)"
+            />
+            {/* Mobile SPP dot: RAF drives position/opacity */}
+            <circle ref={sppDotRefM} cx={209} cy={144} r={2.5} fill="#fda4af" opacity={0}
+              style={{ filter: 'drop-shadow(0 0 3px rgba(244,63,94,0.8))' }}
+            />
 
-            {/* ─── STAGE LINES: Outputs → Badges Row 1 ─── */}
-            <path d="M52,264 L52,292" stroke="rgba(14,165,233,0.3)" strokeWidth={1} vectorEffect="non-scaling-stroke" fill="none" className={alive ? 'v4-flow-a' : ''} {...draw(1.4, 30, '4 8')} />
-            <path d="M150,264 L150,292" stroke="rgba(217,119,6,0.3)" strokeWidth={1} vectorEffect="non-scaling-stroke" fill="none" className={alive ? 'v4-flow-b' : ''} {...draw(1.5, 30, '4 8')} />
-            <path d="M248,264 L248,292" stroke="rgba(16,185,129,0.3)" strokeWidth={1} vectorEffect="non-scaling-stroke" fill="none" className={alive ? 'v4-flow-c' : ''} {...draw(1.4, 30, '4 8')} />
+            {/* ─── MOBILE LINES: Hub -> Outputs ─── */}
+            <path d={PM.hubToOut1} stroke="rgba(99,102,241,0.40)" strokeWidth={1} vectorEffect="non-scaling-stroke" fill="none" className={alive ? 'v4-flow-c' : ''} {...draw(0.9, 140, '4 8')} />
+            <path d={PM.hubToOut2} stroke="rgba(99,102,241,0.45)" strokeWidth={1} vectorEffect="non-scaling-stroke" fill="none" className={alive ? 'v4-flow-a' : ''} {...draw(0.95, 40, '4 8')} />
+            <path d={PM.hubToOut3} stroke="rgba(99,102,241,0.40)" strokeWidth={1} vectorEffect="non-scaling-stroke" fill="none" className={alive ? 'v4-flow-b' : ''} {...draw(0.9, 140, '4 8')} />
+            <path d={PM.hubToOut4} stroke="rgba(99,102,241,0.35)" strokeWidth={1} vectorEffect="non-scaling-stroke" fill="none" className={alive ? 'v4-flow-c' : ''} {...draw(1.0, 120, '4 8')} />
+            <path d={PM.hubToOut5} stroke="rgba(99,102,241,0.35)" strokeWidth={1} vectorEffect="non-scaling-stroke" fill="none" className={alive ? 'v4-flow-a' : ''} {...draw(1.0, 120, '4 8')} />
 
-            {/* ─── STAGE LINES: Badges R1 → R2 ─── */}
-            <path d="M52,316 L52,330" stroke="rgba(34,197,94,0.2)" strokeWidth={1} vectorEffect="non-scaling-stroke" fill="none" className={alive ? 'v4-flow-c' : ''} {...draw(1.7, 16, '4 8')} />
-            <path d="M150,316 L150,330" stroke="rgba(99,102,241,0.2)" strokeWidth={1} vectorEffect="non-scaling-stroke" fill="none" className={alive ? 'v4-flow-a' : ''} {...draw(1.8, 16, '4 8')} />
-            <path d="M248,316 L248,330" stroke="rgba(220,38,38,0.2)" strokeWidth={1} vectorEffect="non-scaling-stroke" fill="none" className={alive ? 'v4-flow-b' : ''} {...draw(1.7, 16, '4 8')} />
+            {/* ─── MOBILE LINES: Outputs -> Badges ─── */}
+            <path d={PM.out1ToBdg1} stroke="rgba(14,165,233,0.20)" strokeWidth={1} vectorEffect="non-scaling-stroke" fill="none" className={alive ? 'v4-flow-a' : ''} {...draw(1.3, 80, '4 8')} />
+            <path d={PM.out2ToBdg2} stroke="rgba(16,185,129,0.20)" strokeWidth={1} vectorEffect="non-scaling-stroke" fill="none" className={alive ? 'v4-flow-b' : ''} {...draw(1.3, 80, '4 8')} />
+            <path d={PM.out3ToBdg3} stroke="rgba(99,102,241,0.20)" strokeWidth={1} vectorEffect="non-scaling-stroke" fill="none" className={alive ? 'v4-flow-c' : ''} {...draw(1.3, 80, '4 8')} />
+            <path d={PM.out4ToBdg4} stroke="rgba(34,197,94,0.20)" strokeWidth={1} vectorEffect="non-scaling-stroke" fill="none" className={alive ? 'v4-flow-a' : ''} {...draw(1.5, 80, '4 8')} />
+            <path d={PM.out5ToBdg5} stroke="rgba(239,68,68,0.20)" strokeWidth={1} vectorEffect="non-scaling-stroke" fill="none" className={alive ? 'v4-flow-b' : ''} {...draw(1.5, 80, '4 8')} />
 
-            {/* ─── TRAVELING DATA PACKETS ─── */}
-            {alive && <>
-              {/* WB → shelf */}
-              <circle r={2} fill="#8b5cf6" opacity={0.7}>
-                <animateMotion dur="1.8s" begin="0s" repeatCount="indefinite" path="M77,48 C77,58 52,58 52,70" />
+            {/* ─── MOBILE TRAVELING PACKETS ─── */}
+            {alive && !prefersReducedMotion.current && mobilePackets.map((p, i) => (
+              <circle key={`m-pkt-${i}`} r={p.r} fill={p.c} opacity={p.op}>
+                <animateMotion dur={p.dur} begin={p.begin} repeatCount="indefinite" path={p.path} />
               </circle>
-              <circle r={1.5} fill="#8b5cf6" opacity={0.4}>
-                <animateMotion dur="2.2s" begin="0.8s" repeatCount="indefinite" path="M77,48 C77,58 150,58 150,70" />
-              </circle>
-              {/* Ozon → shelf */}
-              <circle r={2} fill="#3b82f6" opacity={0.7}>
-                <animateMotion dur="1.8s" begin="0.3s" repeatCount="indefinite" path="M222,48 C222,58 248,58 248,70" />
-              </circle>
-              <circle r={1.5} fill="#3b82f6" opacity={0.4}>
-                <animateMotion dur="2.2s" begin="1s" repeatCount="indefinite" path="M222,48 C222,58 150,58 150,70" />
-              </circle>
-              {/* Shelf → Hub */}
-              <circle r={1.5} fill="#6366f1" opacity={0.55}>
-                <animateMotion dur="2s" begin="0.2s" repeatCount="indefinite" path="M52,104 C52,118 150,118 150,132" />
-              </circle>
-              <circle r={1.5} fill="#6366f1" opacity={0.5}>
-                <animateMotion dur="1.2s" begin="0.6s" repeatCount="indefinite" path="M150,104 L150,132" />
-              </circle>
-              <circle r={1.5} fill="#6366f1" opacity={0.55}>
-                <animateMotion dur="2s" begin="1s" repeatCount="indefinite" path="M248,104 C248,118 150,118 150,132" />
-              </circle>
-              {/* Hub → Outputs */}
-              <circle r={1.5} fill="#6366f1" opacity={0.5}>
-                <animateMotion dur="2s" begin="0.1s" repeatCount="indefinite" path="M150,204 C150,218 52,218 52,232" />
-              </circle>
-              <circle r={1.5} fill="#6366f1" opacity={0.45}>
-                <animateMotion dur="1s" begin="0.5s" repeatCount="indefinite" path="M150,204 L150,232" />
-              </circle>
-              <circle r={1.5} fill="#6366f1" opacity={0.5}>
-                <animateMotion dur="2s" begin="0.9s" repeatCount="indefinite" path="M150,204 C150,218 248,218 248,232" />
-              </circle>
-            </>}
+            ))}
 
-            {/* ═══ SOURCES: WB + Ozon ═══ */}
+            {/* ═══ MOBILE SOURCES ═══ */}
             <g style={show(0)}>
-              <g className={alive ? 'v3-wb-pulse' : ''}>
-                <rect x="12" y="10" width="131" height="38" rx="11" fill="rgba(139,63,253,0.12)" stroke="rgba(139,63,253,0.35)" strokeWidth="1" />
-                <circle cx="35" cy="29" r="10" fill="rgba(139,63,253,0.15)" stroke="rgba(139,63,253,0.25)" strokeWidth="0.75" />
-                {alive && <circle cx="35" cy="29" r="13" fill="none" stroke="rgba(139,63,253,0.2)" strokeWidth="1" strokeDasharray="3 5" className="v3-wb-ring" />}
-                <text x="35" y="33" textAnchor="middle" fill="#a78bfa" fontSize="8" fontWeight="700" fontFamily="Inter,sans-serif">WB</text>
-                <text x="88" y="33" textAnchor="middle" fill="#a78bfa" fontSize="10.5" fontWeight="600" fontFamily="Inter,sans-serif">Wildberries</text>
-                <circle cx="136" cy="17" r="3" fill="#22c55e" className="v3-status-pulse" />
+              <g className={alive ? 'v4-source-pulse-wb' : ''}>
+                <rect x="18" y="10" width="130" height="42" rx="12" fill="rgba(139,63,253,0.10)" stroke="rgba(139,63,253,0.30)" strokeWidth="1" />
+                <circle cx="40" cy="31" r="11" fill="rgba(139,63,253,0.12)" stroke="rgba(139,63,253,0.25)" strokeWidth="0.75" />
+                {alive && <circle cx="40" cy="31" r="14" fill="none" stroke="rgba(139,63,253,0.15)" strokeWidth="1" strokeDasharray="3 5" className="v3-wb-ring" />}
+                <text x="40" y="35" textAnchor="middle" fill="#a78bfa" fontSize="8" fontWeight="700" fontFamily="Inter,sans-serif">WB</text>
+                <text x="98" y="35" textAnchor="middle" fill="#c4b5fd" fontSize="10" fontWeight="600" fontFamily="Inter,sans-serif">Wildberries</text>
+                <circle cx="141" cy="18" r="2.5" fill="#22c55e" className="v3-status-pulse" />
               </g>
             </g>
-            <g style={show(0.12)}>
+            <g style={show(0.10)}>
               <g className={alive ? 'v3-ozon-tilt' : ''}>
-                <rect x="157" y="10" width="131" height="38" rx="11" fill="rgba(0,91,255,0.12)" stroke="rgba(0,91,255,0.35)" strokeWidth="1" />
-                <circle cx="180" cy="29" r="10" fill="rgba(37,99,235,0.15)" stroke="rgba(37,99,235,0.25)" strokeWidth="0.75" />
-                {alive && <circle cx="180" cy="29" r="11" fill="none" stroke="rgba(37,99,235,0.25)" strokeWidth="1" className="v3-ozon-ring" />}
-                <text x="180" y="33" textAnchor="middle" fill="#60a5fa" fontSize="8" fontWeight="700" fontFamily="Inter,sans-serif">Oz</text>
-                <text x="228" y="33" textAnchor="middle" fill="#60a5fa" fontSize="10.5" fontWeight="600" fontFamily="Inter,sans-serif">Ozon</text>
-                <circle cx="281" cy="17" r="3" fill="#22c55e" className="v3-status-pulse" />
+                <rect x="172" y="10" width="130" height="42" rx="12" fill="rgba(0,91,255,0.10)" stroke="rgba(0,91,255,0.30)" strokeWidth="1" />
+                <circle cx="194" cy="31" r="11" fill="rgba(37,99,235,0.12)" stroke="rgba(37,99,235,0.25)" strokeWidth="0.75" />
+                {alive && <circle cx="194" cy="31" r="14" fill="none" stroke="rgba(37,99,235,0.25)" strokeWidth="1" className="v3-ozon-ring" />}
+                <text x="194" y="35" textAnchor="middle" fill="#60a5fa" fontSize="8" fontWeight="700" fontFamily="Inter,sans-serif">Oz</text>
+                <text x="248" y="35" textAnchor="middle" fill="#93c5fd" fontSize="10" fontWeight="600" fontFamily="Inter,sans-serif">Ozon</text>
+                <circle cx="295" cy="18" r="2.5" fill="#22c55e" className="v3-status-pulse" />
               </g>
             </g>
 
-            {/* ═══ SHELF: 3 cycling data-category cards ═══ */}
-            {shelf.map((label, i) => {
-              const cx = [52, 150, 248][i];
-              const rx = [10, 108, 206][i];
-              const isActive = activeSlot === i;
+            {/* ═══ MOBILE DATA PILLS (row1: 3 flipping, row2: 2 static centered) ═══ */}
+            {[
+              { x: 18,  y: 78,  flipIdx: 0,  fill: pillData[0].fill, stroke: pillData[0].stroke, text: pillData[0].text, dot: pillData[0].dot },
+              { x: 116, y: 78,  flipIdx: 1,  fill: pillData[1].fill, stroke: pillData[1].stroke, text: pillData[1].text, dot: pillData[1].dot },
+              { x: 214, y: 78,  flipIdx: 2,  fill: pillData[2].fill, stroke: pillData[2].stroke, text: pillData[2].text, dot: pillData[2].dot },
+              { x: 67,  y: 116, flipIdx: -1, label: 'Логистика', fill: pillData[3].fill, stroke: pillData[3].stroke, text: pillData[3].text, dot: pillData[3].dot },
+              { x: 165, y: 116, flipIdx: -1, label: 'СПП',       fill: pillData[4].fill, stroke: pillData[4].stroke, text: pillData[4].text, dot: pillData[4].dot },
+            ].map((mp, i) => {
+              const isFlip = mp.flipIdx >= 0;
+              const label  = isFlip ? pillFlipCurrent[mp.flipIdx] : mp.label;
+              const isMSppPill = !isFlip && i === 4;
               return (
-                <g key={`m-shelf-${i}`} style={show(0.25 + i * 0.08)}>
-                  {isActive && alive && (
-                    <rect x={rx - 2} y={68} width={88} height={38} rx={12}
-                      fill="none" stroke="rgba(99,102,241,0.18)" strokeWidth={1.5}
-                      className="v3-status-pulse" />
-                  )}
-                  <rect x={rx} y={70} width={84} height={34} rx={10}
-                    fill={isActive ? 'rgba(99,102,241,0.12)' : 'rgba(255,255,255,0.04)'}
-                    stroke={isActive ? 'rgba(99,102,241,0.45)' : 'rgba(99,102,241,0.2)'}
-                    strokeWidth={isActive ? 1 : 0.75} />
-                  <text key={label} x={cx} y={91} textAnchor="middle"
-                    fill={isActive ? '#a78bfa' : '#818cf8'}
-                    fontSize={10} fontWeight={isActive ? '700' : '600'}
-                    fontFamily="Inter,sans-serif"
-                    opacity={isActive ? 1 : 0.6}
-                    className={tick >= 0 ? 'v3-fade-in' : ''}>
-                    {label}
-                  </text>
-                  {isActive && alive && (
-                    <circle cx={rx + 76} cy={76} r={2} fill="#6366f1" className="v3-status-pulse" />
-                  )}
+                <g key={`m-pill-${i}`}
+                  ref={isMSppPill ? sppPillRefM : undefined}
+                  style={isMSppPill ? { opacity: 0 } : show(0.25 + i * 0.04)}>
+                  {/* flip wrapper — RAF drives scaleX; v3-pill-flip-base sets geometry only */}
+                  <g ref={isFlip ? pillRefsMobile[mp.flipIdx] : undefined}
+                     className={isFlip ? 'v3-pill-flip-base' : ''}>
+                    <rect x={mp.x} y={mp.y} width={88} height={28} rx={14} fill={mp.fill} stroke={mp.stroke} strokeWidth="0.8" />
+                    <circle cx={mp.x + 14} cy={mp.y + 14} r={2.5} fill={mp.dot} className={alive ? 'v3-status-pulse' : ''} />
+                    <text x={mp.x + 50} y={mp.y + 18} textAnchor="middle" fill={mp.text} fontSize="9" fontWeight="600" fontFamily="Inter,sans-serif">{label}</text>
+                  </g>
                 </g>
               );
             })}
 
-            {/* ═══ PRO GOLDEN HUB GLOW (mobile, hidden until SHOW_PRO=true) ═══ */}
-            {SHOW_PRO && proActive && (
-              <rect x={30} y={124} width={240} height={88} rx={22}
-                fill="none" stroke="rgba(245,158,11,0.15)" strokeWidth={2}
-                className="v3-pro-glow" />
-            )}
-
-            {/* ═══ CENTRAL HUB with spinning border ═══ */}
-            <g style={show(0.6)}>
-              <g filter="url(#v3-hub-shadow-m)">
-                <rect x="38" y="132" width="224" height="72" rx="16" fill="rgba(99,102,241,0.15)" stroke="rgba(99,102,241,0.4)" strokeWidth="1.5" />
-                <rect x="34" y="128" width="232" height="80" rx="20"
-                  fill="none" stroke="url(#v3-hub-grad-m)" strokeWidth="1.5"
+            {/* ═══ MOBILE HUB ═══ */}
+            <g style={show(0.55)}>
+              <g filter="url(#v4-hub-shadow-m)">
+                <rect x="40" y="174" width="240" height="64" rx="16" fill="rgba(99,102,241,0.12)" stroke="rgba(99,102,241,0.35)" strokeWidth="1.5" />
+                <rect x="36" y="170" width="248" height="72" rx="20"
+                  fill="none" stroke="url(#v4-hub-grad-m)" strokeWidth="1.5"
                   strokeDasharray="8 4" strokeOpacity="0.5" className="v3-hub-border" />
-                <text x="150" y="164" textAnchor="middle" fill="white" fontSize="15" fontWeight="700" fontFamily="Inter,sans-serif">RevioMP</text>
-                <text x="150" y="184" textAnchor="middle" fill="rgba(255,255,255,0.6)" fontSize="10" fontWeight="500" fontFamily="Inter,sans-serif">Analytics Hub</text>
+                <path d="M160,182 L166,188 L160,194 L154,188 Z" fill="rgba(99,102,241,0.3)" stroke="rgba(165,180,252,0.5)" strokeWidth="0.8" />
+                <text x="160" y="212" textAnchor="middle" fill="white" fontSize="15" fontWeight="700" fontFamily="Inter,sans-serif">RevioMP</text>
+                <text x="160" y="228" textAnchor="middle" fill="rgba(255,255,255,0.5)" fontSize="9" fontWeight="500" fontFamily="Inter,sans-serif">Умная аналитика</text>
               </g>
             </g>
 
-            {/* ═══ 3 OUTPUT CARDS with cycling labels + different animations ═══ */}
-            {outTexts.map((text, i) => {
-              const cx = [52, 150, 248][i];
-              const rx = [10, 108, 206][i];
-              return (
-                <g key={`m-out-${i}`} style={show(1.2 + i * 0.1)}>
-                  <rect x={rx} y={232} width={84} height={32} rx={9}
-                    fill="rgba(255,255,255,0.04)" stroke="rgba(255,255,255,0.1)" strokeWidth="1" />
-                  <text key={text} x={cx} y={252} textAnchor="middle"
-                    fill="white" fontSize={10} fontWeight="500" fontFamily="Inter,sans-serif"
-                    className={tick >= 0 ? outAnim[i] : ''}>
-                    {text}
-                  </text>
-                </g>
-              );
-            })}
+            {/* ═══ MOBILE OUTPUTS (row1: 3, row2: 2 centered) ═══ */}
+            {[
+              { x: 18, y: 275, label: 'Дашборд', accent: '#6366f1' },
+              { x: 116, y: 275, label: 'Прибыль', accent: '#10b981' },
+              { x: 214, y: 275, label: 'Остатки', accent: '#0ea5e9' },
+              { x: 52, y: 316, label: 'reportCycle', accent: '#6366f1', w: 100 },
+              { x: 168, y: 316, label: 'План', accent: '#8b5cf6', w: 100 },
+            ].map((mo, i) => (
+              <g key={`m-out-${i}`} style={show(1.1 + i * 0.08)}>
+                <rect x={mo.x} y={mo.y} width={mo.w || 88} height={30} rx={10} fill="rgba(255,255,255,0.04)" stroke="rgba(255,255,255,0.10)" strokeWidth="1" />
+                <rect x={mo.x} y={mo.y + 8} width={2} height={14} rx={1} fill={mo.accent} opacity="0.4" />
+                <text x={mo.x + (mo.w || 88) / 2} y={mo.y + 19} textAnchor="middle" fill="white" fontSize="9" fontWeight="600" fontFamily="Inter,sans-serif">{mo.label === 'reportCycle' ? reportLabel : mo.label}</text>
+              </g>
+            ))}
 
-            {/* ═══ BADGES ROW 1: Telegram / ROI / Webhook ═══ */}
+            {/* ═══ MOBILE BADGES (row1: 3, row2: 2 centered) ═══ */}
+            <g style={show(1.5)} opacity="0.85">
+              <g className={alive ? 'v3-float' : ''}>
+                <rect x="18" y="380" width="88" height="24" rx="7" fill="rgba(14,165,233,0.12)" stroke="rgba(14,165,233,0.30)" strokeWidth="0.75" />
+                <text x="62" y="396" textAnchor="middle" fill="#38bdf8" fontSize="8" fontWeight="600" fontFamily="Inter,sans-serif">Telegram</text>
+              </g>
+            </g>
+            <g style={show(1.55)} opacity="0.85">
+              <g className={alive ? 'v3-blink' : ''}>
+                <rect x="116" y="380" width="88" height="24" rx="7" fill="rgba(16,185,129,0.12)" stroke="rgba(16,185,129,0.30)" strokeWidth="0.75" />
+                <text x="160" y="396" textAnchor="middle" fill="#34d399" fontSize="8" fontWeight="600" fontFamily="Inter,sans-serif">Webhook</text>
+              </g>
+            </g>
             <g style={show(1.6)} opacity="0.85">
               <g className={alive ? 'v3-float' : ''}>
-                <rect x="10" y="292" width="84" height="24" rx="7" fill="rgba(14,165,233,0.12)" stroke="rgba(14,165,233,0.35)" strokeWidth="0.75" />
-                <g transform="translate(22,300)" opacity="0.5"><path d="M0,4 L6,0 L5,6 L3,4.5 Z" fill="#38bdf8" /></g>
-                <text x="57" y="308" textAnchor="middle" fill="#38bdf8" fontSize="8.5" fontWeight="600" fontFamily="Inter,sans-serif">Telegram</text>
+                <rect x="214" y="380" width="88" height="24" rx="7" fill="rgba(99,102,241,0.12)" stroke="rgba(99,102,241,0.30)" strokeWidth="0.75" />
+                <text x="258" y="396" textAnchor="middle" fill="#818cf8" fontSize="8" fontWeight="600" fontFamily="Inter,sans-serif">REST API</text>
               </g>
             </g>
             <g style={show(1.7)} opacity="0.85">
-              <g className={alive ? 'v3-scale-in' : ''}>
-                <rect x="108" y="292" width="84" height="24" rx="7" fill="rgba(217,119,6,0.12)" stroke="rgba(217,119,6,0.35)" strokeWidth="0.75" />
-                <text key={`m-roi-${roi}`} x="150" y="308" textAnchor="middle" fill="#fbbf24" fontSize="8.5" fontWeight="700" fontFamily="Inter,sans-serif">{roi}</text>
-              </g>
-            </g>
-            <g style={show(1.65)} opacity="0.85">
-              <g className={alive ? 'v3-blink' : ''}>
-                <rect x="206" y="292" width="84" height="24" rx="7" fill="rgba(16,185,129,0.12)" stroke="rgba(16,185,129,0.35)" strokeWidth="0.75" />
-                <g transform="translate(218,299)" opacity="0.55"><path d="M4,0 L2,4 L4,4 L2,8" stroke="#34d399" strokeWidth="1" strokeLinecap="round" fill="none" /></g>
-                <text x="253" y="308" textAnchor="middle" fill="#34d399" fontSize="8.5" fontWeight="600" fontFamily="Inter,sans-serif">Webhook</text>
-              </g>
-            </g>
-
-            {/* ═══ BADGES ROW 2: Excel / REST API / PDF ═══ */}
-            <g style={show(1.85)} opacity="0.85">
               <g className={alive ? 'v3-flip-loop' : ''}>
-                <rect x="10" y="330" width="84" height="24" rx="7" fill="rgba(34,197,94,0.15)" stroke="rgba(34,197,94,0.4)" strokeWidth="0.75" />
-                <g transform="translate(20,337)" opacity="0.45">
-                  <rect width="7" height="7" rx="1" stroke="#4ade80" strokeWidth="0.7" fill="none" />
-                  <line x1="3.5" y1="0" x2="3.5" y2="7" stroke="#4ade80" strokeWidth="0.4" />
-                  <line x1="0" y1="3.5" x2="7" y2="3.5" stroke="#4ade80" strokeWidth="0.4" />
-                </g>
-                <text x="57" y="346" textAnchor="middle" fill="#4ade80" fontSize="8.5" fontWeight="600" fontFamily="Inter,sans-serif">Excel</text>
+                <rect x="67" y="414" width="88" height="24" rx="7" fill="rgba(34,197,94,0.15)" stroke="rgba(34,197,94,0.35)" strokeWidth="0.75" />
+                <text x="111" y="430" textAnchor="middle" fill="#4ade80" fontSize="8" fontWeight="600" fontFamily="Inter,sans-serif">Excel</text>
               </g>
             </g>
-            <g style={show(1.9)} opacity="0.85">
-              <g className={alive ? 'v3-float' : ''}>
-                <rect x="108" y="330" width="84" height="24" rx="7" fill="rgba(99,102,241,0.12)" stroke="rgba(99,102,241,0.35)" strokeWidth="0.75" />
-                <text x="134" y="346" textAnchor="middle" fill="#818cf8" fontSize="9" fontWeight="700" fontFamily="monospace">{'</>'}</text>
-                <text x="168" y="346" textAnchor="middle" fill="#a5b4fc" fontSize="8" fontWeight="600" fontFamily="Inter,sans-serif">API</text>
-              </g>
-            </g>
-            <g style={show(1.95)} opacity="0.85">
+            <g style={show(1.75)} opacity="0.85">
               <g className={alive ? 'v3-flip-loop v3-flip-delay' : ''}>
-                <rect x="206" y="330" width="84" height="24" rx="7" fill="rgba(220,38,38,0.15)" stroke="rgba(220,38,38,0.4)" strokeWidth="0.75" />
-                <g transform="translate(216,337)" opacity="0.45">
-                  <path d="M0,0 L4,0 L6,2.5 L6,8 L0,8 Z" stroke="#f87171" strokeWidth="0.7" fill="none" />
-                  <path d="M4,0 L4,2.5 L6,2.5" stroke="#f87171" strokeWidth="0.5" fill="none" />
-                </g>
-                <text x="253" y="346" textAnchor="middle" fill="#f87171" fontSize="8.5" fontWeight="600" fontFamily="Inter,sans-serif">PDF</text>
+                <rect x="165" y="414" width="88" height="24" rx="7" fill="rgba(239,68,68,0.15)" stroke="rgba(239,68,68,0.35)" strokeWidth="0.75" />
+                <text x="209" y="430" textAnchor="middle" fill="#f87171" fontSize="8" fontWeight="600" fontFamily="Inter,sans-serif">PDF</text>
               </g>
             </g>
 
-            {/* ═══ PRO TOGGLE (hidden until SHOW_PRO=true) ═══ */}
-            {SHOW_PRO && (
-              <g style={{ ...show(2.2), cursor: alive ? 'pointer' : 'default' }}
-                 onClick={() => alive && setProActive(p => !p)}>
-                <rect x={68} y={372} width={164} height={30} rx={12}
-                  fill={proActive ? 'rgba(245,158,11,0.12)' : 'rgba(255,255,255,0.04)'}
-                  stroke={proActive ? 'rgba(245,158,11,0.45)' : 'rgba(255,255,255,0.15)'}
-                  strokeWidth={proActive ? 1.5 : 1} />
-                {proActive && <rect x={66} y={370} width={168} height={34} rx={14}
-                  fill="none" stroke="rgba(245,158,11,0.25)" strokeWidth={2}
-                  className="v3-pro-glow" />}
-                <text x={150} y={391} textAnchor="middle"
-                  fill={proActive ? '#fbbf24' : '#6b7280'} fontSize={10} fontWeight="700"
-                  fontFamily="Inter,sans-serif">
-                  {'\u26A1 PRO \u043F\u043E\u0434\u043F\u0438\u0441\u043A\u0430'}
-                </text>
-              </g>
-            )}
-
-            {/* ═══ YM PLACEHOLDER ═══ */}
-            <g style={show(2.4)}>
-              <rect x="85" y="416" width="130" height="20" rx="6" fill="none" stroke="rgba(156,163,175,0.15)" strokeWidth="0.75" strokeDasharray="3 3" />
-              <text x="150" y="430" textAnchor="middle" fill="#4b5563" fontSize="8" fontFamily="Inter,sans-serif" opacity="0.6">Яндекс.Маркет · скоро</text>
+            {/* ═══ MOBILE COMING SOON ═══ */}
+            <g style={show(1.9)} opacity="0.35">
+              <rect x="10" y="465" width="96" height="22" rx="6" fill="none" stroke="rgba(250,204,21,0.15)" strokeWidth="0.75" strokeDasharray="3 3" />
+              <text x="58" y="480" textAnchor="middle" fill="rgba(255,255,255,0.35)" fontSize="7" fontFamily="Inter,sans-serif">Я.Маркет</text>
+              <rect x="112" y="465" width="80" height="22" rx="6" fill="none" stroke="rgba(0,175,90,0.15)" strokeWidth="0.75" strokeDasharray="3 3" />
+              <text x="152" y="480" textAnchor="middle" fill="rgba(255,255,255,0.35)" fontSize="7" fontFamily="Inter,sans-serif">Авито</text>
+              <rect x="198" y="465" width="112" height="22" rx="6" fill="none" stroke="rgba(33,160,56,0.15)" strokeWidth="0.75" strokeDasharray="3 3" />
+              <text x="254" y="480" textAnchor="middle" fill="rgba(255,255,255,0.35)" fontSize="7" fontFamily="Inter,sans-serif">СберМега</text>
+              <text x="160" y="502" textAnchor="middle" fill="rgba(255,255,255,0.3)" fontSize="8" fontFamily="Inter,sans-serif">Скоро подключим</text>
             </g>
           </svg>
         </div>
@@ -2016,7 +2183,7 @@ function HowItWorksSection() {
   ];
 
   return (
-    <section className="py-16 sm:py-20 bg-gray-50">
+    <section id="how-it-works" className="py-16 sm:py-20 bg-gray-50">
       <div className="max-w-6xl mx-auto px-4 sm:px-6">
         <RevealSection>
           <h2 className="text-2xl sm:text-3xl font-bold text-gray-900 text-center">
@@ -2654,7 +2821,7 @@ export function LandingPage() {
       <SectionDivider />
       <FeaturesSection />
       {/* DataFlow has dark bg — no divider needed */}
-      <DataFlowSectionV3 />
+      <DataFlowSectionV4 />
       <HowItWorksSection />
       <SectionDivider />
       <SecuritySection />
