@@ -136,96 +136,7 @@ function SectionDivider() {
   );
 }
 
-/** Matrix digital rain — spiral-flow animation for hero background */
-function MatrixRain() {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
-
-    let W: number, H: number;
-    const dpr = window.devicePixelRatio || 1;
-
-    const resize = () => {
-      W = canvas.offsetWidth;
-      H = canvas.offsetHeight;
-      canvas.width = W * dpr;
-      canvas.height = H * dpr;
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    };
-    resize();
-
-    const chars = '01234567₽%+-.∑↑↓→←';
-    const fontSize = 14;
-    const gap = 22;
-    let cols: number;
-    let drops: number[];
-    let speeds: number[];
-
-    const init = () => {
-      cols = Math.ceil(W / gap) + 1;
-      drops = Array.from({ length: cols }, () => Math.random() * -H / fontSize);
-      speeds = Array.from({ length: cols }, () => 0.35 + Math.random() * 0.55);
-    };
-    init();
-
-    let frame = 0;
-    let animId: number;
-    let last = 0;
-    const fpsInterval = 1000 / 16;
-
-    const tick = (now: number) => {
-      animId = requestAnimationFrame(tick);
-      if (now - last < fpsInterval) return;
-      last = now;
-
-      ctx.fillStyle = 'rgba(255,255,255,0.14)';
-      ctx.fillRect(0, 0, W, H);
-      ctx.font = `500 ${fontSize}px "Courier New",monospace`;
-
-      for (let i = 0; i < cols; i++) {
-        const c = chars[Math.floor(Math.random() * chars.length)];
-        const wave = Math.sin(drops[i] * 0.06 + i * 0.35 + frame * 0.012) * 10;
-        const x = i * gap + wave;
-        const y = drops[i] * fontSize;
-
-        const v = (i + Math.floor(drops[i])) % 3;
-        ctx.fillStyle = v === 0
-          ? 'rgba(99,102,241,0.5)'
-          : v === 1
-            ? 'rgba(139,92,246,0.4)'
-            : 'rgba(129,140,248,0.45)';
-
-        ctx.fillText(c, x, y);
-
-        if (y > H && Math.random() > 0.975) drops[i] = 0;
-        drops[i] += speeds[i];
-      }
-      frame++;
-    };
-
-    animId = requestAnimationFrame(tick);
-    const onResize = () => { resize(); init(); };
-    window.addEventListener('resize', onResize);
-    return () => { cancelAnimationFrame(animId); window.removeEventListener('resize', onResize); };
-  }, []);
-
-  return (
-    <canvas
-      ref={canvasRef}
-      aria-hidden="true"
-      className="absolute inset-0 w-full h-full pointer-events-none"
-      style={{
-        maskImage: 'radial-gradient(ellipse 70% 60% at 50% 45%, transparent 15%, rgba(0,0,0,0.4) 40%, black 70%)',
-        WebkitMaskImage: 'radial-gradient(ellipse 70% 60% at 50% 45%, transparent 15%, rgba(0,0,0,0.4) 40%, black 70%)',
-      }}
-    />
-  );
-}
+/* MatrixRain removed (24.02.2026) — irrelevant 2000s decoration, no enterprise sites use it */
 
 /** Hook for spotlight card mouse tracking */
 function useSpotlight() {
@@ -376,8 +287,7 @@ function HeroSection() {
       {/* Background gradient */}
       <div className="absolute inset-0 bg-gradient-to-b from-indigo-50/60 via-white to-white" />
 
-      {/* Matrix digital rain animation */}
-      <MatrixRain />
+      {/* MatrixRain removed (24.02.2026) — irrelevant decoration, 2000s aesthetic */}
 
       <div className="relative max-w-5xl mx-auto px-4 sm:px-6 text-center">
         {/* Badge */}
@@ -456,7 +366,7 @@ function TrustBar() {
   );
 
   return (
-    <div className="max-w-6xl mx-auto border-t border-b border-gray-200 py-5 overflow-hidden">
+    <div className="border-t border-b border-gray-200 py-5 overflow-hidden">
       <div className="trust-marquee">
         <div className="trust-marquee-track">
           {renderSet('a')}
@@ -2803,12 +2713,6 @@ function FooterSection() {
 export function LandingPage() {
   return (
     <div className="min-h-screen bg-white overflow-x-hidden">
-      {/* Vertical guide lines at container edges (desktop only, Stripe-style) */}
-      <div className="hidden lg:block pointer-events-none fixed inset-y-0 left-0 right-0 z-30" style={{ mixBlendMode: 'darken' }}>
-        <div className="absolute left-12 top-0 bottom-0 w-px bg-gray-200" />
-        <div className="absolute right-12 top-0 bottom-0 w-px bg-gray-200" />
-      </div>
-
       <NavBar />
       <HeroSection />
       <TrustBar />
