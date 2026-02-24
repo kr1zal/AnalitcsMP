@@ -11,6 +11,25 @@
 
 ---
 
+## 2026-02-25
+
+### Telegram Bot — Enterprise Support v2
+- **AI-поддержка:** Claude Haiku отвечает на вопросы пользователей в Telegram с персистентной историей
+- **Session lifecycle:** active -> resolved/escalated -> closed. Resolved сессии переоткрываются при новом сообщении
+- **Persistent storage:** 3 новых таблицы в Supabase (tg_support_sessions, tg_support_messages, tg_support_csat). Migration 024
+- **Conversation context:** <= 10 сообщений — полная история, > 10 — summary (Claude Haiku) + последние 10
+- **CSAT:** После решения вопроса — "Да, помогли" / "Нет, не помогли". Негативный CSAT эскалирует в группу
+- **Idle detection:** Cron каждые 5 мин — напоминание "Всё ещё нужна помощь?" после 30 мин неактивности
+- **Auto-close:** Resolved сессии автоматически закрываются через 2 часа
+- **Escalation:** При низкой уверенности AI (< 0.7) или по кнопке — summary + эскалация оператору
+- **Operator messages:** Ответы из группы поддержки сохраняются в БД (role='operator')
+- **Graceful degradation:** Все session_manager функции обрабатывают ошибки без краша бота
+- **Backend:** session_manager.py (499 строк), обновлены ai_support.py, handlers.py, keyboards.py, support.py, telegram.py
+- **Cron endpoint:** POST /telegram/session-cleanup (X-Cron-Secret auth)
+- **Тесты:** 18 enterprise тестов (lifecycle, AI context, CSAT, escalation, edge cases) — все PASSED
+
+---
+
 ## 2026-02-23
 
 ### ProductShowcase — Enterprise Tab Slider

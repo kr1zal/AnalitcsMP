@@ -7,6 +7,7 @@ import { LogOut, Trash2, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuthStore } from '../../store/useAuthStore';
 import { accountApi } from '../../services/api';
+import { TelegramSection } from './TelegramSection';
 
 // ─── Delete account section ───
 
@@ -129,6 +130,9 @@ export function ProfileTab() {
           </button>
         </div>
       </div>
+
+      {/* Telegram */}
+      <TelegramSection />
 
       {/* Delete account */}
       <DeleteAccountSection onDeleted={handleLogout} />

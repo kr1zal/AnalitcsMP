@@ -72,6 +72,15 @@
     - [POST /admin/sync/{user_id}](#post-adminsyncuser_id)
 13. [Account](#account)
     - [DELETE /account](#delete-account)
+14. [Telegram](#telegram)
+    - [POST /telegram/webhook](#post-telegramwebhook)
+    - [POST /telegram/generate-token](#post-telegramgenerate-token)
+    - [GET /telegram/link-status](#get-telegramlink-status)
+    - [DELETE /telegram/unlink](#delete-telegramunlink)
+    - [PUT /telegram/settings](#put-telegramsettings)
+    - [POST /telegram/send-summaries](#post-telegramsend-summaries)
+    - [POST /telegram/session-cleanup](#post-telegramsession-cleanup)
+    - [POST /telegram/setup-webhook](#post-telegramsetup-webhook)
 
 ---
 
@@ -2037,6 +2046,165 @@ Webhook от ЮКассы. Обрабатывает события `payment.succ
 
 ---
 
+## Telegram
+
+Telegram bot (@RevioMPBot) для уведомлений и AI-поддержки. Бот работает через aiogram 3 webhook.
+
+### POST /telegram/webhook
+
+Приём обновлений от Telegram API (webhook endpoint). Проверяет `X-Telegram-Bot-Api-Secret-Token`.
+
+**Auth:** Telegram webhook secret
+**Feature Gate:** Нет
+
+**Ответ:** `{"ok": true}` (всегда 200, чтобы Telegram не ретраил)
+
+---
+
+### POST /telegram/generate-token
+
+Генерация одноразового токена для привязки Telegram (deep link). Срок: 5 минут.
+
+**Auth:** JWT Bearer
+**Feature Gate:** Нет
+
+**Пример ответа:**
+
+```json
+{
+  "token": "uuid-token",
+  "link": "https://t.me/RevioMPBot?start=LINK_uuid-token",
+  "expires_in": 300
+}
+```
+
+---
+
+### GET /telegram/link-status
+
+Проверка привязки Telegram аккаунта и настроек уведомлений.
+
+**Auth:** JWT Bearer
+**Feature Gate:** Нет
+
+**Пример ответа (привязан):**
+
+```json
+{
+  "linked": true,
+  "telegram_username": "username",
+  "settings": {
+    "daily_summary": true,
+    "morning_time": "09:00",
+    "evening_enabled": false,
+    "evening_time": "21:00",
+    "stock_alerts": true
+  },
+  "linked_at": "2026-02-25T10:00:00+00:00"
+}
+```
+
+---
+
+### DELETE /telegram/unlink
+
+Отвязать Telegram аккаунт.
+
+**Auth:** JWT Bearer
+**Feature Gate:** Нет
+
+**Ответ:** `{"status": "unlinked"}`
+
+---
+
+### PUT /telegram/settings
+
+Обновить настройки уведомлений для привязанного Telegram.
+
+**Auth:** JWT Bearer
+**Feature Gate:** Нет
+
+**Body (JSON):**
+
+```json
+{
+  "daily_summary": true,
+  "morning_time": "09:00",
+  "evening_enabled": false,
+  "evening_time": "21:00",
+  "stock_alerts": true
+}
+```
+
+**Ошибки:**
+
+| Код | Описание |
+|-----|----------|
+| 400 | `Invalid time format: ...` |
+| 404 | `Telegram not linked` |
+
+---
+
+### POST /telegram/send-summaries
+
+Cron endpoint: отправка ежедневных сводок пользователям по расписанию. Вызывается каждые 15 минут, проверяет совпадение с настроенным временем.
+
+**Auth:** X-Cron-Secret
+**Feature Gate:** Нет
+
+**Пример ответа:**
+
+```json
+{
+  "target_time": "09:00",
+  "sent": 3,
+  "skipped": 1,
+  "errors": 0
+}
+```
+
+---
+
+### POST /telegram/session-cleanup
+
+Cron endpoint: обслуживание сессий поддержки. Вызывается каждые 5 минут.
+
+1. **Idle reminder:** Находит active-сессии с неактивностью > 30 мин, отправляет "Всё ещё нужна помощь?"
+2. **Auto-close:** Закрывает resolved-сессии старше 2 часов
+
+**Auth:** X-Cron-Secret
+**Feature Gate:** Нет
+
+**Пример ответа:**
+
+```json
+{
+  "idle_reminded": 2,
+  "auto_closed": 1
+}
+```
+
+---
+
+### POST /telegram/setup-webhook
+
+Одноразовый endpoint для регистрации webhook URL в Telegram API.
+
+**Auth:** X-Cron-Secret
+**Feature Gate:** Нет
+
+**Пример ответа:**
+
+```json
+{
+  "status": "ok",
+  "webhook_url": "https://analitics.bixirun.ru/api/telegram/webhook",
+  "has_secret": true
+}
+```
+
+---
+
 ## Общие ошибки
 
 | Код | Описание |
@@ -2070,7 +2238,10 @@ Webhook от ЮКассы. Обрабатывает события `payment.succ
 | `mp_payments` | Платежи ЮКасса |
 | `mp_sync_queue` | Очередь синхронизации (priority, next_sync_at) |
 | `mp_sync_log` | Логи синхронизации (status, records_count, trigger) |
+| `tg_support_sessions` | Сессии AI-поддержки Telegram (lifecycle, summary, CSAT) |
+| `tg_support_messages` | Сообщения поддержки (user/bot/operator, confidence) |
+| `tg_support_csat` | Оценки CSAT после закрытия сессий |
 
 ---
 
-> Документация сгенерирована 18.02.2026. Актуальная OpenAPI-спецификация доступна по адресу `/docs` (Swagger UI) и `/redoc` (ReDoc).
+> Документация сгенерирована 18.02.2026. Обновлена 25.02.2026 (Telegram endpoints). Актуальная OpenAPI-спецификация доступна по адресу `/docs` (Swagger UI) и `/redoc` (ReDoc).

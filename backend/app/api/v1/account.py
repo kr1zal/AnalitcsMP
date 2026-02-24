@@ -16,6 +16,8 @@ router = APIRouter()
 
 # Порядок удаления (foreign key constraints)
 _TABLES_DELETE_ORDER = [
+    "mp_telegram_link_tokens",
+    "mp_telegram_links",
     "mp_payments",
     "mp_sync_queue",
     "mp_sync_log",

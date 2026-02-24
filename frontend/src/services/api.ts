@@ -36,6 +36,9 @@ import type {
   PreviousPlanResponse,
   DashboardConfigResponse,
   DashboardConfigPayload,
+  TelegramLinkStatus,
+  TelegramGenerateTokenResponse,
+  TelegramSettings,
 } from '../types';
 
 // Создаём axios instance с базовыми настройками
@@ -596,6 +599,34 @@ export const dashboardConfigApi = {
    */
   saveConfig: async (payload: DashboardConfigPayload): Promise<{ status: string }> => {
     const { data } = await api.put<{ status: string }>('/dashboard/config', payload);
+    return data;
+  },
+};
+
+// ==================== TELEGRAM ====================
+
+export const telegramApi = {
+  /** Check if user has linked Telegram account */
+  getLinkStatus: async (): Promise<TelegramLinkStatus> => {
+    const { data } = await api.get<TelegramLinkStatus>('../telegram/link-status');
+    return data;
+  },
+
+  /** Generate one-time deep link token for binding */
+  generateToken: async (): Promise<TelegramGenerateTokenResponse> => {
+    const { data } = await api.post<TelegramGenerateTokenResponse>('../telegram/generate-token');
+    return data;
+  },
+
+  /** Unlink Telegram account */
+  unlink: async (): Promise<{ status: string }> => {
+    const { data } = await api.delete<{ status: string }>('../telegram/unlink');
+    return data;
+  },
+
+  /** Update notification settings */
+  updateSettings: async (settings: TelegramSettings): Promise<{ status: string; settings: TelegramSettings }> => {
+    const { data } = await api.put<{ status: string; settings: TelegramSettings }>('../telegram/settings', settings);
     return data;
   },
 };

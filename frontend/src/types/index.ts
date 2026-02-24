@@ -803,3 +803,26 @@ export interface DashboardConfigResponse {
   status: 'success';
   config: DashboardConfigPayload;
 }
+
+// ==================== TELEGRAM ====================
+
+export interface TelegramSettings {
+  daily_summary: boolean;
+  morning_time: string;
+  evening_enabled: boolean;
+  evening_time: string;
+  stock_alerts: boolean;
+}
+
+export interface TelegramLinkStatus {
+  linked: boolean;
+  telegram_username: string | null;
+  settings: TelegramSettings;
+  linked_at: string | null;
+}
+
+export interface TelegramGenerateTokenResponse {
+  token: string;
+  link: string;
+  expires_in: number;
+}
