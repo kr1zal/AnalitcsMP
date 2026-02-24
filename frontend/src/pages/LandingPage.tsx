@@ -44,7 +44,7 @@ function useRevealOnScroll(threshold = 0.15) {
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
-    // Elements already in viewport on load — reveal immediately, no animation
+    // Elements already in viewport on load - reveal immediately, no animation
     const rect = el.getBoundingClientRect();
     if (rect.top < window.innerHeight && rect.bottom > 0) {
       el.classList.add('revealed', 'no-transition');
@@ -136,7 +136,7 @@ function SectionDivider() {
   );
 }
 
-/* MatrixRain removed (24.02.2026) — irrelevant 2000s decoration, no enterprise sites use it */
+/* MatrixRain removed (24.02.2026) - irrelevant 2000s decoration, no enterprise sites use it */
 
 /** Hook for spotlight card mouse tracking */
 function useSpotlight() {
@@ -198,7 +198,7 @@ function NavBar() {
     <header ref={headerRef} className="bg-white sticky top-0 z-50 transition-[background-color,backdrop-filter] duration-200">
       <div className="max-w-6xl mx-auto px-4 sm:px-6">
         <div className="flex items-center justify-between h-16">
-          {/* Logo — clickable, scrolls to top */}
+          {/* Logo - clickable, scrolls to top */}
           <button onClick={scrollToTop} className="flex items-center gap-2.5 hover:opacity-80 transition-opacity">
             <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-indigo-600 to-violet-600 flex items-center justify-center">
               <BarChart3 className="w-[18px] h-[18px] text-white" />
@@ -208,7 +208,7 @@ function NavBar() {
             </span>
           </button>
 
-          {/* Desktop nav — clean gaps, no cell borders */}
+          {/* Desktop nav - clean gaps, no cell borders */}
           <nav className="hidden md:flex items-center gap-1">
             {NAV_ITEMS.map((item) => (
               <button
@@ -287,7 +287,7 @@ function HeroSection() {
       {/* Background gradient */}
       <div className="absolute inset-0 bg-gradient-to-b from-indigo-50/60 via-white to-white" />
 
-      {/* MatrixRain removed (24.02.2026) — irrelevant decoration, 2000s aesthetic */}
+      {/* MatrixRain removed (24.02.2026) - irrelevant decoration, 2000s aesthetic */}
 
       <div className="relative max-w-5xl mx-auto px-4 sm:px-6 text-center">
         {/* Badge */}
@@ -307,9 +307,9 @@ function HeroSection() {
           </span>
         </h1>
 
-        {/* Subheadline — 2 lines max on desktop */}
+        {/* Subheadline - 2 lines max on desktop */}
         <p className="animate-fade-up delay-200 mt-5 text-lg sm:text-xl text-gray-500 max-w-2xl mx-auto leading-relaxed">
-          Выручка, прибыль, удержания, реклама и&nbsp;остатки — в&nbsp;реальном времени.
+          Выручка, прибыль, удержания, реклама и&nbsp;остатки - в&nbsp;реальном времени.
           Собери свой дашборд из&nbsp;виджетов за&nbsp;5 минут.
         </p>
 
@@ -378,7 +378,7 @@ function TrustBar() {
 }
 
 /* ──────────────────────────────────────────────
-   PRODUCT SHOWCASE — Enterprise Tab Slider
+   PRODUCT SHOWCASE - Enterprise Tab Slider
    ────────────────────────────────────────────── */
 
 interface ShowcaseSlideData {
@@ -398,7 +398,7 @@ const SHOWCASE_SLIDES: ShowcaseSlideData[] = [
     tab: 'Виджеты',
     icon: BarChart3,
     title: 'Дашборд, который подстраивается под вас',
-    description: 'Drag\u00A0&\u00A0drop виджеты — выберите нужные метрики и\u00A0расставьте как удобно',
+    description: 'Drag\u00A0&\u00A0drop виджеты - выберите нужные метрики и\u00A0расставьте как удобно',
     highlights: ['16+ виджетов', 'WB + Ozon в\u00A0одном окне', 'Обновление каждые 30\u00A0мин'],
     desktop: '/screenshots/desktop-1.png',
     mobile: '/screenshots/mobile-3.png',
@@ -407,8 +407,8 @@ const SHOWCASE_SLIDES: ShowcaseSlideData[] = [
     id: 'unit-economics',
     tab: 'Юнит-экономика',
     icon: TrendingUp,
-    title: 'Прибыль по каждому товару — до копейки',
-    description: 'Себестоимость, маржа и\u00A0ДРР\u00A0— точная картина по\u00A0каждому SKU',
+    title: 'Прибыль по каждому товару - до копейки',
+    description: 'Себестоимость, маржа и\u00A0ДРР\u00A0- точная картина по\u00A0каждому SKU',
     highlights: ['Разбивка FBO\u00A0/\u00A0FBS', 'Водопад затрат', 'Отдельно по\u00A0маркетплейсам'],
     desktop: '/screenshots/desktop-2.png',
     mobile: '/screenshots/mobile-1.png',
@@ -417,7 +417,7 @@ const SHOWCASE_SLIDES: ShowcaseSlideData[] = [
     id: 'stocks',
     tab: 'Остатки',
     icon: ClipboardList,
-    title: 'Запасы под контролем — без\u00A0OOS',
+    title: 'Запасы под контролем - без\u00A0OOS',
     description: 'Прогноз остатков, алерты при\u00A0нуле, все склады WB и\u00A0Ozon в\u00A0одной таблице',
     highlights: ['Прогноз на 30\u00A0дней', 'Алерты при\u00A00\u00A0остатков', 'Все склады WB\u00A0+\u00A0Ozon'],
     desktop: '/screenshots/desktop-3.png',
@@ -510,23 +510,23 @@ function ProductShowcase() {
   return (
     <RevealSection className="py-20 sm:py-28">
       <div className="max-w-6xl mx-auto px-4 sm:px-6">
-        {/* Section header — enterprise */}
+        {/* Section header - enterprise */}
         <div className="text-center mb-12 sm:mb-16">
           <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-indigo-600 uppercase tracking-[0.12em] bg-indigo-50 px-3.5 py-1.5 rounded-full mb-5" aria-hidden="true">
             Ключевые экраны
           </span>
           <h2 className="text-[28px] sm:text-4xl lg:text-[46px] font-extrabold text-gray-900 leading-[1.15] tracking-tight">
-            Вся аналитика —{' '}
+            Вся аналитика -{' '}
             <span className="bg-gradient-to-r from-indigo-600 to-violet-600 bg-clip-text text-transparent">
               в&nbsp;трёх экранах
             </span>
           </h2>
           <p className="mt-5 text-base sm:text-lg text-gray-500 max-w-xl mx-auto leading-relaxed">
-            Дашборд, юнит-экономика и&nbsp;остатки — всё для&nbsp;принятия решений
+            Дашборд, юнит-экономика и&nbsp;остатки - всё для&nbsp;принятия решений
           </p>
         </div>
 
-        {/* Tab navigation — enhanced active state + progress + full ARIA */}
+        {/* Tab navigation - enhanced active state + progress + full ARIA */}
         <div
           className="flex justify-center gap-1.5 sm:gap-2 mb-10 sm:mb-12"
           role="tablist"
@@ -569,7 +569,7 @@ function ProductShowcase() {
           })}
         </div>
 
-        {/* Screenshot showcase — tabpanel */}
+        {/* Screenshot showcase - tabpanel */}
         <div
           id={`showcase-panel-${slide.id}`}
           role="tabpanel"
@@ -578,7 +578,7 @@ function ProductShowcase() {
           onMouseEnter={() => setPaused(true)}
           onMouseLeave={() => setPaused(false)}
         >
-          {/* Background glow — decorative */}
+          {/* Background glow - decorative */}
           <div className="absolute -inset-4 sm:-inset-12 bg-gradient-to-b from-indigo-50/50 via-violet-50/20 to-transparent rounded-[2rem] pointer-events-none" aria-hidden="true" />
           <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-[600px] h-[400px] rounded-full bg-indigo-100/30 blur-[80px] pointer-events-none" aria-hidden="true" />
 
@@ -693,7 +693,7 @@ function ProductShowcase() {
 }
 
 /* ──────────────────────────────────────────────
-   SOCIAL PROOF — Enterprise Testimonials Marquee
+   SOCIAL PROOF - Enterprise Testimonials Marquee
    ────────────────────────────────────────────── */
 
 interface Testimonial {
@@ -710,7 +710,7 @@ interface Testimonial {
 
 const TESTIMONIALS_ROW_1: Testimonial[] = [
   {
-    quote: 'Раньше каждый понедельник убивал полдня на Excel — сводил выручку, вычитал комиссии, пытался понять прибыль. Подключил сервис — и через 10 минут увидел цифру, которая совпала с моим расчётом. Только без четырёх часов работы.',
+    quote: 'Раньше каждый понедельник убивал полдня на Excel - сводил выручку, вычитал комиссии, пытался понять прибыль. Подключил сервис - и через 10 минут увидел цифру, которая совпала с моим расчётом. Только без четырёх часов работы.',
     author: 'Алексей М.',
     role: 'Продавец витаминов',
     niche: 'Витамины и БАДы',
@@ -721,7 +721,7 @@ const TESTIMONIALS_ROW_1: Testimonial[] = [
     avatarColor: 'bg-indigo-500',
   },
   {
-    quote: 'У меня 12 SKU на Ozon, и я искренне не понимала, почему при хорошей выручке на счёт приходит копейки. Дерево удержаний показало: 23% уходило на логистику FBO. Перенесла часть на FBS — маржа выросла на 8 процентных пунктов.',
+    quote: 'У меня 12 SKU на Ozon, и я искренне не понимала, почему при хорошей выручке на счёт приходит копейки. Дерево удержаний показало: 23% уходило на логистику FBO. Перенесла часть на FBS - маржа выросла на 8 процентных пунктов.',
     author: 'Екатерина С.',
     role: 'Селлер БАДов',
     niche: 'БАДы',
@@ -732,7 +732,7 @@ const TESTIMONIALS_ROW_1: Testimonial[] = [
     avatarColor: 'bg-blue-500',
   },
   {
-    quote: 'Торгую одновременно на WB и Ozon. Открывать два личных кабинета, выгружать отчёты, сводить в таблице — это был ад. Здесь оба маркетплейса в одном экране, и я вижу, где какой товар приносит больше. Решения принимаю за минуты.',
+    quote: 'Торгую одновременно на WB и Ozon. Открывать два личных кабинета, выгружать отчёты, сводить в таблице - это был ад. Здесь оба маркетплейса в одном экране, и я вижу, где какой товар приносит больше. Решения принимаю за минуты.',
     author: 'Дмитрий К.',
     role: 'Селлер спортпита',
     niche: 'Спортивное питание',
@@ -743,7 +743,7 @@ const TESTIMONIALS_ROW_1: Testimonial[] = [
     avatarColor: 'bg-emerald-500',
   },
   {
-    quote: 'Юнит-экономика спасла мой бизнес. Я думала, что все 8 позиций прибыльные. Оказалось, два SKU работали в минус из-за высокой комиссии и возвратов. Убрала их — общая прибыль выросла, хотя выручка снизилась.',
+    quote: 'Юнит-экономика спасла мой бизнес. Я думала, что все 8 позиций прибыльные. Оказалось, два SKU работали в минус из-за высокой комиссии и возвратов. Убрала их - общая прибыль выросла, хотя выручка снизилась.',
     author: 'Марина Л.',
     role: 'Продавец косметики',
     niche: 'Косметика',
@@ -757,7 +757,7 @@ const TESTIMONIALS_ROW_1: Testimonial[] = [
 
 const TESTIMONIALS_ROW_2: Testimonial[] = [
   {
-    quote: 'Дважды попадал на OOS — товар кончился, карточка улетела вниз, потом две недели восстанавливал позиции. С прогнозом остатков вижу, когда нужно заказывать поставку. Уже два месяца без единого out-of-stock.',
+    quote: 'Дважды попадал на OOS - товар кончился, карточка улетела вниз, потом две недели восстанавливал позиции. С прогнозом остатков вижу, когда нужно заказывать поставку. Уже два месяца без единого out-of-stock.',
     author: 'Сергей В.',
     role: 'Продавец БАДов',
     niche: 'БАДы',
@@ -768,7 +768,7 @@ const TESTIMONIALS_ROW_2: Testimonial[] = [
     avatarColor: 'bg-amber-500',
   },
   {
-    quote: 'Лила деньги в рекламу на WB и не понимала, окупается она или нет. В аналитике увидела ДРР 18% — при марже 22% это почти ноль прибыли. Перераспределила бюджет на топовые карточки, ДРР упал до 9%.',
+    quote: 'Лила деньги в рекламу на WB и не понимала, окупается она или нет. В аналитике увидела ДРР 18% - при марже 22% это почти ноль прибыли. Перераспределила бюджет на топовые карточки, ДРР упал до 9%.',
     author: 'Анна Т.',
     role: 'Категорийный менеджер',
     niche: 'Витамины',
@@ -779,7 +779,7 @@ const TESTIMONIALS_ROW_2: Testimonial[] = [
     avatarColor: 'bg-violet-500',
   },
   {
-    quote: 'Ставил план продаж наобум — просто \"хочу миллион\". Теперь вижу реальный темп: сколько продаю в день, укладываюсь или нет, прогноз на конец месяца. В январе впервые выполнил план на 94%. Просто потому что видел, где отстаю.',
+    quote: 'Ставил план продаж наобум - просто \"хочу миллион\". Теперь вижу реальный темп: сколько продаю в день, укладываюсь или нет, прогноз на конец месяца. В январе впервые выполнил план на 94%. Просто потому что видел, где отстаю.',
     author: 'Игорь Н.',
     role: 'Предприниматель',
     niche: 'БАДы и витамины',
@@ -790,7 +790,7 @@ const TESTIMONIALS_ROW_2: Testimonial[] = [
     avatarColor: 'bg-cyan-500',
   },
   {
-    quote: 'Каждое утро данные уже обновлены. Не нужно ничего выгружать, импортировать, ждать. Открываю дашборд — и сразу вижу вчерашнюю прибыль, остатки, рекламу. Для меня это как иметь финдиректора, который работает 24/7.',
+    quote: 'Каждое утро данные уже обновлены. Не нужно ничего выгружать, импортировать, ждать. Открываю дашборд - и сразу вижу вчерашнюю прибыль, остатки, рекламу. Для меня это как иметь финдиректора, который работает 24/7.',
     author: 'Ольга П.',
     role: 'Владелец магазина',
     niche: 'Здоровое питание',
@@ -908,7 +908,7 @@ function MarqueeRow({ testimonials, direction }: { testimonials: Testimonial[]; 
   }, [direction, ANIMATION_DURATION]);
 
   const handlePointerDown = useCallback((e: React.PointerEvent) => {
-    // Only handle touch (not mouse on desktop — desktop uses hover pause)
+    // Only handle touch (not mouse on desktop - desktop uses hover pause)
     if (e.pointerType === 'mouse') return;
     dragging.current = true;
     startX.current = e.clientX;
@@ -1038,14 +1038,14 @@ function ProblemSection() {
     {
       icon: Eye,
       title: 'Скрытые удержания МП',
-      description: 'Логистика, хранение, штрафы — разбросаны по десяткам отчётов. Реальную прибыль посчитать невозможно.',
+      description: 'Логистика, хранение, штрафы - разбросаны по десяткам отчётов. Реальную прибыль посчитать невозможно.',
       gradient: 'from-amber-500 to-orange-600',
       bg: 'bg-amber-50',
     },
     {
       icon: RefreshCw,
       title: 'Потеря времени',
-      description: 'Вместо развития бизнеса — бесконечная сверка цифр между маркетплейсами.',
+      description: 'Вместо развития бизнеса - бесконечная сверка цифр между маркетплейсами.',
       gradient: 'from-orange-500 to-red-600',
       bg: 'bg-orange-50',
     },
@@ -1105,7 +1105,7 @@ function FeaturesSection() {
     {
       icon: PieChart,
       title: 'Дерево удержаний',
-      description: 'Детализация расходов: комиссии, логистика, хранение, штрафы — как в ЛК, но нагляднее.',
+      description: 'Детализация расходов: комиссии, логистика, хранение, штрафы - как в ЛК, но нагляднее.',
       gradient: 'from-violet-500 to-violet-600',
     },
     {
@@ -1123,7 +1123,7 @@ function FeaturesSection() {
     {
       icon: Megaphone,
       title: 'Рекламная аналитика',
-      description: 'Расходы на рекламу, ДРР по дням, ROI кампаний — WB и Ozon в одном месте.',
+      description: 'Расходы на рекламу, ДРР по дням, ROI кампаний - WB и Ozon в одном месте.',
       gradient: 'from-amber-500 to-amber-600',
     },
   ];
@@ -1168,7 +1168,7 @@ function FeaturesSection() {
 
 
 /* ──────────────────────────────────────────────
-   DATAFLOW V4 — ENTERPRISE DATA PIPELINE
+   DATAFLOW V4 - ENTERPRISE DATA PIPELINE
    5 sources, 6 data types, central hub,
    5 outputs, grouped integrations + exports.
    Static pills, smooth bezier curves, dot grid.
@@ -1204,7 +1204,7 @@ function DataFlowSectionV4() {
   const sppDotRefM  = useRef<SVGCircleElement>(null);
   const sppClipRectD = useRef<SVGRectElement>(null);
   const sppClipRectM = useRef<SVGRectElement>(null);
-  /* label index per pill: 0=labelA, 1=labelB — mutated by RAF, read by render */
+  /* label index per pill: 0=labelA, 1=labelB - mutated by RAF, read by render */
   const pillLabelIdxRef = useRef([0, 0, 0]);
   /* incremented to trigger React re-render exactly when text changes */
   const [_pillFlipTick, setPillFlipTick] = useState(0);
@@ -1249,7 +1249,7 @@ function DataFlowSectionV4() {
 
   /* ── RAF pill flip: single source of truth for both scaleX and text change.
      Each pill has a staggered start delay (0 / 1.7s / 3.4s) so flips never overlap.
-     scaleX is mutated directly on the DOM — zero React re-renders per frame.
+     scaleX is mutated directly on the DOM - zero React re-renders per frame.
      Text changes ONLY at the instant scaleX≈0 (phase 0.34–0.38), then React re-renders once. ── */
   useEffect(() => {
     if (!alive || prefersReducedMotion.current) return;
@@ -1289,7 +1289,7 @@ function DataFlowSectionV4() {
         const scaleX = getScale(phase);
         const tf     = `scaleX(${scaleX.toFixed(4)})`;
 
-        /* direct DOM mutation — bypasses React reconciler for smooth 60fps */
+        /* direct DOM mutation - bypasses React reconciler for smooth 60fps */
         if (pillRefsDesktop[i].current) pillRefsDesktop[i].current!.style.transform = tf;
         if (pillRefsMobile[i].current)  pillRefsMobile[i].current!.style.transform  = tf;
 
@@ -1308,12 +1308,12 @@ function DataFlowSectionV4() {
 
       // ── SPP cycle: pill in → line grows (pill→hub) → dot travels → line erases (hub→pill) → pill out → pause ──
       // CYCLE 7000ms:
-      //   [0-600]     PILL fades in — no line yet
+      //   [0-600]     PILL fades in - no line yet
       //   [600-1800]  LINE extends A→B (pill→hub): dashed, directional clip reveal
       //   [1800-3200] STABLE: dot travels on full dashed line, pill visible
       //   [3200-4400] LINE erases B→A (hub→pill): dashed, directional clip erase
       //   [4400-5000] PILL fades out (line already gone)
-      //   [5000-7000] 2s PAUSE — all invisible
+      //   [5000-7000] 2s PAUSE - all invisible
       const SPP_CYCLE = 7000;
       const sppS = [0, 600, 1800, 3200, 4400, 5000, 7000] as const;
       const sppSs = (t: number) => t * t * (3 - 2 * t); // smoothstep
@@ -1337,7 +1337,7 @@ function DataFlowSectionV4() {
         sppClipMode = 'extend';
         sppClipP = sppSs((sppT - sppS[1]) / (sppS[2] - sppS[1]));
       } else if (sppT < sppS[3]) {
-        // 1800-3200ms: stable — dot travels
+        // 1800-3200ms: stable - dot travels
         sppPillOp = 1;
         sppClipMode = 'full';
         sppDotOp = 1;
@@ -1361,8 +1361,8 @@ function DataFlowSectionV4() {
       }
 
       // Helper: apply SPP state via clipRect + line opacity + dot position + pill opacity
-      // pillAtLeft=true: pill is at LEFT side (desktop — pill x≈340, hub x≈440, grows left→right)
-      // pillAtLeft=false: pill is at RIGHT side (mobile — pill x≈209, hub x≈160, grows right→left)
+      // pillAtLeft=true: pill is at LEFT side (desktop - pill x≈340, hub x≈440, grows left→right)
+      // pillAtLeft=false: pill is at RIGHT side (mobile - pill x≈209, hub x≈160, grows right→left)
       const applySpp = (
         lineEl:     SVGPathElement | null,
         dotEl:      SVGCircleElement | null,
@@ -1445,7 +1445,7 @@ function DataFlowSectionV4() {
     return () => cancelAnimationFrame(raf);
   }, [alive]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  /* current label per pill — re-read from ref on each render (cheap) */
+  /* current label per pill - re-read from ref on each render (cheap) */
   const pillFlipCurrent = pillFlipLabels.map(([a, b], i) =>
     pillLabelIdxRef.current[i] % 2 === 0 ? a : b
   );
@@ -1637,7 +1637,7 @@ function DataFlowSectionV4() {
                 <stop offset="50%" stopColor="#a855f7" />
                 <stop offset="100%" stopColor="#6366f1" />
               </linearGradient>
-              {/* SPP directional clip — RAF controls rect x/width via sppClipRectD ref */}
+              {/* SPP directional clip - RAF controls rect x/width via sppClipRectD ref */}
               <clipPath id="spp-clip-D">
                 <rect ref={sppClipRectD} x={338} y={236} width={0} height={104} />
               </clipPath>
@@ -1669,7 +1669,7 @@ function DataFlowSectionV4() {
               style={{ filter: 'drop-shadow(0 0 4px rgba(244,63,94,0.8))' }}
             />
 
-            {/* Coming soon sources have no lines — they are just static cards */}
+            {/* Coming soon sources have no lines - they are just static cards */}
 
             {/* ─── LINES: Hub -> Outputs ─── */}
             <path d={P.hubToDash} stroke="rgba(99,102,241,0.40)" strokeWidth={1.2} vectorEffect="non-scaling-stroke" fill="none" className={alive ? 'v4-flow-c' : ''} {...draw(1.0, 200)} />
@@ -1773,9 +1773,9 @@ function DataFlowSectionV4() {
                 <g key={`pill-${i}`}
                   ref={isSppPill ? sppPillRefD : undefined}
                   style={isSppPill ? { opacity: 0 } : show(0.30 + i * 0.06)}>
-                  {/* glow wrapper — separate from flip group */}
+                  {/* glow wrapper - separate from flip group */}
                   <g className={alive ? 'v4-pill-glow' : ''} style={alive ? { animationDelay: `${i * 0.5}s` } : undefined}>
-                    {/* flip wrapper — RAF drives scaleX directly; v3-pill-flip-base sets transform geometry only */}
+                    {/* flip wrapper - RAF drives scaleX directly; v3-pill-flip-base sets transform geometry only */}
                     <g ref={pill.flip ? pillRefsDesktop[i] : undefined}
                        className={pill.flip ? 'v3-pill-flip-base' : ''}>
                       <rect x={230} y={pillYs[i]} width={110} height={36} rx={18} fill={pill.fill} stroke={pill.stroke} strokeWidth="0.8" />
@@ -1891,7 +1891,7 @@ function DataFlowSectionV4() {
               <filter id="v4-hub-shadow-m" x="-10%" y="-10%" width="120%" height="130%">
                 <feDropShadow dx="0" dy="4" stdDeviation="8" floodColor="rgba(99,102,241,0.2)" />
               </filter>
-              {/* SPP directional clip — RAF controls rect x/width via sppClipRectM ref */}
+              {/* SPP directional clip - RAF controls rect x/width via sppClipRectM ref */}
               <clipPath id="spp-clip-M">
                 <rect ref={sppClipRectM} x={158} y={140} width={0} height={32} />
               </clipPath>
@@ -1981,7 +1981,7 @@ function DataFlowSectionV4() {
                 <g key={`m-pill-${i}`}
                   ref={isMSppPill ? sppPillRefM : undefined}
                   style={isMSppPill ? { opacity: 0 } : show(0.25 + i * 0.04)}>
-                  {/* flip wrapper — RAF drives scaleX; v3-pill-flip-base sets geometry only */}
+                  {/* flip wrapper - RAF drives scaleX; v3-pill-flip-base sets geometry only */}
                   <g ref={isFlip ? pillRefsMobile[mp.flipIdx] : undefined}
                      className={isFlip ? 'v3-pill-flip-base' : ''}>
                     <rect x={mp.x} y={mp.y} width={88} height={28} rx={14} fill={mp.fill} stroke={mp.stroke} strokeWidth="0.8" />
@@ -2225,7 +2225,7 @@ function PricingSection() {
               Простые и понятные тарифы
             </h2>
             <p className="mt-3 text-gray-500">
-              Начните бесплатно — обновитесь, когда будете готовы.
+              Начните бесплатно - обновитесь, когда будете готовы.
             </p>
           </div>
         </RevealSection>
@@ -2338,84 +2338,135 @@ function PricingSection() {
    FAQ
    ────────────────────────────────────────────── */
 
-function FAQItem({ question, answer, id }: { question: string; answer: string; id: string }) {
-  const [open, setOpen] = useState(false);
-  const panelId = `faq-panel-${id}`;
+function FAQAccordionItem({
+  question,
+  answer,
+  index,
+  isOpen,
+  onToggle,
+}: {
+  question: string;
+  answer: string;
+  index: number;
+  isOpen: boolean;
+  onToggle: () => void;
+}) {
+  const questionId = `faq-q-${index}`;
+  const answerId = `faq-a-${index}`;
 
   return (
     <div className="border-b border-gray-200">
       <button
         type="button"
-        className="flex items-center justify-between w-full py-4 text-left group"
-        onClick={() => setOpen(!open)}
-        aria-expanded={open}
-        aria-controls={panelId}
+        id={questionId}
+        className="flex items-center justify-between w-full py-5 text-left group focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 rounded-lg"
+        onClick={onToggle}
+        aria-expanded={isOpen}
+        aria-controls={answerId}
       >
-        <span className="text-sm font-semibold text-gray-900 pr-4 group-hover:text-indigo-600 transition-colors">
+        <span className="text-base font-medium text-gray-900 pr-8 group-hover:text-indigo-600 transition-colors sm:text-lg">
           {question}
         </span>
         <ChevronDown
-          className={`w-5 h-5 text-gray-400 shrink-0 transition-transform duration-300 ${open ? 'rotate-180' : ''}`}
+          className={`w-5 h-5 text-gray-400 shrink-0 transition-transform duration-300 ${isOpen ? 'rotate-180' : ''}`}
         />
       </button>
       <div
-        id={panelId}
+        id={answerId}
         role="region"
-        className={`overflow-hidden transition-all duration-300 ${open ? 'max-h-96 pb-4' : 'max-h-0'}`}
+        aria-labelledby={questionId}
+        className={`overflow-hidden transition-[max-height,opacity] duration-300 ease-in-out ${isOpen ? 'max-h-96 opacity-100 pb-5' : 'max-h-0 opacity-0'}`}
       >
-        <div className="text-sm text-gray-600 leading-relaxed">{answer}</div>
+        <p className="text-sm text-gray-600 leading-relaxed pr-12 sm:text-base">{answer}</p>
       </div>
     </div>
   );
 }
 
+const FAQ_ITEMS = [
+  {
+    question: 'Какие маркетплейсы поддерживаются?',
+    answer:
+      'Wildberries и Ozon. Данные загружаются через официальные API маркетплейсов и отображаются в едином дашборде. Вы видите продажи, прибыль, удержания и остатки по обоим площадкам одновременно.',
+  },
+  {
+    question: 'Безопасно ли подключать API-токены?',
+    answer:
+      'Да. Токены шифруются алгоритмом Fernet и хранятся только в зашифрованном виде. Мы запрашиваем доступ исключительно на чтение - сервис не может менять цены, карточки или делать поставки. Ваши магазины в полной безопасности.',
+  },
+  {
+    question: 'Как считается прибыль?',
+    answer:
+      'Чистая прибыль = сумма перечислений от маркетплейса минус закупочная цена минус расходы на рекламу. Все удержания (комиссия, логистика, хранение, штрафы, эквайринг) уже учтены в перечислениях. Расчёт верифицирован по финансовым отчётам WB и Ozon с точностью до копейки.',
+  },
+  {
+    question: 'Что входит в бесплатный тариф?',
+    answer:
+      'Free-тариф работает без ограничений по времени. Он включает основной дашборд с ключевыми метриками, подключение 1 маркетплейса и аналитику до 3 товаров. Этого достаточно, чтобы оценить сервис на реальных данных.',
+  },
+  {
+    question: 'Чем Pro отличается от бесплатного?',
+    answer:
+      'Pro снимает все лимиты: оба маркетплейса, неограниченное число товаров, аналитика FBO и FBS, план продаж с прогнозом, экспорт в Excel и PDF, до 3 синхронизаций в день. Все функции, которые видите на скриншотах выше - доступны в Pro.',
+  },
+  {
+    question: 'Как часто обновляются данные?',
+    answer:
+      'Данные синхронизируются автоматически. На Free-тарифе - 2 раза в день, на Pro - до 3 раз, на Business - до 4 раз. Также можно запустить обновление вручную из настроек. Утром вы уже видите вчерашние цифры.',
+  },
+  {
+    question: 'Могу ли я настроить дашборд под себя?',
+    answer:
+      'Да. Дашборд состоит из виджетов, которые можно перетаскивать, добавлять и убирать. Выберите метрики, которые важны именно вам, и расставьте их в удобном порядке. Конфигурация сохраняется автоматически.',
+  },
+  {
+    question: 'Как отменить подписку?',
+    answer:
+      'В разделе Настройки, вкладка Тариф. Отмена в один клик, без звонков и писем в поддержку. Доступ к платным функциям сохраняется до конца оплаченного периода.',
+  },
+] as const;
+
 function FAQSection() {
-  const faqs = [
-    {
-      question: 'Как подключить маркетплейс?',
-      answer:
-        'После регистрации перейдите в Настройки и добавьте API-токены из личных кабинетов Wildberries и/или Ozon. Подробная инструкция будет на странице настроек.',
-    },
-    {
-      question: 'Безопасно ли давать API-токены?',
-      answer:
-        'Да. Токены шифруются алгоритмом Fernet и хранятся в зашифрованном виде. Мы используем только чтение данных — никаких изменений в ваших магазинах не происходит.',
-    },
-    {
-      question: 'Какие данные вы собираете?',
-      answer:
-        'Продажи, заказы, остатки на складах, удержания маркетплейсов (комиссии, логистика, хранение, штрафы) и рекламные расходы. Все данные привязаны к вашему аккаунту и доступны только вам.',
-    },
-    {
-      question: 'Могу ли я использовать Free-тариф постоянно?',
-      answer:
-        'Да! Free-тариф без ограничений по времени. Он включает базовый дашборд, 1 маркетплейс (WB) и до 3 товаров.',
-    },
-    {
-      question: 'Как отменить подписку Pro?',
-      answer:
-        'Подписку можно отменить в любой момент в разделе Настройки. Доступ к Pro-функциям сохранится до конца оплаченного периода.',
-    },
-    {
-      question: 'Почему прибыль отличается от того, что в ЛК маркетплейса?',
-      answer:
-        'Мы рассчитываем реальную чистую прибыль с учётом ВСЕХ удержаний: комиссии, логистика, хранение, штрафы, реклама и закупочная цена. В ЛК маркетплейса показывается только часть этих данных.',
-    },
-  ];
+  const [openIndex, setOpenIndex] = useState<number | null>(null);
 
   return (
-    <section id="faq" className="py-16 sm:py-20 bg-white">
-      <div className="max-w-2xl mx-auto px-4 sm:px-6">
+    <section id="faq" className="py-20 sm:py-28 bg-white">
+      <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
         <RevealSection>
-          <h2 className="text-2xl sm:text-3xl font-bold text-gray-900 text-center">
-            Частые вопросы
-          </h2>
+          <div className="text-center mb-12 sm:mb-16">
+            <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-indigo-600 uppercase tracking-[0.12em] bg-indigo-50 px-3.5 py-1.5 rounded-full mb-5">
+              FAQ
+            </span>
+            <h2 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-gray-900">
+              Частые вопросы
+            </h2>
+          </div>
         </RevealSection>
-        <RevealSection className="mt-10">
-          <div>
-            {faqs.map((faq, i) => (
-              <FAQItem key={faq.question} {...faq} id={String(i)} />
+        <RevealSection>
+          <div className="divide-y divide-gray-200 border-t border-gray-200">
+            {FAQ_ITEMS.map((faq, i) => (
+              <FAQAccordionItem
+                key={faq.question}
+                question={faq.question}
+                answer={faq.answer}
+                index={i}
+                isOpen={openIndex === i}
+                onToggle={() => setOpenIndex(openIndex === i ? null : i)}
+              />
             ))}
+          </div>
+        </RevealSection>
+        <RevealSection>
+          <div className="mt-12 text-center">
+            <p className="text-sm text-gray-500">
+              Не нашли ответ?{' '}
+              <a
+                href="mailto:support@reviomp.ru"
+                className="font-medium text-indigo-600 hover:text-indigo-500 transition-colors"
+              >
+                Напишите нам
+              </a>
+            </p>
           </div>
         </RevealSection>
       </div>
@@ -2458,7 +2509,7 @@ function FinalCTASection() {
 }
 
 /* ──────────────────────────────────────────────
-   FOOTER — Enterprise
+   FOOTER - Enterprise
    ────────────────────────────────────────────── */
 
 const FOOTER_NAV = [
@@ -2724,7 +2775,7 @@ export function LandingPage() {
       <ProblemSection />
       <SectionDivider />
       <FeaturesSection />
-      {/* DataFlow has dark bg — no divider needed */}
+      {/* DataFlow has dark bg - no divider needed */}
       <DataFlowSectionV4 />
       <HowItWorksSection />
       <SectionDivider />
@@ -2733,7 +2784,7 @@ export function LandingPage() {
       <PricingSection />
       <SectionDivider />
       <FAQSection />
-      {/* FinalCTA has gradient bg — no divider needed */}
+      {/* FinalCTA has gradient bg - no divider needed */}
       <FinalCTASection />
       <FooterSection />
     </div>
