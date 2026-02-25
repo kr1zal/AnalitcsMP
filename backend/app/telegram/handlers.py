@@ -4,7 +4,7 @@ Registered in Dispatcher via register_handlers().
 """
 import logging
 from html import escape as html_escape
-from typing import Optional
+from typing import Any, Optional
 
 from aiogram import Dispatcher, Router, F
 from aiogram.enums import ChatAction
@@ -75,7 +75,7 @@ def _adjust_time(current: str, direction: int) -> str:
     return f"{new_h:02d}:{m}"
 
 
-def _safe_user_display(user: object) -> tuple[str, str]:
+def _safe_user_display(user: Any) -> tuple[str, str]:
     """
     Extract and HTML-escape user display name and username.
     Prevents HTML injection via Telegram display names.
@@ -267,11 +267,11 @@ async def _handle_link(
             )
             return
 
-        token_row = result.data[0]
+        token_row: Any = result.data[0]
 
         # Check expiry
         from datetime import datetime, timezone
-        expires_at = token_row.get("expires_at", "")
+        expires_at = str(token_row.get("expires_at", ""))
         if expires_at:
             try:
                 exp_dt = datetime.fromisoformat(expires_at.replace("Z", "+00:00"))
@@ -883,16 +883,14 @@ async def _adjust_setting_time(callback: CallbackQuery, key: str, direction: int
 
 # ─── Catch-all: free text messages → AI support ───
 
-@router.message(F.text)
+@router.message(F.text, F.chat.type == "private")
 async def handle_free_text(message: Message, state: FSMContext) -> None:
     """
     Catch-all for text messages not matched by commands or FSM.
     Routes through AI support directly — no need to navigate menus.
     Uses persistent session for conversation continuity.
+    Filter: private chats only — group replies handled by support_group_router.
     """
-    # Ignore group messages
-    if message.chat.type != "private":
-        return
 
     question = message.text or ""
     if not question.strip():
