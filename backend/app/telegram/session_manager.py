@@ -348,6 +348,131 @@ async def summarize_conversation(
         return None
 
 
+async def build_escalation_transcript(session_id: str) -> str:
+    """
+    Build formatted transcript for escalation to support group (P3).
+    If transcript > 4000 chars — use summary + last 5 messages.
+    Returns formatted HTML string.
+    """
+    try:
+        messages = await get_session_messages(session_id, limit=50)
+        if not messages:
+            return ""
+
+        # Role labels
+        role_labels = {
+            "user": "Клиент",
+            "bot": "Бот",
+            "operator": "Оператор",
+        }
+
+        # Build full transcript
+        lines = ["<b>Транскрипт диалога:</b>"]
+        for msg in messages:
+            role = role_labels.get(msg.get("role", "user"), "Клиент")
+            content = msg.get("content", "").strip()
+            if content:
+                lines.append(f"<b>{role}:</b> {content}")
+
+        transcript = "\n".join(lines)
+
+        # Check size limit (Telegram message limit ~4096, leave room for header)
+        if len(transcript) > 4000:
+            # Use summary + last 5 messages
+            summary = await summarize_conversation(session_id, messages)
+            recent = messages[-5:]
+            lines = []
+            if summary:
+                lines.append(f"<b>Резюме:</b> {summary}")
+                lines.append("")
+            lines.append("<b>Последние сообщения:</b>")
+            for msg in recent:
+                role = role_labels.get(msg.get("role", "user"), "Клиент")
+                content = msg.get("content", "").strip()
+                if content:
+                    lines.append(f"<b>{role}:</b> {content}")
+            transcript = "\n".join(lines)
+
+        return transcript
+
+    except Exception as e:
+        logger.error(f"build_escalation_transcript error session={session_id}: {e}")
+        return ""
+
+
+async def mark_operator_joined(session_id: Optional[str]) -> None:
+    """
+    Mark that an operator has joined this session (P4).
+    Uses escalation_reason field to store the flag (no schema change needed).
+    Previous approach of prefixing conversation_summary was buggy —
+    it interfered with summary caching and was overwritten by summarize_conversation.
+    """
+    if not session_id:
+        return
+    try:
+        supabase = get_supabase_client()
+        result = (
+            supabase.table("tg_support_sessions")
+            .select("escalation_reason")
+            .eq("session_id", session_id)
+            .limit(1)
+            .execute()
+        )
+        current_reason = ""
+        if result.data:
+            current_reason = result.data[0].get("escalation_reason") or ""
+
+        # Append operator_joined flag to escalation_reason if not already present
+        if "operator_joined" not in current_reason:
+            new_reason = f"{current_reason}|operator_joined".strip("|") if current_reason else "operator_joined"
+            supabase.table("tg_support_sessions").update({
+                "escalation_reason": new_reason,
+            }).eq("session_id", session_id).execute()
+            logger.info(f"Operator joined session {session_id}")
+    except Exception as e:
+        logger.error(f"mark_operator_joined error: {e}")
+
+
+async def is_operator_joined(session_id: Optional[str]) -> bool:
+    """
+    Check if operator has already joined this session (P4).
+    Checks escalation_reason field for operator_joined flag.
+    Fallback: also checks if any operator messages exist in the session.
+    """
+    if not session_id:
+        return False
+    try:
+        supabase = get_supabase_client()
+
+        # Primary check: escalation_reason flag
+        result = (
+            supabase.table("tg_support_sessions")
+            .select("escalation_reason")
+            .eq("session_id", session_id)
+            .limit(1)
+            .execute()
+        )
+        if result.data:
+            reason = result.data[0].get("escalation_reason") or ""
+            if "operator_joined" in reason:
+                return True
+
+        # Fallback: check for operator messages in session
+        msg_result = (
+            supabase.table("tg_support_messages")
+            .select("id")
+            .eq("session_id", session_id)
+            .eq("role", "operator")
+            .limit(1)
+            .execute()
+        )
+        return bool(msg_result.data)
+
+    except Exception as e:
+        logger.error(f"is_operator_joined error: {e}")
+        return False
+
+
 async def resolve_session(session_id: Optional[str]) -> None:
     """Mark session as resolved. Set resolved_at timestamp."""
     if not session_id:

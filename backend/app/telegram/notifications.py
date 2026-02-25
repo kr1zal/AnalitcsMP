@@ -5,6 +5,7 @@ Reuses dashboard.py logic via Supabase RPC calls.
 import asyncio
 import logging
 from datetime import datetime, timedelta, timezone
+from html import escape as html_escape
 from typing import Optional
 
 from aiogram import Bot
@@ -139,6 +140,22 @@ async def build_summary_message(user_id: str, use_yesterday: bool = True) -> Opt
             f"Реклама: <b>{_format_currency(ad_cost)}</b> (ДРР {drr:.1f}%)",
         ]
 
+        # P6: Anomaly alerts — reuse already-loaded data (no extra RPC)
+        try:
+            anomalies = check_anomalies_from_data(
+                orders_today=orders,
+                orders_prev=prev_orders,
+                revenue_today=revenue,
+                profit_today=profit,
+                ad_cost_today=ad_cost,
+            )
+            if anomalies:
+                lines.append("")
+                for anomaly in anomalies:
+                    lines.append(f"⚠ {anomaly}")
+        except Exception as e:
+            logger.warning(f"Anomaly check failed, skipping: {e}")
+
         # Stock alerts
         stock_alerts = await _get_stock_alerts(user_id)
         if stock_alerts:
@@ -146,7 +163,7 @@ async def build_summary_message(user_id: str, use_yesterday: bool = True) -> Opt
             lines.append("<b>Остатки менее 7 дней:</b>")
             for alert in stock_alerts[:5]:
                 lines.append(
-                    f"  {alert['name']}: {alert['days']} дн. "
+                    f"  {html_escape(alert['name'])}: {alert['days']} дн. "
                     f"({alert['quantity']} шт.)"
                 )
             if len(stock_alerts) > 5:
@@ -190,6 +207,108 @@ async def build_summary_message(user_id: str, use_yesterday: bool = True) -> Opt
     except Exception as e:
         logger.error(f"Failed to build summary for user {user_id}: {e}")
         return None
+
+
+def check_anomalies_from_data(
+    orders_today: float,
+    orders_prev: float,
+    revenue_today: float,
+    profit_today: float,
+    ad_cost_today: float,
+) -> list[str]:
+    """
+    Check for metric anomalies using pre-loaded data (P6).
+    Pure function — no DB calls, no async. Used by build_summary_message.
+    Thresholds:
+    - Orders drop > 30%
+    - DRR > 20% (absolute)
+    - Margin below 10%
+    """
+    alerts: list[str] = []
+
+    # 1. Orders drop > 30%
+    if orders_prev > 0 and orders_today > 0:
+        drop_pct = ((orders_prev - orders_today) / orders_prev) * 100
+        if drop_pct > 30:
+            alerts.append(
+                f"Заказы упали на {drop_pct:.0f}% по сравнению со вчера. "
+                f"Рекомендуем проверить рекламные кампании."
+            )
+
+    # 2. DRR > 20%
+    if revenue_today > 0:
+        drr = (ad_cost_today / revenue_today) * 100
+        if drr > 20:
+            alerts.append(
+                f"ДРР составляет {drr:.1f}% — реклама забирает значительную часть выручки. "
+                f"Рекомендуем пересмотреть бюджеты кампаний."
+            )
+
+    # 3. Margin below 10%
+    if revenue_today > 0:
+        margin = (profit_today / revenue_today) * 100
+        if 0 < margin < 10:
+            alerts.append(
+                f"Маржинальность составляет {margin:.1f}% — ниже безопасного уровня 10%. "
+                f"Проверьте себестоимость и рекламные расходы."
+            )
+
+    return alerts
+
+
+async def check_anomalies(user_id: str) -> list[str]:
+    """
+    Check for metric anomalies comparing yesterday vs day-before (P6).
+    Standalone version for use outside build_summary_message (e.g. proactive alerts).
+    Returns list of alert strings. Empty list if no anomalies.
+    """
+    supabase = get_supabase_client()
+    now = _now_msk()
+    date_today = (now - timedelta(days=1)).strftime("%Y-%m-%d")
+    date_prev = (now - timedelta(days=2)).strftime("%Y-%m-%d")
+
+    try:
+        today_result = supabase.rpc(
+            "get_dashboard_summary",
+            {
+                "p_date_from": date_today,
+                "p_date_to": date_today,
+                "p_marketplace": None,
+                "p_user_id": user_id,
+                "p_fulfillment_type": None,
+            }
+        ).execute()
+
+        prev_result = supabase.rpc(
+            "get_dashboard_summary",
+            {
+                "p_date_from": date_prev,
+                "p_date_to": date_prev,
+                "p_marketplace": None,
+                "p_user_id": user_id,
+                "p_fulfillment_type": None,
+            }
+        ).execute()
+
+        today = today_result.data if today_result.data else {}
+        prev = prev_result.data if prev_result.data else {}
+
+        if isinstance(today, list):
+            today = today[0] if today else {}
+        if isinstance(prev, list):
+            prev = prev[0] if prev else {}
+
+        return check_anomalies_from_data(
+            orders_today=float(today.get("orders", 0)),
+            orders_prev=float(prev.get("orders", 0)),
+            revenue_today=float(today.get("revenue", 0)),
+            profit_today=float(today.get("net_profit", 0)),
+            ad_cost_today=float(today.get("ad_cost", 0)),
+        )
+
+    except Exception as e:
+        logger.error(f"check_anomalies error for user {user_id}: {e}")
+        return []
 
 
 async def _get_stock_alerts(user_id: str) -> list[dict]:

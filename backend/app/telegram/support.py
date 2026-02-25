@@ -4,6 +4,7 @@ Forwards user messages to support group and routes replies back.
 Operator replies are persisted in tg_support_messages via session_manager.
 """
 import logging
+from html import escape as html_escape
 from typing import Optional
 
 from aiogram import Bot
@@ -68,8 +69,8 @@ async def forward_to_support(
 
     try:
         user = user_message.from_user
-        username = f"@{user.username}" if user and user.username else "нет username"
-        name = user.full_name if user else "Неизвестный"
+        username = f"@{html_escape(user.username)}" if user and user.username else "нет username"
+        name = html_escape(user.full_name) if user and user.full_name else "Неизвестный"
         user_id_line = f"\nUser ID: <code>{link['user_id']}</code>" if link else ""
 
         header = (
@@ -99,6 +100,7 @@ async def reply_from_support(
     Route reply from support group back to user.
     Works when support replies to a forwarded message.
     Saves operator message to session DB for history tracking.
+    P4: Sends "operator joined" notification once per session.
     Returns True if reply sent successfully.
     """
     reply = support_message.reply_to_message
@@ -128,6 +130,27 @@ async def reply_from_support(
         return False
 
     try:
+        # P4: "Operator joined" notification — once per session
+        try:
+            from .session_manager import (
+                get_or_create_session, save_message,
+                is_operator_joined, mark_operator_joined,
+            )
+            session = await get_or_create_session(user_chat_id)
+            session_id = session.get("session_id")
+
+            if session_id:
+                joined = await is_operator_joined(session_id)
+                if not joined:
+                    await bot.send_message(
+                        user_chat_id,
+                        "К вашему диалогу подключился оператор поддержки.",
+                    )
+                    await mark_operator_joined(session_id)
+        except Exception as e:
+            logger.warning(f"Failed to check/send operator joined: {e}")
+            session_id = None
+
         reply_text = support_message.text or support_message.caption or ""
         text = (
             f"<b>Поддержка RevioMP:</b>\n\n"
@@ -137,9 +160,6 @@ async def reply_from_support(
 
         # Save operator message to session DB (best effort)
         try:
-            from .session_manager import get_or_create_session, save_message
-            session = await get_or_create_session(user_chat_id)
-            session_id = session.get("session_id")
             if session_id and reply_text:
                 await save_message(session_id, "operator", reply_text)
         except Exception as e:
