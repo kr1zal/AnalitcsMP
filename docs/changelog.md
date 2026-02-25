@@ -13,6 +13,28 @@
 
 ## 2026-02-25
 
+### Telegram Bot v3 — Human-Level Communication (P1-P7)
+- **P1 Natural Tone:** typing indicator (ChatAction.TYPING) перед AI-ответами, убран footer "Ответ сформирован AI-ассистентом", естественный тон ("Если остались вопросы — просто напишите")
+- **P2 Enriched Context:** `fetch_user_context()` загружает тариф, товары, МП, время последней синхронизации из Supabase. AI видит полный профиль пользователя
+- **P3 Full Transcript Escalation:** `build_escalation_transcript()` отправляет оператору полный диалог (Клиент/Бот/Оператор) вместо summary. Truncation: >4000 chars = summary + last 5 messages
+- **P4 Operator Joined:** уведомление "К вашему диалогу подключился оператор поддержки" — один раз per session. Flag в `escalation_reason` (pipe-delimited)
+- **P5 3-Level CSAT:** "Отлично, спасибо!" (5) / "Помогло частично" (3) / "Не помогло" (1). Partial CSAT запрашивает текстовый фидбек
+- **P6 Anomaly Alerts:** check_anomalies_from_data() — алерты при падении заказов >30%, ДРР >20%, маржа <10%. Pure function без доп. RPC
+- **P7 Welcome Onboarding:** после привязки аккаунта — интерактивное приветствие с кнопками "Настроить расписание" / "Позже"
+- **SEC-001:** html_escape для user.full_name/username через `_safe_user_display()` (XSS prevention)
+- **BUG-001:** operator_joined flag перенесён из conversation_summary в escalation_reason (не ломает AI context и summarization)
+- **PERF-001:** check_anomalies_from_data() — pure function, переиспользует данные из build_summary_message() без дублирования RPC
+- **Затронуто:** handlers.py (+208/-69), ai_support.py (+111), session_manager.py (+125), notifications.py (+121), keyboards.py (+34), support.py (+30)
+
+### Telegram Bot -- Документация
+- **6 файлов документации** в `docs/telegram/`: README, bot-architecture, ai-support, support-system, notifications, deployment
+- Полное описание webhook pipeline, FSM, DB schema (5 таблиц), deep linking flow
+- AI-поддержка: system prompt, confidence scoring, context management, примеры диалогов
+- Система поддержки: session lifecycle, CSAT, idle detection, operator flow
+- Уведомления: daily summary, stock alerts, AI insights, расписание
+- Деплой: Nginx, crontab, env vars, troubleshooting, мониторинг
+- Обновлены `docs/README.md` (секция Telegram + быстрая ссылка)
+
 ### Telegram Bot — Enterprise Support v2
 - **AI-поддержка:** Claude Haiku отвечает на вопросы пользователей в Telegram с персистентной историей
 - **Session lifecycle:** active -> resolved/escalated -> closed. Resolved сессии переоткрываются при новом сообщении

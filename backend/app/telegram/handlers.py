@@ -3,9 +3,11 @@ Telegram bot command and callback handlers.
 Registered in Dispatcher via register_handlers().
 """
 import logging
+from html import escape as html_escape
 from typing import Optional
 
 from aiogram import Dispatcher, Router, F
+from aiogram.enums import ChatAction
 from aiogram.types import Message, CallbackQuery
 from aiogram.filters import Command, CommandStart
 from aiogram.fsm.context import FSMContext
@@ -17,17 +19,19 @@ from .keyboards import (
     support_keyboard,
     settings_keyboard,
     welcome_keyboard,
+    welcome_onboarding_keyboard,
     operator_cancel_keyboard,
     after_ai_keyboard,
     csat_keyboard,
 )
 from .support import FAQ_TEXTS, forward_to_support, reply_from_support
 from .notifications import build_summary_message
-from .ai_support import ai_answer, CONFIDENCE_THRESHOLD
+from .ai_support import ai_answer, fetch_user_context, CONFIDENCE_THRESHOLD
 from .session_manager import (
     get_or_create_session,
     save_message,
     build_ai_context,
+    build_escalation_transcript,
     resolve_session,
     escalate_session,
     close_session,
@@ -46,6 +50,7 @@ router = Router()
 
 class SupportState(StatesGroup):
     waiting_for_message = State()
+    waiting_for_csat_feedback = State()
 
 
 # ─── Helpers ───
@@ -70,6 +75,25 @@ def _adjust_time(current: str, direction: int) -> str:
     return f"{new_h:02d}:{m}"
 
 
+def _safe_user_display(user: object) -> tuple[str, str]:
+    """
+    Extract and HTML-escape user display name and username.
+    Prevents HTML injection via Telegram display names.
+    Returns (escaped_name, escaped_username_with_at).
+    """
+    if user and hasattr(user, "full_name"):
+        name = html_escape(user.full_name or "Неизвестный")
+    else:
+        name = "Неизвестный"
+
+    if user and hasattr(user, "username") and user.username:
+        username = f"@{html_escape(user.username)}"
+    else:
+        username = "нет username"
+
+    return name, username
+
+
 async def _handle_ai_support(
     message: Message,
     state: FSMContext,
@@ -80,9 +104,11 @@ async def _handle_ai_support(
     Common AI support flow used by both FSM handler and catch-all.
     1. Get/create session
     2. Save user message
-    3. Build context from DB history
-    4. AI answer with persistent history
-    5. Save bot response or escalate
+    3. Fetch enriched user context (P2)
+    4. Build context from DB history
+    5. Send typing indicator (P1)
+    6. AI answer with persistent history
+    7. Save bot response or escalate
     """
     chat_id = message.chat.id
     user_id = link.get("user_id") if link else None
@@ -94,15 +120,21 @@ async def _handle_ai_support(
     # 2. Save user message to DB
     await save_message(session_id, "user", question)
 
-    # 3. Build context from DB history
+    # 3. Fetch enriched user context (P2)
+    ai_context: dict = {}
+    if user_id:
+        ai_context = await fetch_user_context(user_id)
+
+    # 4. Build context from DB history
     history = await build_ai_context(session_id)
 
-    # 4. Build AI context
-    ai_context: dict = {}
-    if link:
-        ai_context["user_id"] = link.get("user_id", "")
+    # 5. Send typing indicator (P1)
+    try:
+        await message.answer_chat_action(ChatAction.TYPING)
+    except Exception:
+        pass
 
-    # 5. AI answer with persistent history
+    # 6. AI answer with persistent history
     answer, confidence = await ai_answer(question, ai_context, history=history)
 
     if answer and confidence >= CONFIDENCE_THRESHOLD:
@@ -116,9 +148,10 @@ async def _handle_ai_support(
             chat_id=chat_id,
         )
 
+        # P1: Natural tone — no AI disclaimer, soft follow-up
         await message.answer(
             f"{answer}\n\n"
-            f"<i>Ответ сформирован AI-ассистентом.</i>",
+            f"Если остались вопросы — просто напишите.",
             reply_markup=after_ai_keyboard(),
         )
         logger.info(
@@ -128,21 +161,35 @@ async def _handle_ai_support(
     else:
         # AI not confident or error — forward to human operator
         await escalate_session(session_id, "low_confidence")
-        bot = get_bot()
-        sent = await forward_to_support(bot, message, link)
 
-        if sent:
-            await message.answer(
-                "Сообщение отправлено в поддержку. "
-                "Ответим в ближайшее время.",
-                reply_markup=welcome_keyboard(),
+        # P3: Send full transcript to support group
+        group_id = get_support_group_id()
+        bot = get_bot()
+        if group_id and session_id:
+            transcript = await build_escalation_transcript(session_id)
+            name, username = _safe_user_display(message.from_user)
+            user_id_line = (
+                f"\nUser ID: <code>{link['user_id']}</code>" if link else ""
             )
+            header = (
+                f"<b>Заявка в поддержку</b> (AI не уверен)\n"
+                f"Пользователь: {name} ({username}){user_id_line}\n"
+                f"Chat ID: <code>{chat_id}</code>\n"
+                f"{'=' * 30}\n"
+            )
+            try:
+                await bot.send_message(group_id, header + "\n" + transcript)
+            except Exception as e:
+                logger.error(f"Failed to send transcript to support: {e}")
+                # Fallback: forward original message
+                await forward_to_support(bot, message, link)
         else:
-            await message.answer(
-                "Не удалось отправить сообщение. "
-                "Попробуйте позже или напишите на support@reviomp.ru",
-                reply_markup=welcome_keyboard(),
-            )
+            await forward_to_support(bot, message, link)
+
+        await message.answer(
+            "Передаю ваш вопрос оператору. Ответим в ближайшее время.",
+            reply_markup=welcome_keyboard(),
+        )
 
 
 # ─── /start command ───
@@ -265,11 +312,14 @@ async def _handle_link(
             {"used": True}
         ).eq("token", token_str).execute()
 
+        # P7: Welcome onboarding flow
         await message.answer(
-            "Аккаунт успешно привязан!\n\n"
-            "Теперь буду присылать ежедневную сводку.\n"
-            "Настроить расписание: /settings",
-            reply_markup=welcome_keyboard(),
+            "Аккаунт успешно привязан! Вот что я умею:\n\n"
+            "📊 Ежедневная сводка продаж (утро и вечер)\n"
+            "🔔 Алерты при низких остатках\n"
+            "💬 AI-помощник — просто напишите вопрос\n\n"
+            "Настроить расписание сводок?",
+            reply_markup=welcome_onboarding_keyboard(),
         )
 
     except Exception as e:
@@ -555,7 +605,7 @@ async def cb_csat_positive(callback: CallbackQuery, state: FSMContext) -> None:
 
 @router.callback_query(F.data == "csat_negative")
 async def cb_csat_negative(callback: CallbackQuery, state: FSMContext) -> None:
-    """Negative CSAT — save rating, escalate to operator."""
+    """Negative CSAT — save rating, escalate to operator with full transcript."""
     await callback.answer()
 
     data = await state.get_data()
@@ -570,15 +620,13 @@ async def cb_csat_negative(callback: CallbackQuery, state: FSMContext) -> None:
         await save_csat(session_id, 1)
         await escalate_session(session_id, "negative_csat")
 
-        # Generate summary and forward to support group
-        summary = await summarize_conversation(session_id)
+        # P3: Full transcript instead of just summary
+        transcript = await build_escalation_transcript(session_id)
         group_id = get_support_group_id()
         if group_id:
             bot = get_bot()
             link = _get_user_link(callback.message.chat.id)
-            user = callback.from_user
-            username = f"@{user.username}" if user and user.username else "нет username"
-            name = user.full_name if user else "Неизвестный"
+            name, username = _safe_user_display(callback.from_user)
             user_id_line = (
                 f"\nUser ID: <code>{link['user_id']}</code>" if link else ""
             )
@@ -589,18 +637,78 @@ async def cb_csat_negative(callback: CallbackQuery, state: FSMContext) -> None:
                 f"Chat ID: <code>{callback.message.chat.id}</code>\n"
                 f"{'=' * 30}\n"
             )
-            if summary:
-                header += f"\n<b>Резюме:</b> {summary}\n"
+            if transcript:
+                header += f"\n{transcript}"
 
             try:
                 await bot.send_message(group_id, header)
             except Exception as e:
                 logger.error(f"Failed to forward negative CSAT to support: {e}")
 
-    await state.clear()
+    # P5: Ask for feedback text on negative rating
+    await state.update_data(session_id=session_id, csat_rating=1)
+    await state.set_state(SupportState.waiting_for_csat_feedback)
 
     await callback.message.edit_text(
-        "Передаём оператору для решения вопроса. Ответим в ближайшее время.",
+        "Передаём вопрос оператору. Ответим в ближайшее время.\n\n"
+        "Что мы можем улучшить? Напишите пару слов — это поможет нам стать лучше.\n"
+        "Или нажмите /start чтобы вернуться в меню.",
+    )
+
+
+# ─── CSAT partial callback (P5) ───
+
+@router.callback_query(F.data == "csat_partial")
+async def cb_csat_partial(callback: CallbackQuery, state: FSMContext) -> None:
+    """Partial CSAT — rating 3, ask for feedback, then close."""
+    await callback.answer()
+
+    data = await state.get_data()
+    session_id = data.get("session_id")
+
+    if not session_id:
+        last = await get_last_resolved_session(callback.message.chat.id)
+        if last:
+            session_id = last["session_id"]
+
+    if session_id:
+        await save_csat(session_id, 3)
+        await close_session(session_id)
+
+    # Ask for feedback
+    await state.update_data(session_id=session_id, csat_rating=3)
+    await state.set_state(SupportState.waiting_for_csat_feedback)
+
+    await callback.message.edit_text(
+        "Спасибо за оценку. Что мы можем улучшить?\n"
+        "Напишите пару слов или нажмите /start чтобы вернуться в меню.",
+    )
+
+
+# ─── CSAT text feedback handler (P5) ───
+
+@router.message(SupportState.waiting_for_csat_feedback)
+async def handle_csat_feedback(message: Message, state: FSMContext) -> None:
+    """Save text feedback from CSAT flow."""
+    data = await state.get_data()
+    session_id = data.get("session_id")
+    rating = data.get("csat_rating", 3)
+    await state.clear()
+
+    feedback_text = (message.text or "").strip()
+    if feedback_text and session_id:
+        # Save feedback — update existing CSAT record
+        try:
+            supabase = get_supabase_client()
+            supabase.table("tg_support_csat").update({
+                "feedback": feedback_text,
+            }).eq("session_id", session_id).execute()
+            logger.info(f"CSAT feedback saved for session {session_id}: {feedback_text[:50]}")
+        except Exception as e:
+            logger.error(f"Failed to save CSAT feedback: {e}")
+
+    await message.answer(
+        "Спасибо за обратную связь! Если будут вопросы — пишите в любое время.",
         reply_markup=welcome_keyboard(),
     )
 
@@ -624,39 +732,39 @@ async def cb_escalate_operator(callback: CallbackQuery, state: FSMContext) -> No
         session_id = session.get("session_id")
 
     # Mark session as escalated
-    summary = None
     if session_id:
         await escalate_session(session_id, "user_request")
-        # Generate summary for operator context
-        summary = await summarize_conversation(session_id)
 
     link = _get_user_link(callback.message.chat.id)
     bot = get_bot()
 
     group_id = get_support_group_id()
-    if group_id and original_question:
-        user = callback.from_user
-        username = f"@{user.username}" if user and user.username else "нет username"
-        name = user.full_name if user else "Неизвестный"
+    if group_id:
+        name, username = _safe_user_display(callback.from_user)
         user_id_line = (
             f"\nUser ID: <code>{link['user_id']}</code>" if link else ""
         )
+
+        # P3: Full transcript instead of just original question
+        transcript = ""
+        if session_id:
+            transcript = await build_escalation_transcript(session_id)
 
         header = (
             f"<b>Заявка в поддержку</b> (после AI-ответа)\n"
             f"Пользователь: {name} ({username}){user_id_line}\n"
             f"Chat ID: <code>{callback.message.chat.id}</code>\n"
-            f"{'=' * 30}\n\n"
-            f"{original_question}"
+            f"{'=' * 30}\n"
         )
-        if session_id and summary:
-            header += f"\n\n<b>Резюме диалога:</b> {summary}"
+        if transcript:
+            header += f"\n{transcript}"
+        elif original_question:
+            header += f"\n{original_question}"
 
         try:
             await bot.send_message(group_id, header)
             await callback.message.edit_text(
-                "Сообщение передано оператору. "
-                "Ответим в ближайшее время.",
+                "Передаю ваш диалог оператору. Ответим в ближайшее время.",
                 reply_markup=welcome_keyboard(),
             )
             return

@@ -8,11 +8,13 @@ NOT in-memory.
 """
 import json
 import logging
+from datetime import datetime, timezone
 from typing import Optional
 
 import anthropic
 
 from ..config import get_settings
+from ..db.supabase import get_supabase_client
 from .support import FAQ_TEXTS
 
 logger = logging.getLogger(__name__)
@@ -72,6 +74,102 @@ confidence:
 """
 
 
+async def fetch_user_context(user_id: str) -> dict:
+    """
+    Fetch user profile data from Supabase for AI context enrichment.
+    Returns dict with plan, products_count, marketplaces, last_sync, name.
+    Graceful degradation: returns empty dict on any error.
+    """
+    if not user_id:
+        return {}
+
+    try:
+        supabase = get_supabase_client()
+        ctx: dict = {"user_id": user_id}
+
+        # 1. Subscription plan
+        try:
+            sub_result = (
+                supabase.table("mp_subscriptions")
+                .select("plan_id, status")
+                .eq("user_id", user_id)
+                .eq("status", "active")
+                .limit(1)
+                .execute()
+            )
+            if sub_result.data:
+                ctx["plan"] = sub_result.data[0].get("plan_id", "free")
+            else:
+                ctx["plan"] = "free"
+        except Exception:
+            ctx["plan"] = "free"
+
+        # 2. Products count
+        try:
+            prod_result = (
+                supabase.table("mp_products")
+                .select("id", count="exact")
+                .eq("user_id", user_id)
+                .execute()
+            )
+            ctx["products_count"] = prod_result.count or 0
+        except Exception:
+            pass
+
+        # 3. Connected marketplaces
+        try:
+            tokens_result = (
+                supabase.table("mp_marketplace_tokens")
+                .select("marketplace")
+                .eq("user_id", user_id)
+                .execute()
+            )
+            if tokens_result.data:
+                mps = list({t["marketplace"] for t in tokens_result.data})
+                ctx["marketplaces"] = mps
+        except Exception:
+            pass
+
+        # 4. Last sync time
+        try:
+            sync_result = (
+                supabase.table("mp_sync_queue")
+                .select("completed_at")
+                .eq("user_id", user_id)
+                .eq("status", "completed")
+                .order("completed_at", desc=True)
+                .limit(1)
+                .execute()
+            )
+            if sync_result.data:
+                completed = sync_result.data[0].get("completed_at")
+                if completed:
+                    try:
+                        completed_dt = datetime.fromisoformat(
+                            completed.replace("Z", "+00:00")
+                        )
+                        delta = datetime.now(timezone.utc) - completed_dt
+                        hours = int(delta.total_seconds() // 3600)
+                        if hours < 1:
+                            ctx["last_sync"] = "менее часа назад"
+                        elif hours < 24:
+                            ctx["last_sync"] = f"{hours} ч. назад"
+                        else:
+                            days = hours // 24
+                            ctx["last_sync"] = f"{days} дн. назад"
+                    except (ValueError, TypeError):
+                        pass
+        except Exception:
+            pass
+
+        logger.info(f"Fetched user context for {user_id}: plan={ctx.get('plan')}")
+        return ctx
+
+    except Exception as e:
+        logger.error(f"fetch_user_context error for {user_id}: {e}")
+        return {}
+
+
 def _build_system_prompt() -> str:
     """Build system prompt with FAQ knowledge base."""
     faq_text = "\n\n".join(
@@ -115,14 +213,19 @@ async def ai_answer(
     try:
         system_prompt = _build_system_prompt()
 
-        # Add user context if available
+        # Add enriched user context if available
         user_context = ""
         if context:
             parts = []
             if context.get("plan"):
-                parts.append(f"Тариф пользователя: {context['plan']}")
-            if context.get("user_id"):
-                parts.append(f"User ID: {context['user_id']}")
+                plan_names = {"free": "Free", "pro": "Pro", "business": "Business"}
+                parts.append(f"тариф {plan_names.get(context['plan'], context['plan'])}")
+            if context.get("marketplaces"):
+                parts.append(f"подключены: {', '.join(context['marketplaces'])}")
+            if context.get("products_count"):
+                parts.append(f"{context['products_count']} товаров")
+            if context.get("last_sync"):
+                parts.append(f"последняя синхронизация: {context['last_sync']}")
             if parts:
                 user_context = "\nКонтекст пользователя: " + ", ".join(parts)
 

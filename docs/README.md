@@ -19,6 +19,17 @@
 | [enterprise-settings-brainstorm.md](enterprise-settings-brainstorm.md) | Дизайн-исследование Enterprise Settings (5 табов) | Product, Frontend |
 | [email-templates.md](email-templates.md) | Email-шаблоны Supabase Auth (подтверждение, сброс, magic link) | Backend, Design |
 
+### Telegram Bot (docs/telegram/)
+
+| Документ | Описание | Для кого |
+|----------|----------|----------|
+| [telegram/README.md](telegram/README.md) | Обзор модуля: архитектура, структура, таблицы, ссылки | Все |
+| [telegram/bot-architecture.md](telegram/bot-architecture.md) | Webhook pipeline, FSM, DB schema, deep linking, команды, API endpoints | Backend |
+| [telegram/ai-support.md](telegram/ai-support.md) | AI-ассистент: Claude Haiku, confidence, context management, примеры | Backend, AI |
+| [telegram/support-system.md](telegram/support-system.md) | Lifecycle сессий, CSAT, idle detection, эскалация, operator flow | Backend, Support |
+| [telegram/notifications.md](telegram/notifications.md) | Daily summary, stock alerts, AI insights, расписание, настройки | Backend |
+| [telegram/deployment.md](telegram/deployment.md) | Nginx, crontab, env vars, setup webhook, troubleshooting | DevOps |
+
 ### Документация модулей
 
 | Документ | Описание | Для кого |
@@ -30,7 +41,7 @@
 
 | Документ | Описание | Для кого |
 |----------|----------|----------|
-| [../CLAUDE.md](../CLAUDE.md) | Главный контекст: 30 архитектурных правил, формулы, источники данных | Все |
+| [../CLAUDE.md](../CLAUDE.md) | Главный контекст: 48 архитектурных правил, формулы, источники данных | Все |
 | [../.claude/rules/coding-standards.md](../.claude/rules/coding-standards.md) | Стандарты кода: React patterns, TypeScript, API layer, Tailwind, FastAPI | Все разработчики |
 | [../CHANGELOG.md](../CHANGELOG.md) | Полная история изменений (обратная хронология) | Все |
 
@@ -98,9 +109,17 @@
 1. [yookassa-integration.md](yookassa-integration.md) -- API, webhook, тестовые карты
 2. [backend/README.md](../backend/README.md) -- PaymentService, subscription endpoints
 
+### "Хочу разобраться в Telegram боте"
+
+1. [telegram/README.md](telegram/README.md) -- обзор модуля и архитектуры
+2. [telegram/bot-architecture.md](telegram/bot-architecture.md) -- webhook, FSM, DB schema, API endpoints
+3. [telegram/ai-support.md](telegram/ai-support.md) -- AI-ассистент, confidence, примеры
+4. [telegram/support-system.md](telegram/support-system.md) -- сессии, CSAT, эскалация
+5. [telegram/deployment.md](telegram/deployment.md) -- деплой, cron, troubleshooting
+
 ---
 
-## Архитектурные решения (30 правил)
+## Архитектурные решения (48 правил)
 
 Полный список -- в [CLAUDE.md](../CLAUDE.md). Краткий обзор ключевых правил:
 

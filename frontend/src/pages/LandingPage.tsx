@@ -2657,7 +2657,7 @@ function FooterSection() {
                 </li>
                 <li>
                   <a
-                    href="https://t.me/reviomp"
+                    href="https://t.me/RevioMPBot"
                     target="_blank"
                     rel="noopener noreferrer"
                     className="group relative inline-flex items-center gap-2 text-sm text-gray-400 hover:text-white transition-colors duration-200"
@@ -2673,7 +2673,7 @@ function FooterSection() {
               {/* Social icons */}
               <div className="flex items-center gap-2 mt-5">
                 <a
-                  href="https://t.me/reviomp"
+                  href="https://t.me/RevioMPBot"
                   target="_blank"
                   rel="noopener noreferrer"
                   aria-label="Telegram"

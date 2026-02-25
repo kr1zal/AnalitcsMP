@@ -98,11 +98,11 @@ def after_ai_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
         [
             InlineKeyboardButton(
-                text="Вопрос решён",
+                text="Спасибо, помогло!",
                 callback_data="session_resolved",
             ),
             InlineKeyboardButton(
-                text="Связаться с оператором",
+                text="Нужна помощь оператора",
                 callback_data="escalate_operator",
             ),
         ],
@@ -110,16 +110,40 @@ def after_ai_keyboard() -> InlineKeyboardMarkup:
 
 
 def csat_keyboard() -> InlineKeyboardMarkup:
-    """CSAT rating after session resolved."""
+    """3-level CSAT rating after session resolved."""
     return InlineKeyboardMarkup(inline_keyboard=[
         [
             InlineKeyboardButton(
-                text="Да, помогли",
+                text="Отлично, спасибо!",
                 callback_data="csat_positive",
             ),
+        ],
+        [
             InlineKeyboardButton(
-                text="Нет, не помогли",
+                text="Помогло частично",
+                callback_data="csat_partial",
+            ),
+        ],
+        [
+            InlineKeyboardButton(
+                text="Не помогло",
                 callback_data="csat_negative",
+            ),
+        ],
+    ])
+
+
+def welcome_onboarding_keyboard() -> InlineKeyboardMarkup:
+    """Onboarding keyboard after account linking."""
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(
+                text="Настроить расписание",
+                callback_data="cmd_settings",
+            ),
+            InlineKeyboardButton(
+                text="Позже",
+                callback_data="back_main",
             ),
         ],
     ])
