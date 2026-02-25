@@ -59,7 +59,6 @@ export const SortableWidget = ({
         locked
           ? 'cursor-default'
           : 'cursor-grab active:cursor-grabbing touch-none',
-        compact && '[&>div]:p-3 [&>div]:sm:p-4',
       )}
       {...attributes}
       {...(locked ? {} : listeners)}
@@ -79,14 +78,10 @@ export const SortableWidget = ({
         isPositive={widgetValue?.isPositive}
         loading={loading}
         warning={widgetValue?.warning}
+        axisBadge={showAxisBadge && !loading ? <AxisBadge axis={definition.axis} /> : undefined}
+        compact={compact}
+        unit={definition.unit}
       />
-
-      {/* Axis badge — под заголовком карточки */}
-      {showAxisBadge && !loading && (
-        <div className="absolute bottom-2 right-3 sm:bottom-2.5 sm:right-4">
-          <AxisBadge axis={definition.axis} />
-        </div>
-      )}
     </div>
   );
 };
@@ -114,8 +109,8 @@ export const DragOverlayWidget = ({
   return (
     <div
       className={cn(
-        'shadow-xl rounded-2xl ring-2 ring-indigo-200',
-        compact && '[&>div]:p-3 [&>div]:sm:p-4',
+        'shadow-xl ring-2 ring-indigo-200',
+        compact ? 'rounded-xl' : 'rounded-2xl',
       )}
     >
       <SummaryCard
@@ -131,6 +126,8 @@ export const DragOverlayWidget = ({
         change={widgetValue?.change}
         isPositive={widgetValue?.isPositive}
         warning={widgetValue?.warning}
+        compact={compact}
+        unit={definition.unit}
       />
     </div>
   );

@@ -69,6 +69,12 @@ interface SummaryCardProps {
   warning?: string;
   /** Кастомный контент вместо стандартного значения */
   children?: ReactNode;
+  /** Слот для AxisBadge (inline, не absolute) */
+  axisBadge?: ReactNode;
+  /** Компактный режим — только title + value, без деталей */
+  compact?: boolean;
+  /** Единица измерения для number-формата (шт, дн.) */
+  unit?: string;
 }
 
 // ── Adaptive font size ──
@@ -81,14 +87,14 @@ const getFontSizeClass = (numDigits: number): string => {
 };
 
 // ── Currency renderer (рубли крупно, копейки мелко) ──
-const CurrencyValue = ({ value }: { value: number }) => {
+const CurrencyValue = ({ value, sizeOverride }: { value: number; sizeOverride?: string }) => {
   const isNegative = value < 0;
   const absVal = Math.abs(value);
   const rubles = Math.floor(absVal);
   const kopecks = Math.round((absVal - rubles) * 100);
   const rublesFormatted = rubles.toLocaleString('ru-RU');
   const numDigits = rubles.toString().length;
-  const mainSize = getFontSizeClass(numDigits);
+  const mainSize = sizeOverride ?? getFontSizeClass(numDigits);
 
   return (
     <span className={cn('font-bold tabular-nums leading-tight', mainSize)}>
@@ -207,51 +213,91 @@ export const SummaryCard = ({
   loading = false,
   warning,
   children,
+  axisBadge,
+  compact = false,
+  unit,
 }: SummaryCardProps) => {
   const colors = accentStyles[accent];
 
   // ── Loading skeleton ──
   if (loading) {
     return (
-      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 sm:p-5 h-full">
+      <div className={cn(
+        'bg-white rounded-2xl shadow-sm border border-gray-100 h-full',
+        compact ? 'p-2.5 sm:p-3' : 'p-4 sm:p-5',
+      )}>
         <div className="animate-pulse">
-          <div className="flex items-center gap-2 mb-3">
-            <div className="w-8 h-8 sm:w-9 sm:h-9 bg-gray-100 rounded-xl" />
-            <div className="h-3.5 bg-gray-100 rounded w-16" />
-          </div>
-          <div className="h-8 bg-gray-100 rounded w-3/4 mb-2" />
-          <div className="h-3.5 bg-gray-50 rounded w-1/2" />
+          {compact ? (
+            <>
+              <div className="h-3 bg-gray-100 rounded w-14 mb-2" />
+              <div className="h-5 bg-gray-100 rounded w-3/4" />
+            </>
+          ) : (
+            <>
+              <div className="flex items-center gap-2 mb-3">
+                <div className="w-8 h-8 sm:w-9 sm:h-9 bg-gray-100 rounded-xl" />
+                <div className="h-3.5 bg-gray-100 rounded w-16" />
+              </div>
+              <div className="h-8 bg-gray-100 rounded w-3/4 mb-2" />
+              <div className="h-3.5 bg-gray-50 rounded w-1/2" />
+            </>
+          )}
         </div>
       </div>
     );
   }
 
   // ── Format value ──
+  const sizeClass = compact ? 'text-lg sm:text-xl' : undefined; // undefined → use adaptive
+
   const renderValue = () => {
     if (children) return children;
 
     if (typeof value === 'string') {
-      return <span className="text-2xl sm:text-3xl font-bold text-gray-900">{value}</span>;
+      return <span className={cn('font-bold text-gray-900', compact ? 'text-lg sm:text-xl' : 'text-2xl sm:text-3xl')}>{value}</span>;
     }
 
     switch (format) {
       case 'currency':
-        return <CurrencyValue value={value} />;
+        return <CurrencyValue value={value} sizeOverride={sizeClass} />;
       case 'percent':
         return (
-          <span className="text-2xl sm:text-3xl font-bold text-gray-900 tabular-nums">
+          <span className={cn('font-bold text-gray-900 tabular-nums', compact ? 'text-lg sm:text-xl' : 'text-2xl sm:text-3xl')}>
             {formatPercent(value)}
           </span>
         );
       default:
         return (
-          <span className="text-2xl sm:text-3xl font-bold text-gray-900 tabular-nums">
+          <span className={cn('font-bold text-gray-900 tabular-nums', compact ? 'text-lg sm:text-xl' : 'text-2xl sm:text-3xl')}>
             {formatNumber(value)}
           </span>
         );
     }
   };
 
+  // ── Compact layout: title + value + unit + axisBadge ──
+  if (compact) {
+    return (
+      <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-2.5 sm:p-3 h-full flex flex-col justify-between">
+        <span className="text-[11px] font-medium text-gray-400 truncate leading-none">
+          {mobileTitle ?? title}
+        </span>
+        <div className="flex items-baseline gap-1 overflow-hidden mt-1">
+          {renderValue()}
+          {unit && format === 'number' && (
+            <span className="text-xs text-gray-400 ml-0.5 flex-shrink-0">{unit}</span>
+          )}
+        </div>
+        {axisBadge && (
+          <div className="flex justify-end mt-1">
+            {axisBadge}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // ── Full layout ──
   return (
     <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 sm:p-5 transition-shadow hover:shadow-md h-full flex flex-col">
       {/* ── Header: icon + title + tooltip + change badge ── */}
@@ -307,6 +353,13 @@ export const SummaryCard = ({
           </p>
         )}
       </div>
+
+      {/* ── Axis badge (inline, часть flow) ── */}
+      {axisBadge && (
+        <div className="flex justify-end mt-1.5">
+          {axisBadge}
+        </div>
+      )}
     </div>
   );
 };

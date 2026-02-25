@@ -49,6 +49,15 @@ const GRID_CLASSES: Record<number, string> = {
   5: 'grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2 sm:gap-2.5',
 };
 
+// Compact: tighter gaps
+const GRID_CLASSES_COMPACT: Record<number, string> = {
+  1: 'grid grid-cols-1 gap-1.5',
+  2: 'grid grid-cols-2 gap-1.5 sm:gap-2',
+  3: 'grid grid-cols-2 lg:grid-cols-3 gap-1.5 sm:gap-2 lg:gap-2.5',
+  4: 'grid grid-cols-2 lg:grid-cols-4 gap-1.5 sm:gap-2',
+  5: 'grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-1.5 sm:gap-2',
+};
+
 interface WidgetGridProps {
   /** Resolved values for each widget by ID */
   widgetValues: Record<string, WidgetValue>;
@@ -80,19 +89,17 @@ export const WidgetGrid = ({
   // ── Local state ──
   const [activeId, setActiveId] = useState<string | null>(null);
 
-  // ── DnD sensors ──
+  // ── DnD sensors (constant size — React requires stable useEffect deps) ──
   const pointerSensor = useSensor(PointerSensor, {
-    activationConstraint: { distance: 8 },
+    activationConstraint: { distance: locked ? 1e7 : 8 },
   });
   const touchSensor = useSensor(TouchSensor, {
-    activationConstraint: { delay: 200, tolerance: 5 },
+    activationConstraint: { delay: locked ? 1e7 : 200, tolerance: 5 },
   });
   const keyboardSensor = useSensor(KeyboardSensor, {
     coordinateGetter: sortableKeyboardCoordinates,
   });
-  const activeSensors = useSensors(pointerSensor, touchSensor, keyboardSensor);
-  const noSensors = useSensors();
-  const sensors = locked ? noSensors : activeSensors;
+  const sensors = useSensors(pointerSensor, touchSensor, keyboardSensor);
 
   // ── DnD handlers ──
   const handleDragStart = useCallback((event: DragStartEvent) => {
@@ -128,10 +135,10 @@ export const WidgetGrid = ({
   }, [onCloseSettings]);
 
   // ── Grid class ──
-  const gridClass = useMemo(
-    () => GRID_CLASSES[columnCount] ?? GRID_CLASSES[4],
-    [columnCount],
-  );
+  const gridClass = useMemo(() => {
+    const map = compactMode ? GRID_CLASSES_COMPACT : GRID_CLASSES;
+    return map[columnCount] ?? map[4];
+  }, [columnCount, compactMode]);
 
   // ── Empty state ──
   if (enabledWidgets.length === 0) {
