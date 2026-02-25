@@ -125,6 +125,11 @@ async def _handle_ai_support(
     if user_id:
         ai_context = await fetch_user_context(user_id)
 
+    # P3: Extract first_name from Telegram message
+    first_name: str | None = None
+    if message.from_user and message.from_user.first_name:
+        first_name = message.from_user.first_name
+
     # 4. Build context from DB history
     history = await build_ai_context(session_id)
 
@@ -134,8 +139,10 @@ async def _handle_ai_support(
     except Exception:
         pass
 
-    # 6. AI answer with persistent history
-    answer, confidence = await ai_answer(question, ai_context, history=history)
+    # 6. AI answer with persistent history + first_name (P3)
+    answer, confidence = await ai_answer(
+        question, ai_context, history=history, first_name=first_name,
+    )
 
     if answer and confidence >= CONFIDENCE_THRESHOLD:
         # Save bot response to DB
@@ -148,10 +155,9 @@ async def _handle_ai_support(
             chat_id=chat_id,
         )
 
-        # P1: Natural tone — no AI disclaimer, soft follow-up
+        # P4: Clean answer without template footer — buttons are enough
         await message.answer(
-            f"{answer}\n\n"
-            f"Если остались вопросы — просто напишите.",
+            answer,
             reply_markup=after_ai_keyboard(),
         )
         logger.info(
