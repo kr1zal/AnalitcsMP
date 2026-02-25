@@ -274,6 +274,8 @@ async def session_cleanup_cron(request: Request) -> dict:
         idle_sessions = await check_idle_sessions()
         bot = get_bot()
 
+        from ...telegram.session_manager import resolve_session
+
         for session in idle_sessions:
             try:
                 await bot.send_message(
@@ -282,11 +284,10 @@ async def session_cleanup_cron(request: Request) -> dict:
                     "Если вопрос решён — нажмите кнопку ниже.",
                     reply_markup=after_ai_keyboard(),
                 )
-                # Update last_message_at to prevent repeated reminders
-                await save_message(
-                    session["session_id"], "bot",
-                    "Всё ещё нужна помощь?"
-                )
+                # 1 reminder max: resolve session so idle check won't find it again.
+                # If user responds, get_or_create_session() reopens it.
+                # auto_close_resolved() will close it after 2 hours.
+                await resolve_session(session["session_id"])
                 stats["idle_reminded"] += 1
             except Exception as e:
                 logger.warning(
