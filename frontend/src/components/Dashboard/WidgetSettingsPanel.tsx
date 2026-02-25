@@ -86,8 +86,13 @@ const WidgetSettingsPanel = ({ onClose }: WidgetSettingsPanelProps) => {
 
             {/* Column count */}
             <div className="flex items-center justify-between">
-              <span className="text-sm text-gray-700">Колонки</span>
-              <div className="flex items-center gap-1">
+              <div className="flex flex-col">
+                <span className="text-sm text-gray-700">Колонки</span>
+                <span className="text-[11px] text-gray-400 mt-0.5 leading-snug">
+                  На мобильных — всегда 2 колонки
+                </span>
+              </div>
+              <div className="flex items-center gap-1 flex-shrink-0 ml-3">
                 {[2, 3, 4, 5].map((n) => (
                   <button
                     key={n}
@@ -106,14 +111,20 @@ const WidgetSettingsPanel = ({ onClose }: WidgetSettingsPanelProps) => {
             </div>
 
             {/* Axis badges toggle */}
-            <label className="flex items-center justify-between cursor-pointer">
-              <span className="text-sm text-gray-700">Оси данных</span>
+            <div className="flex items-center justify-between">
+              <div className="flex flex-col">
+                <span className="text-sm text-gray-700">Источник данных</span>
+                <span className="text-[11px] text-gray-400 mt-0.5 leading-snug">
+                  Метки на карточках: заказы, финансы, реклама
+                </span>
+              </div>
               <button
                 role="switch"
                 aria-checked={showAxisBadges}
+                aria-label="Показать источник данных"
                 onClick={toggleAxisBadges}
                 className={cn(
-                  'relative w-10 h-6 rounded-full transition-colors',
+                  'relative w-10 h-6 rounded-full transition-colors flex-shrink-0 ml-3',
                   showAxisBadges ? 'bg-indigo-600' : 'bg-gray-200',
                 )}
               >
@@ -124,17 +135,21 @@ const WidgetSettingsPanel = ({ onClose }: WidgetSettingsPanelProps) => {
                   )}
                 />
               </button>
-            </label>
+            </div>
 
             {/* Compact mode toggle */}
-            <label className="flex items-center justify-between cursor-pointer">
-              <span className="text-sm text-gray-700">Компактный режим</span>
+            <div className="flex items-center justify-between">
+              <div className="flex flex-col">
+                <span className="text-sm text-gray-700">Компактный режим</span>
+                <span className="text-[11px] text-gray-400 mt-0.5 leading-snug">Только ключевые числа — без иконок и деталей</span>
+              </div>
               <button
                 role="switch"
                 aria-checked={compactMode}
+                aria-label="Компактный режим карточек"
                 onClick={toggleCompactMode}
                 className={cn(
-                  'relative w-10 h-6 rounded-full transition-colors',
+                  'flex-shrink-0 ml-3 relative w-10 h-6 rounded-full transition-colors',
                   compactMode ? 'bg-indigo-600' : 'bg-gray-200',
                 )}
               >
@@ -145,7 +160,7 @@ const WidgetSettingsPanel = ({ onClose }: WidgetSettingsPanelProps) => {
                   )}
                 />
               </button>
-            </label>
+            </div>
           </div>
 
           {/* Widget toggles by category */}

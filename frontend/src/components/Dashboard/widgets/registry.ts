@@ -45,6 +45,8 @@ export interface WidgetDefinition {
   icon: LucideIcon;
   accent: CardAccent;
   format: WidgetFormat;
+  /** Unit suffix for number-format widgets in compact mode (e.g. "шт", "дн.") */
+  unit?: string;
   defaultEnabled: boolean;
   tier: WidgetTier;
   dataDeps: WidgetDataDep[];
