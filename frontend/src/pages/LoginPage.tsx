@@ -79,10 +79,10 @@ export function LoginPage() {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4">
         <div className="w-full max-w-sm">
-          <div className="flex items-center justify-center mb-8">
+          <Link to="/" className="flex items-center justify-center mb-8 hover:opacity-80 transition-opacity">
             <BarChart3 className="w-10 h-10 text-indigo-600" />
             <span className="ml-3 text-2xl font-bold text-gray-900">RevioMP</span>
-          </div>
+          </Link>
 
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 text-center">
             <div className="w-14 h-14 mx-auto mb-4 bg-indigo-100 rounded-2xl flex items-center justify-center">
@@ -141,10 +141,10 @@ export function LoginPage() {
     <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4">
       <div className="w-full max-w-sm">
         {/* Logo */}
-        <div className="flex items-center justify-center mb-8">
+        <Link to="/" className="flex items-center justify-center mb-8 hover:opacity-80 transition-opacity">
           <BarChart3 className="w-10 h-10 text-indigo-600" />
           <span className="ml-3 text-2xl font-bold text-gray-900">RevioMP</span>
-        </div>
+        </Link>
 
         {/* Card */}
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { BarChart3, Eye, EyeOff, CheckCircle, AlertCircle, Loader2 } from 'lucide-react';
 
@@ -64,10 +64,10 @@ export function ResetPasswordPage() {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4">
         <div className="w-full max-w-sm text-center">
-          <div className="flex items-center justify-center mb-8">
+          <Link to="/" className="flex items-center justify-center mb-8 hover:opacity-80 transition-opacity">
             <BarChart3 className="w-10 h-10 text-indigo-600" />
             <span className="ml-3 text-2xl font-bold text-gray-900">RevioMP</span>
-          </div>
+          </Link>
 
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
             <div className="w-14 h-14 mx-auto mb-4 bg-green-100 rounded-2xl flex items-center justify-center">
@@ -86,10 +86,10 @@ export function ResetPasswordPage() {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4">
         <div className="w-full max-w-sm text-center">
-          <div className="flex items-center justify-center mb-8">
+          <Link to="/" className="flex items-center justify-center mb-8 hover:opacity-80 transition-opacity">
             <BarChart3 className="w-10 h-10 text-indigo-600" />
             <span className="ml-3 text-2xl font-bold text-gray-900">RevioMP</span>
-          </div>
+          </Link>
 
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
             <Loader2 className="w-8 h-8 text-indigo-600 animate-spin mx-auto mb-4" />
@@ -114,10 +114,10 @@ export function ResetPasswordPage() {
   return (
     <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4">
       <div className="w-full max-w-sm">
-        <div className="flex items-center justify-center mb-8">
+        <Link to="/" className="flex items-center justify-center mb-8 hover:opacity-80 transition-opacity">
           <BarChart3 className="w-10 h-10 text-indigo-600" />
           <span className="ml-3 text-2xl font-bold text-gray-900">RevioMP</span>
-        </div>
+        </Link>
 
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
           <h2 className="text-lg font-semibold text-gray-900 mb-1 text-center">
