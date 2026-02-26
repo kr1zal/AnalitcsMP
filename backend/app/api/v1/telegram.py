@@ -220,24 +220,15 @@ async def send_summaries_cron(request: Request) -> dict:
 
     # Current MSK time rounded to nearest 15 min
     now_hhmm = _now_msk_hhmm()
-    # Round to nearest quarter hour for matching
     h, m = now_hhmm.split(":")
     rounded_m = (int(m) // 15) * 15
     target_time = f"{h}:{rounded_m:02d}"
 
-    # Also check exact hour (most users set HH:00)
-    target_hour = f"{h}:00"
-
     from ...telegram.notifications import send_daily_summaries
 
     stats = {"target_time": target_time}
-
-    # Send for both rounded time and exact hour
-    times_to_check = {target_time, target_hour}
-    for t in times_to_check:
-        result = await send_daily_summaries(t)
-        for k, v in result.items():
-            stats[k] = stats.get(k, 0) + v
+    result = await send_daily_summaries(target_time)
+    stats.update(result)
 
     logger.info(f"Daily summaries cron: {stats}")
     return stats

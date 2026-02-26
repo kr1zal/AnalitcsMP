@@ -166,7 +166,7 @@ export function UeKpiCards({ totals, productCount, profitableCount, hasAds, hasR
           color={totals.profit >= 0 ? 'green' : 'red'}
         />
         <KpiCard
-          label="Ср. маржа"
+          label="Ср. рентаб."
           value={formatPercent(avgMargin)}
           sub={avgMargin >= 20 ? 'хорошо' : avgMargin >= 10 ? 'средне' : 'низкая'}
           icon={<Percent className="w-3.5 h-3.5" />}

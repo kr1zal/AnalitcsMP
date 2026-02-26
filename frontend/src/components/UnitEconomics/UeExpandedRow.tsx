@@ -214,7 +214,7 @@ function buildInsights(wb: UnitEconomicsItem | undefined, ozon: UnitEconomicsIte
 
   if (diff > 3) {
     const better = wbMargin > ozMargin ? 'WB' : 'OZON';
-    insights.push(`${better} маржа на ${diff.toFixed(1)} пп выше`);
+    insights.push(`${better} рентабельность на ${diff.toFixed(1)} пп выше`);
   }
 
   const wbDrr = wb.metrics.drr;

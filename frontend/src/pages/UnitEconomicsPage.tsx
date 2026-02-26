@@ -28,7 +28,7 @@ import { UeCostStructure } from '../components/UnitEconomics/UeCostStructure';
 import { UeTable } from '../components/UnitEconomics/UeTable';
 import { UePlanPanel } from '../components/UnitEconomics/UePlanPanel';
 import { UePlanMatrix } from '../components/UnitEconomics/UePlanMatrix';
-import { classifyABC, computeTotals } from '../components/UnitEconomics/ueHelpers';
+import { classifyABC, computeTotals, type AbcMetric } from '../components/UnitEconomics/ueHelpers';
 import { buildPlanPaceMap, classifyMatrix, extractPlanMonth } from '../components/UnitEconomics/uePlanHelpers';
 import type { MatrixQuadrant } from '../components/UnitEconomics/uePlanHelpers';
 import type { UnitEconomicsItem, Product } from '../types';
@@ -125,7 +125,10 @@ export const UnitEconomicsPage = () => {
   const hasAds = totals.adCost > 0;
   const hasReturns = totals.returns > 0;
 
-  const abcMap = useMemo(() => classifyABC(unitProducts), [unitProducts]);
+  // ABC metric toggle (profit or revenue)
+  const [abcMetric, setAbcMetric] = useState<AbcMetric>('profit');
+
+  const abcMap = useMemo(() => classifyABC(unitProducts, abcMetric), [unitProducts, abcMetric]);
 
   // Plan completion map
   const planMap = useMemo(() => {
@@ -304,6 +307,8 @@ export const UnitEconomicsPage = () => {
         <UeTable
           products={unitProducts}
           abcMap={abcMap}
+          abcMetric={abcMetric}
+          onAbcMetricChange={setAbcMetric}
           planMap={planMap}
           mpBreakdown={mpBreakdown}
           marketplace={marketplace}

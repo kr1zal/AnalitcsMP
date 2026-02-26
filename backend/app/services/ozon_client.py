@@ -259,13 +259,9 @@ class OzonClient:
         merged["result"]["items"] = all_items
         return merged
 
-    async def get_warehouse_list(self) -> dict:
-        """Получить список складов"""
-        return await self._request("POST", "/v2/warehouse/list", json={})
-
     # ==================== ЗАКАЗЫ И ПРОДАЖИ ====================
 
-    async def get_posting_fbs_list(self, date_from: datetime, date_to: datetime, limit: int = 100, offset: int = 0) -> dict:
+    async def get_posting_fbs_list(self, date_from: datetime, date_to: datetime, limit: int = 1000, offset: int = 0) -> dict:
         """Получить список отправлений FBS"""
         payload = {
             "filter": {
@@ -281,7 +277,7 @@ class OzonClient:
         }
         return await self._request("POST", "/v3/posting/fbs/list", json=payload)
 
-    async def get_posting_fbo_list(self, date_from: datetime, date_to: datetime, limit: int = 100, offset: int = 0) -> dict:
+    async def get_posting_fbo_list(self, date_from: datetime, date_to: datetime, limit: int = 1000, offset: int = 0) -> dict:
         """Получить список отправлений FBO (склад Ozon)"""
         payload = {
             "filter": {
@@ -455,6 +451,7 @@ class OzonPerformanceClient:
                     "clicks": int(parse_num(row[5])) if len(row) > 5 else 0,
                     "expense": parse_num(row[9]) if len(row) > 9 else 0,
                     "orders": int(parse_num(row[10])) if len(row) > 10 else 0,
+                    "ad_revenue": parse_num(row[11]) if len(row) > 11 else 0,
                 })
             except (ValueError, IndexError):
                 continue
