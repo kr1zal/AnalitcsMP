@@ -39,6 +39,7 @@ import type {
   TelegramLinkStatus,
   TelegramGenerateTokenResponse,
   TelegramSettings,
+  OrderSummaryResponse,
 } from '../types';
 
 // Создаём axios instance с базовыми настройками
@@ -339,6 +340,17 @@ export const dashboardApi = {
         include_prev_period: true,
         include_ozon_truth: filters?.include_ozon_truth ?? true,
       },
+    });
+    return data;
+  },
+
+  /**
+   * Получить агрегированную сводку из mp_orders (позаказная аналитика).
+   * Pro+ фича. Данные без задержки settlement.
+   */
+  getOrderSummary: async (filters?: DashboardFilters) => {
+    const { data } = await api.get<OrderSummaryResponse>('/dashboard/order-summary', {
+      params: filters,
     });
     return data;
   },

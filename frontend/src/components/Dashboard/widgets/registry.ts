@@ -32,7 +32,8 @@ export type WidgetDataDep =
   | 'adCosts'
   | 'stocks'
   | 'planCompletion'
-  | 'products';
+  | 'products'
+  | 'orderSummary';
 
 // Widget definition — single source of truth for each metric card
 export interface WidgetDefinition {

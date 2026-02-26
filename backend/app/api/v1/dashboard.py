@@ -1463,6 +1463,195 @@ async def get_order_detail(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+# ─── Order-Based Summary (mp_orders aggregation) ────────────────────────────
+# Позаказная аналитика: commission, logistics, storage, profit estimate.
+# Данные из mp_orders (позаказная детализация), НЕ из mp_sales (агрегат).
+# Даёт актуальную финансовую картину без задержки settlement (1-14 дней Ozon).
+
+@router.get("/dashboard/order-summary")
+async def get_order_summary(
+    current_user: CurrentUser = Depends(get_current_user),
+    sub: UserSubscription = Depends(require_feature("unit_economics")),
+    date_from: Optional[str] = Query(None, description="Дата начала (YYYY-MM-DD)"),
+    date_to: Optional[str] = Query(None, description="Дата окончания (YYYY-MM-DD)"),
+    marketplace: Optional[str] = Query(None, description="Фильтр по МП: wb, ozon"),
+    fulfillment_type: Optional[str] = Query(None, pattern="^(FBO|FBS)$", description="Фильтр FBO/FBS"),
+):
+    """
+    Агрегированная сводка из mp_orders (позаказная аналитика).
+    Pro+ фича (unit_economics gating).
+
+    Возвращает: totals (commission, logistics, storage, other_fees, sale_amount,
+    payout, estimated_profit, orders_count, settled_count, unsettled_count)
+    + by_marketplace breakdown.
+    """
+    supabase = get_supabase_client()
+
+    if not date_from:
+        from datetime import timezone
+        MSK = timezone(timedelta(hours=3))
+        date_from = (datetime.now(MSK) - timedelta(days=7)).strftime("%Y-%m-%d")
+    if not date_to:
+        from datetime import timezone
+        MSK = timezone(timedelta(hours=3))
+        date_to = datetime.now(MSK).strftime("%Y-%m-%d")
+
+    try:
+        # --- 1. Fetch mp_orders with pagination (PostgREST limit 1000) ---
+        rows: list = []
+        page_size = 1000
+        offset = 0
+        select_fields = "marketplace, commission, logistics, storage_fee, other_fees, sale_amount, payout, settled, status, product_id, quantity, mp_products(purchase_price)"
+
+        while True:
+            query = (
+                supabase.table("mp_orders")
+                .select(select_fields)
+                .eq("user_id", current_user.id)
+                .gte("order_date", f"{date_from}T00:00:00")
+                .lte("order_date", f"{date_to}T23:59:59")
+            )
+            if marketplace and marketplace != "all":
+                query = query.eq("marketplace", marketplace)
+            if fulfillment_type:
+                query = query.eq("fulfillment_type", fulfillment_type)
+
+            query = query.range(offset, offset + page_size - 1)
+            result = query.execute()
+            batch = result.data or []
+            rows.extend(batch)
+
+            if len(batch) < page_size:
+                break
+            offset += page_size
+
+        # --- 2. Fetch ads for the period (profit = payout - purchase - ads) ---
+        ads_query = (
+            supabase.table("mp_ad_costs")
+            .select("marketplace, cost")
+            .eq("user_id", current_user.id)
+            .gte("date", date_from)
+            .lte("date", date_to)
+        )
+        if marketplace and marketplace != "all":
+            ads_query = ads_query.eq("marketplace", marketplace)
+
+        ads_result = ads_query.execute()
+        ads_rows = ads_result.data or []
+
+        total_ads = 0.0
+        ads_by_mp: dict[str, float] = {}
+        for ad_row in ads_rows:
+            cost = float(ad_row.get("cost") or 0)
+            mp = ad_row.get("marketplace", "unknown")
+            total_ads += cost
+            ads_by_mp[mp] = ads_by_mp.get(mp, 0) + cost
+
+        # --- 3. Aggregate ---
+        def _aggregate(orders: list, ads_amount: float = 0.0) -> dict:
+            total_commission = 0.0
+            total_logistics = 0.0
+            total_storage = 0.0
+            total_other_fees = 0.0
+            total_sale_amount = 0.0
+            total_payout = 0.0
+            total_purchase = 0.0
+            orders_count = 0
+            settled_count = 0
+            unsettled_count = 0
+            has_logistics = False
+
+            for row in orders:
+                commission = float(row.get("commission") or 0)
+                logistics = float(row.get("logistics") or 0)
+                storage = float(row.get("storage_fee") or 0)
+                other = float(row.get("other_fees") or 0)
+                sale_amount = float(row.get("sale_amount") or 0)
+                payout = float(row.get("payout") or 0)
+                settled = row.get("settled", False)
+                qty = int(row.get("quantity") or 1)
+
+                # Purchase from joined mp_products × quantity
+                product_info = row.get("mp_products") or {}
+                purchase_price = float(product_info.get("purchase_price") or 0)
+
+                total_commission += commission
+                total_logistics += logistics
+                total_storage += storage
+                total_other_fees += other
+                total_sale_amount += sale_amount
+                total_payout += payout
+                total_purchase += purchase_price * qty
+                orders_count += 1
+
+                if logistics != 0:
+                    has_logistics = True
+
+                if settled:
+                    settled_count += 1
+                else:
+                    unsettled_count += 1
+
+            total_deductions = total_commission + total_logistics + total_storage + total_other_fees
+            # payout = sale_amount - deductions (удержания уже вычтены)
+            # profit = payout - purchase - ads (правило #10 CLAUDE.md)
+            # fallback: если payout=0 — используем sale_amount - deductions - purchase - ads
+            if total_payout > 0:
+                estimated_profit = total_payout - total_purchase - ads_amount
+            else:
+                estimated_profit = total_sale_amount - total_deductions - total_purchase - ads_amount
+            settled_ratio = (settled_count / orders_count * 100) if orders_count > 0 else 0
+
+            agg = {
+                "commission": round(total_commission, 2),
+                "logistics": round(total_logistics, 2),
+                "storage_fee": round(total_storage, 2),
+                "other_fees": round(total_other_fees, 2),
+                "total_deductions": round(total_deductions, 2),
+                "sale_amount": round(total_sale_amount, 2),
+                "payout": round(total_payout, 2),
+                "purchase": round(total_purchase, 2),
+                "ads": round(ads_amount, 2),
+                "estimated_profit": round(estimated_profit, 2),
+                "orders_count": orders_count,
+                "settled_count": settled_count,
+                "unsettled_count": unsettled_count,
+                "settled_ratio": round(settled_ratio, 1),
+            }
+
+            # Ozon edge case: logistics=0 note
+            if orders_count > 0 and not has_logistics:
+                agg["logistics_note"] = "Логистика FBO и хранение начисляются в финотчёте"
+
+            return agg
+
+        totals = _aggregate(rows, total_ads)
+
+        # Per-marketplace breakdown
+        by_mp: dict[str, list] = {}
+        for row in rows:
+            mp = row.get("marketplace", "unknown")
+            if mp not in by_mp:
+                by_mp[mp] = []
+            by_mp[mp].append(row)
+
+        by_marketplace = {}
+        for mp, mp_rows in by_mp.items():
+            by_marketplace[mp] = _aggregate(mp_rows, ads_by_mp.get(mp, 0))
+
+        return {
+            "status": "success",
+            "period": {"from": date_from, "to": date_to},
+            "totals": totals,
+            "by_marketplace": by_marketplace,
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get("/dashboard/fulfillment-info")
 async def get_fulfillment_info(
     current_user: CurrentUser = Depends(get_current_user),

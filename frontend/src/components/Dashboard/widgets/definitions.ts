@@ -1,5 +1,5 @@
 /**
- * Widget Definitions — все 24 виджета дашборда
+ * Widget Definitions — все 29 виджетов дашборда
  *
  * Единый источник правды для метрик-карточек.
  * Группировка по категориям: sales, finance, ads, stocks, plan, delta.
@@ -25,10 +25,12 @@ import {
   AlertTriangle,
   CreditCard,
   MousePointerClick,
+  Scale,
+  CheckCircle,
 } from 'lucide-react';
 import type { WidgetDefinition, WidgetCategory } from './registry';
 
-// ==================== ALL 24 WIDGET DEFINITIONS ====================
+// ==================== ALL 29 WIDGET DEFINITIONS ====================
 
 export const WIDGET_DEFINITIONS: WidgetDefinition[] = [
   // ==================== SALES (ORDER-based) ====================
@@ -151,7 +153,7 @@ export const WIDGET_DEFINITIONS: WidgetDefinition[] = [
     mobileTitle: 'Выплата',
     category: 'finance',
     axis: 'settlement',
-    tooltipLines: ['Сумма к перечислению от МП', 'total_accrued из финансового отчёта', 'Данные по дате фин. операции (settlement-based)'],
+    tooltipLines: ['Сумма к перечислению от МП', 'total_accrued из финансового отчёта', 'Данные по дате фин. операции (settlement-based)', 'Оценка без задержки -- "Прибыль (оценка)"'],
     icon: Banknote,
     accent: 'sky',
     format: 'currency',
@@ -165,7 +167,7 @@ export const WIDGET_DEFINITIONS: WidgetDefinition[] = [
     mobileTitle: 'Удержания',
     category: 'finance',
     axis: 'settlement',
-    tooltipLines: ['Комиссия + логистика + хранение + прочее', 'Из финансового отчёта МП', 'Данные по дате фин. операции (settlement-based)'],
+    tooltipLines: ['Комиссия + логистика + хранение + прочее', 'Из финансового отчёта МП', 'Данные по дате фин. операции (settlement-based)', 'Оценка без задержки -- "Удержания (заказы)"'],
     icon: Receipt,
     accent: 'slate',
     format: 'currency',
@@ -240,6 +242,100 @@ export const WIDGET_DEFINITIONS: WidgetDefinition[] = [
     defaultEnabled: false,
     tier: 'pro',
     dataDeps: ['costsTreeOzon', 'costsTreeWb'],
+  },
+
+  // ==================== FINANCE (ORDER-based, из mp_orders) ====================
+  {
+    id: 'order_commission',
+    title: 'Комиссия (заказы)',
+    mobileTitle: 'Комисс. зак.',
+    category: 'finance',
+    axis: 'order',
+    tooltipLines: [
+      'Комиссия МП из позаказных данных',
+      'Оценка из mp_orders (без задержки settlement)',
+      'Точные данные — в виджете "Комиссия МП" (финансы)',
+    ],
+    icon: Scale,
+    accent: 'slate',
+    format: 'currency',
+    defaultEnabled: false,
+    tier: 'pro',
+    dataDeps: ['orderSummary'],
+  },
+  {
+    id: 'order_logistics',
+    title: 'Логистика (заказы)',
+    mobileTitle: 'Логист. зак.',
+    category: 'finance',
+    axis: 'order',
+    tooltipLines: [
+      'Расходы на логистику из позаказных данных',
+      'Оценка из mp_orders (без задержки settlement)',
+      'Точные данные — в виджете "Логистика" (финансы)',
+    ],
+    icon: Truck,
+    accent: 'slate',
+    format: 'currency',
+    defaultEnabled: false,
+    tier: 'pro',
+    dataDeps: ['orderSummary'],
+  },
+  {
+    id: 'order_deductions',
+    title: 'Удержания (заказы)',
+    mobileTitle: 'Удерж. зак.',
+    category: 'finance',
+    axis: 'order',
+    tooltipLines: [
+      'Все удержания МП из позаказных данных',
+      'commission + logistics + storage + other_fees',
+      'Оценка из mp_orders (без задержки settlement)',
+      'Точные данные — в виджете "Удержания МП" (финансы)',
+    ],
+    icon: Receipt,
+    accent: 'slate',
+    format: 'currency',
+    defaultEnabled: false,
+    tier: 'pro',
+    dataDeps: ['orderSummary'],
+  },
+  {
+    id: 'order_est_profit',
+    title: 'Прибыль (оценка)',
+    mobileTitle: 'Прибыль ~',
+    category: 'finance',
+    axis: 'order',
+    tooltipLines: [
+      'Оценочная прибыль из позаказных данных',
+      'payout - purchase (payout уже за вычетом удержаний)',
+      'Без задержки settlement (1-14 дней)',
+      'Точные данные -- в виджете "Чистая прибыль" (финансы)',
+    ],
+    icon: DollarSign,
+    accent: 'emerald',
+    format: 'currency',
+    defaultEnabled: false,
+    tier: 'pro',
+    dataDeps: ['orderSummary'],
+  },
+  {
+    id: 'settled_ratio',
+    title: 'Проведено %',
+    mobileTitle: 'Провед.',
+    category: 'finance',
+    axis: 'order',
+    tooltipLines: [
+      'Доля проведённых заказов',
+      'settled_count / orders_count * 100%',
+      'Показывает актуальность финансовых данных',
+    ],
+    icon: CheckCircle,
+    accent: 'sky',
+    format: 'percent',
+    defaultEnabled: false,
+    tier: 'pro',
+    dataDeps: ['orderSummary'],
   },
 
   // ==================== ADS ====================

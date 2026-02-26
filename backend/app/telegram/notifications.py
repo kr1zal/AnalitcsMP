@@ -140,6 +140,32 @@ async def build_summary_message(user_id: str, use_yesterday: bool = True) -> Opt
             f"Реклама: <b>{_format_currency(ad_cost)}</b> (ДРР {drr:.1f}%)",
         ]
 
+        # Order-based deductions estimate from mp_orders (no settlement delay)
+        try:
+            order_result = (
+                supabase.table("mp_orders")
+                .select("commission, logistics, storage_fee, other_fees")
+                .eq("user_id", user_id)
+                .gte("order_date", f"{date_main}T00:00:00")
+                .lte("order_date", f"{date_main}T23:59:59")
+                .execute()
+            )
+            order_rows = order_result.data or []
+            if order_rows:
+                total_deductions = sum(
+                    float(r.get("commission") or 0)
+                    + float(r.get("logistics") or 0)
+                    + float(r.get("storage_fee") or 0)
+                    + float(r.get("other_fees") or 0)
+                    for r in order_rows
+                )
+                if total_deductions > 0:
+                    lines.append(
+                        f"Удержания МП: ~<b>{_format_currency(total_deductions)}</b> (оценка)"
+                    )
+        except Exception as e:
+            logger.warning(f"Order-based deductions failed, skipping: {e}")
+
         # P6: Anomaly alerts — reuse already-loaded data (no extra RPC)
         try:
             anomalies = check_anomalies_from_data(

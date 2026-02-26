@@ -159,6 +159,20 @@ export const useProducts = (marketplace?: Marketplace, opts?: QueryOpts) => {
 };
 
 /**
+ * Hook для получения order-based summary из mp_orders.
+ * Pro+ фича. Позаказная аналитика: commission, logistics, storage, profit estimate.
+ */
+export const useOrderSummary = (filters?: DashboardFilters, opts?: QueryOpts) => {
+  return useQuery({
+    queryKey: ['dashboard', 'order-summary', filters],
+    queryFn: () => dashboardApi.getOrderSummary(filters),
+    staleTime: 1000 * 60 * 5,
+    refetchInterval: 1000 * 60 * 5,
+    enabled: opts?.enabled ?? true,
+  });
+};
+
+/**
  * Hook для получения истории остатков (для графика динамики)
  */
 export const useStockHistory = (

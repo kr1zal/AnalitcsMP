@@ -42,8 +42,10 @@ import {
   useProducts,
   useCostsTree,
   useUnitEconomics,
+  useOrderSummary,
 } from '../hooks/useDashboard';
 import { useFiltersStore } from '../store/useFiltersStore';
+import { useDashboardLayoutStore } from '../store/useDashboardLayoutStore';
 import { fillDailySeriesYmd, formatCurrency, formatNumber, getDateRangeFromPreset } from '../lib/utils';
 import { useSalesPlanCompletion } from '../hooks/useSalesPlan';
 import type { CostsTreeResponse, Marketplace, MpProfitData } from '../types';
@@ -124,6 +126,8 @@ function describeRequestUrl(err: unknown): string | null {
   // избегаем двойных слешей
   return `${String(baseURL).replace(/\/+$/, '')}/${String(url).replace(/^\/+/, '')}`;
 }
+
+const ORDER_SUMMARY_WIDGETS = ['order_commission', 'order_logistics', 'order_deductions', 'order_est_profit', 'settled_ratio'] as const;
 
 export const DashboardPage = () => {
   const { datePreset, marketplace, fulfillmentType, customDateFrom, customDateTo } = useFiltersStore();
@@ -216,6 +220,14 @@ export const DashboardPage = () => {
 
   // Widget Dashboard config (DnD layout, enabled widgets)
   useDashboardConfig();
+
+  // Order-based summary (mp_orders aggregation) — lazy loaded only when order widgets are enabled
+  const enabledWidgets = useDashboardLayoutStore((s) => s.enabledWidgets);
+  const hasOrderWidgets = enabledWidgets.some((id) => (ORDER_SUMMARY_WIDGETS as readonly string[]).includes(id));
+  const orderSummaryEnabled = hasOrderWidgets && Boolean(subscription?.features?.unit_economics);
+  const { data: orderSummaryData, isLoading: orderSummaryLoading } = useOrderSummary(filters, {
+    enabled: orderSummaryEnabled,
+  });
 
   // Товары для бокового фильтра (используем глобальный marketplace)
   const { data: productsData } = useProducts(marketplace);
@@ -655,6 +667,34 @@ export const DashboardPage = () => {
         accentOverride: oosCount > 0 ? 'red' : 'emerald',
       },
 
+      // ── Order-based finance (mp_orders) ──
+      order_commission: {
+        value: orderSummaryData?.totals?.commission ?? 0,
+      },
+      order_logistics: {
+        value: orderSummaryData?.totals?.logistics ?? 0,
+        subtitle: orderSummaryData?.totals?.logistics_note,
+      },
+      order_deductions: {
+        value: orderSummaryData?.totals?.total_deductions ?? 0,
+        secondaryValue: orderSummaryData?.totals?.orders_count
+          ? `${orderSummaryData.totals.orders_count} заказов`
+          : undefined,
+      },
+      order_est_profit: {
+        value: orderSummaryData?.totals?.estimated_profit ?? 0,
+        accentOverride: (orderSummaryData?.totals?.estimated_profit ?? 0) >= 0 ? 'emerald' : 'red',
+        secondaryValue: orderSummaryData?.totals?.payout
+          ? `payout ${formatCurrency(orderSummaryData.totals.payout)}`
+          : undefined,
+      },
+      settled_ratio: {
+        value: `${orderSummaryData?.totals?.settled_ratio ?? 0}%`,
+        secondaryValue: orderSummaryData?.totals
+          ? `${orderSummaryData.totals.settled_count} / ${orderSummaryData.totals.orders_count}`
+          : undefined,
+      },
+
       // ── Plan ──
       plan_completion: {
         value: `${Math.round(planPct)}%`,
@@ -682,6 +722,7 @@ export const DashboardPage = () => {
       stocks: stocksLoading,
       planCompletion: planCompletionLoading,
       products: false,
+      orderSummary: orderSummaryLoading,
     };
 
     const result: Record<string, boolean> = {};
