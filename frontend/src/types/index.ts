@@ -763,6 +763,33 @@ export interface OrdersFilters extends DashboardFilters {
   sort_dir?: 'asc' | 'desc';
 }
 
+// ==================== ORDER SUMMARY (позаказная аналитика) ====================
+
+export interface OrderSummaryTotals {
+  commission: number;
+  logistics: number;
+  storage_fee: number;
+  other_fees: number;
+  total_deductions: number;
+  sale_amount: number;
+  payout: number;
+  purchase: number;
+  ads: number;
+  estimated_profit: number;
+  orders_count: number;
+  settled_count: number;
+  unsettled_count: number;
+  settled_ratio: number;
+  logistics_note?: string;
+}
+
+export interface OrderSummaryResponse {
+  status: 'success';
+  period: { from: string; to: string };
+  totals: OrderSummaryTotals;
+  by_marketplace: Record<string, OrderSummaryTotals>;
+}
+
 // ==================== ИСТОРИЯ ОСТАТКОВ ====================
 
 export interface StockHistorySeriesItem {

@@ -2839,6 +2839,7 @@ class SyncService:
                         "other_fees": round(other_cost, 2),
                         "payout": payout_val,
                         "settled": settled,
+                        "quantity": quantity,
                         "ozon_posting_status": f"{fulfillment}:{ozon_status}",
                         # FBO: нет region (fallback на city), warehouse_name
                         # FBS: region доступен, warehouse (не warehouse_name)
