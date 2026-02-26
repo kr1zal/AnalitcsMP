@@ -19,6 +19,7 @@ import { formatCurrency, formatPercent, cn } from '../../lib/utils';
 import { UeExpandedRow } from './UeExpandedRow';
 import {
   type AbcGrade,
+  type AbcMetric,
   type SortField,
   type SortDirection,
   type ProductFilter,
@@ -60,11 +61,13 @@ interface MpPlanEntry {
 interface UeTableProps {
   products: UnitEconomicsItem[];
   abcMap: Map<string, AbcGrade>;
+  abcMetric: AbcMetric;
+  onAbcMetricChange: (metric: AbcMetric) => void;
   planMap: Map<string, number>;
   mpBreakdown: Map<string, MpBreakdownEntry>;
   marketplace: Marketplace;
   hasAds: boolean;
-  hasReturns: boolean;
+  hasReturns?: boolean;
   hasPlan: boolean;
   totalProfit: number;
   /** Weighted completion from backend (Σactual/Σplan×100) */
@@ -147,8 +150,8 @@ function ContributionBar({ pct }: { pct: number }) {
 // ==================== MAIN COMPONENT ====================
 
 export function UeTable({
-  products, abcMap, planMap, mpBreakdown, marketplace,
-  hasAds, hasReturns: _hasReturns, hasPlan, totalProfit, totalPlanCompletion,
+  products, abcMap, abcMetric, onAbcMetricChange, planMap, mpBreakdown, marketplace,
+  hasAds, hasPlan, totalProfit, totalPlanCompletion,
   planPaceMap, matrixFilter, matrixProductIds, onMatrixClear,
   wbPlanMap, ozonPlanMap,
 }: UeTableProps) {
@@ -301,8 +304,8 @@ export function UeTable({
           </div>
         )}
 
-        {/* Filter tabs */}
-        <div className="flex flex-wrap gap-1 mt-2">
+        {/* Filter tabs + ABC metric toggle */}
+        <div className="flex flex-wrap items-center gap-1 mt-2">
           {FILTER_TABS.map((tab) => {
             const active = filter === tab.key;
             return (
@@ -322,6 +325,32 @@ export function UeTable({
           <span className="text-[10px] text-gray-400 self-center ml-1">
             {processed.length} из {products.length}
           </span>
+          {/* ABC metric toggle */}
+          <div className="flex items-center gap-0.5 ml-auto border border-gray-200 rounded-md p-0.5">
+            <span className="text-[9px] text-gray-400 px-1 hidden sm:inline">ABC:</span>
+            <button
+              onClick={() => onAbcMetricChange('profit')}
+              className={cn(
+                'px-1.5 py-0.5 text-[10px] rounded transition-colors',
+                abcMetric === 'profit'
+                  ? 'bg-gray-900 text-white'
+                  : 'text-gray-500 hover:bg-gray-50',
+              )}
+            >
+              Прибыль
+            </button>
+            <button
+              onClick={() => onAbcMetricChange('revenue')}
+              className={cn(
+                'px-1.5 py-0.5 text-[10px] rounded transition-colors',
+                abcMetric === 'revenue'
+                  ? 'bg-gray-900 text-white'
+                  : 'text-gray-500 hover:bg-gray-50',
+              )}
+            >
+              Выручка
+            </button>
+          </div>
         </div>
       </div>
 
@@ -337,7 +366,7 @@ export function UeTable({
               <SortableHeader field="mp_costs" label="Удерж." current={sortField} dir={sortDir} onSort={handleSort} />
               {hasAds && <SortableHeader field="ad_cost" label="Реклама" current={sortField} dir={sortDir} onSort={handleSort} />}
               <SortableHeader field="net_profit" label="Прибыль" current={sortField} dir={sortDir} onSort={handleSort} />
-              <SortableHeader field="margin" label="Маржа" current={sortField} dir={sortDir} onSort={handleSort} />
+              <SortableHeader field="margin" label="Рентаб." current={sortField} dir={sortDir} onSort={handleSort} />
               <SortableHeader field="unit_profit" label="На ед." current={sortField} dir={sortDir} onSort={handleSort} />
               {hasAds && <SortableHeader field="drr" label="ДРР" current={sortField} dir={sortDir} onSort={handleSort} />}
               <SortableHeader field="contribution" label="Доля" current={sortField} dir={sortDir} onSort={handleSort} />
@@ -611,7 +640,7 @@ export function UeTable({
                 </div>
               </div>
               <div>
-                <span className="text-gray-400">Маржа</span>
+                <span className="text-gray-400">Рентаб.</span>
                 <div className={cn('font-semibold', getMarginColor(avgMargin))}>
                   {formatPercent(avgMargin)}
                 </div>

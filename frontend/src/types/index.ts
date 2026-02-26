@@ -133,10 +133,8 @@ export interface DashboardSummaryWithPrevResponse {
     from: string;
     to: string;
   };
-  /**
-   * Скорректированная выручка с учётом "истинной" Ozon выручки из costs-tree.
-   */
-  adjusted_revenue: {
+  /** @deprecated Not used on frontend — backend returns this data but it's not consumed */
+  adjusted_revenue?: {
     current: number;
     previous: number;
     ozon_truth_current: number;
@@ -187,7 +185,8 @@ export interface UnitEconomicsResponse {
     to: string;
   };
   marketplace: Marketplace;
-  costs_tree_ratio: number;
+  /** @deprecated Always 1.0 since 19.02.2026 — kept for backward compatibility */
+  costs_tree_ratio?: number;
   total_ad_cost: number;
   total_payout: number;
   total_returns: number;

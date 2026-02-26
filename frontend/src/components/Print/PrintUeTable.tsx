@@ -39,7 +39,7 @@ export function PrintUeTable({ products, abcMap, showTotals, allProducts }: Prin
               {hasAds && <Th align="right">ДРР</Th>}
               <Th align="right">Прибыль</Th>
               <Th align="right">На ед.</Th>
-              <Th align="right">Маржа</Th>
+              <Th align="right">Рентаб.</Th>
             </tr>
           </thead>
           <tbody>

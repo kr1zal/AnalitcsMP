@@ -13,6 +13,7 @@ import type {
   StockItem,
   Marketplace,
 } from '../types';
+import { classifyABC } from '../components/UnitEconomics/ueHelpers';
 
 // ==================== ТИПЫ ====================
 
@@ -372,16 +373,22 @@ function createCostsSheet(
  * Лист 5: Unit-экономика
  */
 function createUnitEconomicsSheet(unitEconomics: UnitEconomicsItem[]): XLSX.WorkSheet {
+  // Compute ABC classification (by profit — default)
+  const abcMap = classifyABC(unitEconomics, 'profit');
+
   const headers = [
+    'ABC',
     'Товар',
     'Штрихкод',
     'Продажи шт.',
     'Выручка',
     'Удержания МП',
     'Закупка',
+    'Реклама',
     'Прибыль',
     'На единицу',
-    'Маржа %',
+    'Рентаб. %',
+    'ДРР %',
   ];
 
   const rows: (string | number)[][] = [headers];
@@ -391,17 +398,22 @@ function createUnitEconomicsSheet(unitEconomics: UnitEconomicsItem[]): XLSX.Work
       item.metrics.revenue > 0
         ? (item.metrics.net_profit / item.metrics.revenue) * 100
         : 0;
+    const drr = item.metrics.drr ?? 0;
+    const abc = abcMap.get(item.product.id) ?? 'C';
 
     rows.push([
+      abc,
       item.product.name,
       item.product.barcode,
       item.metrics.sales_count,
       item.metrics.revenue,
       item.metrics.mp_costs,
       item.metrics.purchase_costs,
+      item.metrics.ad_cost,
       item.metrics.net_profit,
       item.metrics.unit_profit,
       `${margin.toFixed(1)}%`,
+      `${drr.toFixed(1)}%`,
     ]);
   }
 
@@ -413,32 +425,39 @@ function createUnitEconomicsSheet(unitEconomics: UnitEconomicsItem[]): XLSX.Work
         revenue: acc.revenue + item.metrics.revenue,
         mp_costs: acc.mp_costs + item.metrics.mp_costs,
         purchase_costs: acc.purchase_costs + item.metrics.purchase_costs,
+        ad_cost: acc.ad_cost + item.metrics.ad_cost,
         net_profit: acc.net_profit + item.metrics.net_profit,
       }),
-      { sales_count: 0, revenue: 0, mp_costs: 0, purchase_costs: 0, net_profit: 0 }
+      { sales_count: 0, revenue: 0, mp_costs: 0, purchase_costs: 0, ad_cost: 0, net_profit: 0 }
     );
 
     const totalMargin =
       totals.revenue > 0 ? (totals.net_profit / totals.revenue) * 100 : 0;
     const avgUnitProfit =
       totals.sales_count > 0 ? totals.net_profit / totals.sales_count : 0;
+    const totalDrr =
+      totals.revenue > 0 ? (totals.ad_cost / totals.revenue) * 100 : 0;
 
     rows.push([]);
     rows.push([
+      '',
       'ИТОГО',
       '',
       totals.sales_count,
       totals.revenue,
       totals.mp_costs,
       totals.purchase_costs,
+      totals.ad_cost,
       totals.net_profit,
       Math.round(avgUnitProfit * 100) / 100,
       `${totalMargin.toFixed(1)}%`,
+      `${totalDrr.toFixed(1)}%`,
     ]);
   }
 
   const ws = XLSX.utils.aoa_to_sheet(rows);
   ws['!cols'] = [
+    { wch: 5 },
     { wch: 25 },
     { wch: 15 },
     { wch: 12 },
@@ -447,6 +466,8 @@ function createUnitEconomicsSheet(unitEconomics: UnitEconomicsItem[]): XLSX.Work
     { wch: 12 },
     { wch: 12 },
     { wch: 12 },
+    { wch: 12 },
+    { wch: 10 },
     { wch: 10 },
   ];
 

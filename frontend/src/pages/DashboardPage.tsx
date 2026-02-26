@@ -325,9 +325,14 @@ export const DashboardPage = () => {
   const previousPeriod = summaryData?.previous_period;
   const revenueChange = previousPeriod?.revenue_change_percent || 0;
 
-  const purchaseCostsForTile =
-    (typeof summary?.purchase_costs_total === 'number' ? summary.purchase_costs_total : null) ??
-    (unitEconomicsData?.products?.reduce((acc, p) => acc + (p.metrics.purchase_costs || 0), 0) ?? 0);
+  // Purchase: prefer UE (settlement-based for Ozon, consistent with costs-tree revenue axis)
+  const purchaseCostsForTile = (() => {
+    if (unitEconomicsData?.products) {
+      return unitEconomicsData.products.reduce((acc, p) => acc + (p.metrics.purchase_costs || 0), 0);
+    }
+    // Fallback to RPC (order-based) while UE is loading
+    return summary?.purchase_costs_total ?? 0;
+  })();
 
   const payoutForTile = (() => {
     if (marketplace === 'ozon') return ozonCostsTreeData?.total_accrued ?? null;
@@ -436,13 +441,16 @@ export const DashboardPage = () => {
   const netProfitForTile = (() => {
     if (!summary) return 0;
 
-    const ad = summary.ad_cost ?? 0;
+    // Prefer UE total profit (settlement-based, consistent with UE page and costs-tree revenue)
+    if (unitEconomicsData?.products) {
+      return unitEconomicsData.products.reduce((acc, p) => acc + (p.metrics.net_profit || 0), 0);
+    }
 
-    // Fallback: если по какой-то причине нет дерева — используем backend summary.
+    // Fallback while UE is loading: payout - purchase - ads
+    const ad = summary.ad_cost ?? 0;
     if (payoutForTile === null) {
       return summary.net_profit;
     }
-
     return payoutForTile - purchaseCostsForTile - ad;
   })();
 

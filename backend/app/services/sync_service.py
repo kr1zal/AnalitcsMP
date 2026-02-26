@@ -701,7 +701,7 @@ class SyncService:
                 analytics = await self.ozon_client.get_analytics_data(
                     date_from, date_to,
                     dimensions=["sku", "day"],
-                    metrics=["ordered_units", "revenue", "returns", "session_view", "hits_tocart"],
+                    metrics=["ordered_units", "revenue", "returns", "session_view", "hits_tocart", "delivered_units"],
                     limit=page_limit,
                     offset=offset
                 )
@@ -742,15 +742,28 @@ class SyncService:
                     logger.warning(f"Товар с barcode {barcode} не найден в БД")
                     continue
 
-                # Метрики: [ordered_units, revenue, returns, session_view, hits_tocart]
+                # Метрики: [ordered_units, revenue, returns, session_view, hits_tocart, delivered_units]
                 orders = int(metrics[0]) if len(metrics) > 0 else 0
                 revenue = float(metrics[1]) if len(metrics) > 1 else 0
                 returns = int(metrics[2]) if len(metrics) > 2 else 0
+                views = int(metrics[3]) if len(metrics) > 3 else 0
                 cart_adds = int(metrics[4]) if len(metrics) > 4 else 0
+                delivered = int(metrics[5]) if len(metrics) > 5 else 0
 
                 # Пропускаем дни без активности
                 if orders == 0 and revenue == 0 and returns == 0:
                     continue
+
+                # Используем delivered_units если доступен (точнее чем orders - returns)
+                sales_count = delivered if delivered > 0 else max(0, orders - returns)
+
+                # buyout% на основе лучших доступных данных
+                if delivered > 0 and orders > 0:
+                    buyout = round(delivered / orders * 100, 2)
+                elif orders > 0:
+                    buyout = round((orders - returns) / orders * 100, 2)
+                else:
+                    buyout = None
 
                 # Upsert с реальной датой
                 upsert_row = {
@@ -758,11 +771,12 @@ class SyncService:
                     "marketplace": "ozon",
                     "date": day_str,
                     "orders_count": orders,
-                    "sales_count": orders - returns,
+                    "sales_count": sales_count,
                     "returns_count": returns,
                     "revenue": revenue,
                     "cart_adds": cart_adds,
-                    "buyout_percent": round((orders - returns) / orders * 100, 2) if orders > 0 else None,
+                    "views": views,
+                    "buyout_percent": buyout,
                     "fulfillment_type": "FBO",
                 }
                 if self.user_id:
@@ -1648,19 +1662,51 @@ class SyncService:
 
         return records
 
+    # Маппинг delivery_schema → fulfillment_type (7 значений Ozon API)
+    DELIVERY_SCHEMA_MAP = {
+        "FBS": "FBS",
+        "FBO": "FBO",
+        "RFBS": "FBS",        # rFBS — доставка продавцом → аналог FBS
+        "FBP": "FBO",         # партнёрские склады → аналог FBO
+        "CROSSBORDER": "FBS", # трансграничная → аналог FBS
+        "FBOECONOMY": "FBO",  # эконом FBO → FBO
+        "FBSECONOMY": "FBS",  # эконом FBS → FBS
+    }
+
+    # Ключевые слова для определения логистических сервисов Ozon
+    LOGISTICS_SERVICE_KEYWORDS = ("Logistic", "LastMile", "DeliveryCost", "DeliveryKGT")
+
     # Маппинг operation_type → (category, subcategory) для tree-view
     OZON_COSTS_CATEGORY_MAP = {
         "OperationAgentDeliveredToCustomer": ("Продажи", "Выручка"),
+        "OperationAgentDeliveredToCustomerCanceled": ("Продажи", "Корректировка доставки"),
         "OperationItemReturn": ("Услуги доставки", "Возвраты"),
         "MarketplaceRedistributionOfAcquiringOperation": ("Услуги агентов", "Эквайринг"),
         "StarsMembership": ("Услуги агентов", "Звёздные товары"),
         "OperationMarketplaceServicePremiumCashbackIndividualPoints": ("Продвижение и реклама", "Бонусы продавца"),
         "OperationMarketplaceServiceStorage": ("Услуги FBO", "Размещение товаров"),
+        "OperationDefectiveWriteOff": ("Компенсации", "Бракованный товар"),
+        "OperationLackWriteOff": ("Компенсации", "Недостача товара"),
+        "MarketplaceSellerCompensationLossOfGoodsOperation": ("Компенсации", "Потерянный товар"),
+        "OperationElectronicServiceStencil": ("Продвижение и реклама", "Трафареты"),
+        "OperationElectronicServicesPromotionInSearch": ("Продвижение и реклама", "Продвижение в поиске"),
     }
 
-    # Товары, которые мы относим к группе "Витамины" (наша аналитическая группировка).
-    # ВАЖНО: это НЕ ставка/тариф из Ozon. Эффективные % считаются динамически в costs-tree как в ЛК.
-    VITAMIN_SKUS = {"1659212207", "1659298299", "1658273141", "1658286198"}  # D3+K2, L-карнитин, Магний+В6, Магний цитрат
+    def _get_ozon_product_subcategory(self, sku: str) -> str:
+        """
+        Динамическая классификация товара для costs-tree подкатегории.
+        Использует имя товара из mp_products вместо hardcoded SKU списков.
+        SKU -> barcode (ozon_sku_map) -> product name (products_map).
+        """
+        barcode = self.ozon_sku_map.get(str(sku))
+        if barcode:
+            products_map = self._get_products_map()
+            product = products_map.get(barcode, {})
+            name = product.get("name", "")
+            if name:
+                # Обрезаем длинные имена для аккуратного отображения в tree
+                return name[:50] if len(name) > 50 else name
+        return "Прочее"
 
     def _classify_ozon_operation(self, op: dict) -> list[dict]:
         """
@@ -1692,12 +1738,9 @@ class SyncService:
                     "allocation": "order",
                 })
             if sale_commission:
-                # Наша аналитическая группировка (не "тариф").
+                # Динамическая классификация: используем имя товара из mp_products
                 sku = str(items[0].get("sku", "")) if items else ""
-                if sku in self.VITAMIN_SKUS:
-                    sub = "Витамины"
-                else:
-                    sub = "Прочее"
+                sub = self._get_ozon_product_subcategory(sku)
                 records.append({
                     "category": "Вознаграждение Ozon",
                     "subcategory": sub,
@@ -1721,7 +1764,7 @@ class SyncService:
                         "operation_type": op_type,
                         "allocation": "order",
                     })
-                elif "Logistic" in svc_name:
+                elif any(kw in svc_name for kw in self.LOGISTICS_SERVICE_KEYWORDS):
                     records.append({
                         "category": "Услуги доставки",
                         "subcategory": "Логистика",
@@ -1780,6 +1823,82 @@ class SyncService:
                 "allocation": "order",
             })
 
+        # --- Новые operation_types (Phase 6) ---
+
+        elif op_type == "OperationAgentDeliveredToCustomerCanceled":
+            # Корректировка/отмена доставки — реверс начисления
+            if amount != 0:
+                records.append({
+                    "category": "Продажи",
+                    "subcategory": "Корректировка доставки",
+                    "amount": amount,
+                    "operation_type": op_type,
+                    "allocation": "order",
+                })
+            # Сервисы логистики (реверс)
+            for svc in services:
+                svc_price = float(svc.get("price", 0))
+                if svc_price == 0:
+                    continue
+                svc_name = svc.get("name", "")
+                if "LastMile" in svc_name:
+                    records.append({
+                        "category": "Услуги агентов",
+                        "subcategory": "Доставка до места выдачи",
+                        "amount": svc_price,
+                        "operation_type": op_type,
+                        "allocation": "order",
+                    })
+                elif any(kw in svc_name for kw in self.LOGISTICS_SERVICE_KEYWORDS):
+                    records.append({
+                        "category": "Услуги доставки",
+                        "subcategory": "Логистика",
+                        "amount": svc_price,
+                        "operation_type": op_type,
+                        "allocation": "order",
+                    })
+                else:
+                    records.append({
+                        "category": "Прочее",
+                        "subcategory": svc_name or "Прочие услуги",
+                        "amount": svc_price,
+                        "operation_type": op_type,
+                        "allocation": "order",
+                    })
+
+        elif op_type in ("OperationDefectiveWriteOff", "OperationLackWriteOff",
+                         "MarketplaceSellerCompensationLossOfGoodsOperation"):
+            # Компенсации за бракованный/недостающий/потерянный товар
+            subcategory_map = {
+                "OperationDefectiveWriteOff": "Бракованный товар",
+                "OperationLackWriteOff": "Недостача товара",
+                "MarketplaceSellerCompensationLossOfGoodsOperation": "Потерянный товар",
+            }
+            if amount != 0:
+                records.append({
+                    "category": "Компенсации",
+                    "subcategory": subcategory_map[op_type],
+                    "amount": amount,
+                    "operation_type": op_type,
+                    "allocation": "order",
+                })
+
+        elif op_type in ("OperationElectronicServiceStencil",
+                         "OperationElectronicServicesPromotionInSearch"):
+            # Рекламные услуги (трафареты, продвижение в поиске)
+            subcategory_map = {
+                "OperationElectronicServiceStencil": "Трафареты",
+                "OperationElectronicServicesPromotionInSearch": "Продвижение в поиске",
+            }
+            if amount != 0:
+                records.append({
+                    "category": "Продвижение и реклама",
+                    "subcategory": subcategory_map[op_type],
+                    "amount": amount,
+                    "operation_type": op_type,
+                    "allocation": "order",
+                })
+
         else:
             # Неизвестный тип — сохраняем как "Прочее"
             if amount != 0:
@@ -1796,30 +1915,40 @@ class SyncService:
         """Синхронизация удержаний с Ozon (mp_costs + mp_costs_details)"""
         started_at = datetime.now()
         date_to = date_to or datetime.now()
-        # Ozon finance API allows max 1 month period
-        max_period = timedelta(days=30)
-        if (date_to - date_from) > max_period:
-            date_from = date_to - max_period
         records_count = 0
         details_count = 0
 
         try:
             products_map = self._get_products_map()
 
-            # Получаем все транзакции с пагинацией
+            # Ozon finance API allows max 30 days per request.
+            # Split into 30-day chunks for longer periods (max 12 chunks = ~1 year).
+            chunk_size = timedelta(days=30)
             all_operations = []
-            page = 1
-            while True:
-                result = await self.ozon_client.get_finance_transaction_list(date_from, date_to, page=page)
-                operations = result.get("result", {}).get("operations", [])
-                if not operations:
-                    break
-                all_operations.extend(operations)
-                page += 1
-                if page > 20:  # safety limit
-                    break
+            chunk_from = date_from
+            chunk_count = 0
+            max_chunks = 12  # safety limit: ~1 year
 
-            logger.info(f"Ozon finance: получено {len(all_operations)} операций за {date_from.strftime('%Y-%m-%d')} - {date_to.strftime('%Y-%m-%d')}")
+            while chunk_from < date_to and chunk_count < max_chunks:
+                chunk_to = min(chunk_from + chunk_size, date_to)
+
+                # Получаем транзакции для текущего чанка с пагинацией
+                page = 1
+                while True:
+                    result = await self.ozon_client.get_finance_transaction_list(chunk_from, chunk_to, page=page)
+                    operations = result.get("result", {}).get("operations", [])
+                    if not operations:
+                        break
+                    all_operations.extend(operations)
+                    page += 1
+                    if page > 20:  # safety limit per chunk
+                        break
+
+                logger.info(f"Ozon finance chunk {chunk_count + 1}: {len(all_operations)} ops total, period {chunk_from.strftime('%Y-%m-%d')} - {chunk_to.strftime('%Y-%m-%d')}")
+                chunk_from = chunk_to + timedelta(days=1)
+                chunk_count += 1
+
+            logger.info(f"Ozon finance: получено {len(all_operations)} операций за {date_from.strftime('%Y-%m-%d')} - {date_to.strftime('%Y-%m-%d')} ({chunk_count} chunks)")
 
             # === 1. Агрегация для mp_costs ===
             costs_agg = {}  # {(barcode, date, ft): {commission, logistics, ...}}
@@ -1832,10 +1961,10 @@ class SyncService:
                 sale_commission = float(op.get("sale_commission", 0))
                 services = op.get("services", [])
 
-                # Определяем FBO/FBS из posting.delivery_schema
+                # Определяем FBO/FBS из posting.delivery_schema (7 значений)
                 posting = op.get("posting", {}) or {}
                 delivery_schema = str(posting.get("delivery_schema") or "").upper()
-                ft = "FBS" if delivery_schema == "FBS" else "FBO"
+                ft = self.DELIVERY_SCHEMA_MAP.get(delivery_schema, "FBO")
 
                 for item in items:
                     sku = str(item.get("sku", ""))
@@ -1865,8 +1994,20 @@ class SyncService:
                         for svc in services:
                             svc_name = svc.get("name", "")
                             svc_price = abs(float(svc.get("price", 0)))
-                            if "Logistic" in svc_name or "LastMile" in svc_name:
+                            if any(kw in svc_name for kw in self.LOGISTICS_SERVICE_KEYWORDS):
                                 costs_agg[key]["logistics"] += svc_price
+
+                    elif op_type == "OperationAgentDeliveredToCustomerCanceled":
+                        # Реверс доставки — ВЫЧИТАЕМ ранее начисленные удержания
+                        costs_agg[key]["commission"] -= abs(sale_commission)
+                        for svc in services:
+                            svc_name = svc.get("name", "")
+                            svc_price = abs(float(svc.get("price", 0)))
+                            if any(kw in svc_name for kw in self.LOGISTICS_SERVICE_KEYWORDS):
+                                costs_agg[key]["logistics"] -= svc_price
+                            else:
+                                costs_agg[key]["other"] -= svc_price
+
                     elif op_type == "OperationItemReturn":
                         for svc in services:
                             costs_agg[key]["logistics"] += abs(float(svc.get("price", 0)))
@@ -1876,6 +2017,14 @@ class SyncService:
                         costs_agg[key]["storage"] += abs(amount)
                     elif op_type == "OperationMarketplaceServicePremiumCashbackIndividualPoints":
                         costs_agg[key]["promotion"] += abs(amount)
+                    elif op_type in ("OperationElectronicServiceStencil",
+                                     "OperationElectronicServicesPromotionInSearch"):
+                        # Рекламные услуги — трафареты, продвижение в поиске
+                        costs_agg[key]["promotion"] += abs(amount)
+                    elif op_type in ("OperationDefectiveWriteOff", "OperationLackWriteOff",
+                                     "MarketplaceSellerCompensationLossOfGoodsOperation"):
+                        # Компенсации за товар
+                        costs_agg[key]["other"] += abs(amount)
                     elif op_type == "StarsMembership":
                         costs_agg[key]["other"] += abs(amount)
                     else:
@@ -1916,10 +2065,10 @@ class SyncService:
                 items = op.get("items", [])
                 operation_id = str(op.get("operation_id", ""))
 
-                # Определяем FBO/FBS
+                # Определяем FBO/FBS (7 значений delivery_schema)
                 posting = op.get("posting", {}) or {}
                 delivery_schema = str(posting.get("delivery_schema") or "").upper()
-                ft = "FBS" if delivery_schema == "FBS" else "FBO"
+                ft = self.DELIVERY_SCHEMA_MAP.get(delivery_schema, "FBO")
 
                 detail_records = self._classify_ozon_operation(op)
 
@@ -2209,6 +2358,7 @@ class SyncService:
                         clicks = row.get("clicks", 0)
                         cost = float(row.get("expense", 0))
                         orders = row.get("orders", 0)
+                        ad_revenue = float(row.get("ad_revenue", 0))
 
                         # Пропускаем дни без активности
                         if views == 0 and clicks == 0 and cost == 0:
@@ -2229,6 +2379,7 @@ class SyncService:
                             "orders_count": orders,
                             "ctr": ctr,
                             "cpc": cpc,
+                            "ad_revenue": ad_revenue,
                         }
                         if self.user_id:
                             insert_row["user_id"] = self.user_id
@@ -2513,7 +2664,7 @@ class SyncService:
 
             # FBS отправления
             offset = 0
-            limit = 100
+            limit = 1000
             while True:
                 result = await self.ozon_client.get_posting_fbs_list(date_from, date_to, limit=limit, offset=offset)
                 postings = result.get("result", {}).get("postings", [])
@@ -2544,16 +2695,23 @@ class SyncService:
 
             # Маппинг статусов Ozon → наши статусы
             STATUS_MAP = {
+                # Общие для FBS и FBO (5 статусов FBO)
                 "delivered": "sold",
                 "cancelled": "cancelled",
                 "awaiting_packaging": "ordered",
                 "awaiting_deliver": "ordered",
                 "delivering": "delivering",
+                # FBS-only статусы
                 "acceptance_in_progress": "ordered",
                 "awaiting_registration": "ordered",
                 "not_accepted": "cancelled",
                 "arbitration": "returned",
                 "client_arbitration": "returned",
+                "awaiting_approve": "ordered",
+                "awaiting_verification": "ordered",
+                "driver_pickup": "delivering",
+                "sent_by_seller": "delivering",
+                "cancelled_from_split_pending": "cancelled",
             }
 
             batch = []
@@ -2597,8 +2755,6 @@ class SyncService:
                     # FBO: financial_data.products[] (per-product commission/payout)
                     # FBS: financial_data.commission_amount, financial_data.payout (top-level)
                     commission_amount = 0.0
-                    logistics_cost = 0.0
-                    other_cost = 0.0
                     payout_val = None
 
                     fin_products = financial.get("products", [])
@@ -2626,6 +2782,42 @@ class SyncService:
                         commission_amount = abs(float(financial.get("commission_amount", 0) or 0)) / product_count
                         payout_val = float(financial.get("payout", 0) or 0) / product_count if financial.get("payout") else None
 
+                    # --- Парсинг posting_services + item_services (логистика, фулфилмент, возвраты) ---
+                    # FBS: posting_services заполнены, item_services = deprecated/нули
+                    # FBO: posting_services = нули, item_services заполнены (per-product)
+                    # Стратегия: posting_services делятся на кол-во товаров + item_services конкретного товара
+                    posting_services = financial.get("posting_services", {}) or {}
+                    product_count = len(products_list)
+                    # item_services per-product (НЕ суммарные по всем products)
+                    product_item_services = {}
+                    if fin_products and idx < len(fin_products):
+                        for svc_key, svc_val in (fin_products[idx].get("item_services", {}) or {}).items():
+                            product_item_services[svc_key] = abs(float(svc_val or 0))
+
+                    def _get_svc(key):
+                        # posting_services — общие на весь posting, делим на product_count
+                        ps_val = abs(float(posting_services.get(key, 0) or 0)) / product_count
+                        return ps_val + product_item_services.get(key, 0)
+
+                    logistics_cost = sum([
+                        _get_svc("marketplace_service_item_deliv_to_customer"),
+                        _get_svc("marketplace_service_item_direct_flow_trans"),
+                        _get_svc("marketplace_service_item_return_flow_trans"),
+                        _get_svc("marketplace_service_item_pickup"),
+                    ])
+                    fulfillment_cost = sum([
+                        _get_svc("marketplace_service_item_dropoff_ff"),
+                        _get_svc("marketplace_service_item_dropoff_pvz"),
+                        _get_svc("marketplace_service_item_dropoff_sc"),
+                        _get_svc("marketplace_service_item_fulfillment"),
+                    ])
+                    return_cost = sum([
+                        _get_svc("marketplace_service_item_return_after_deliv_to_customer"),
+                        _get_svc("marketplace_service_item_return_not_deliv_to_customer"),
+                        _get_svc("marketplace_service_item_return_part_goods_customer"),
+                    ])
+                    other_cost = fulfillment_cost + return_cost
+
                     settled = our_status == "sold" and payout_val is not None and payout_val > 0
 
                     fulfillment = posting.get("_fulfillment", "FBO")
@@ -2648,11 +2840,33 @@ class SyncService:
                         "payout": payout_val,
                         "settled": settled,
                         "ozon_posting_status": f"{fulfillment}:{ozon_status}",
-                        "region": analytics.get("region"),
-                        "warehouse": analytics.get("warehouse_name"),
+                        # FBO: нет region (fallback на city), warehouse_name
+                        # FBS: region доступен, warehouse (не warehouse_name)
+                        "region": (
+                            analytics.get("city", "")
+                            if fulfillment == "FBO"
+                            else analytics.get("region", "") or analytics.get("city", "")
+                        ),
+                        "warehouse": (
+                            analytics.get("warehouse_name", "")
+                            if fulfillment == "FBO"
+                            else analytics.get("warehouse", "") or analytics.get("warehouse_name", "")
+                        ),
                         "updated_at": datetime.now().isoformat(),
                         "fulfillment_type": fulfillment,
                     }
+
+                    # Причины отмен (Phase 5)
+                    if fulfillment == "FBS":
+                        cancellation = posting.get("cancellation", {}) or {}
+                        row["cancel_reason"] = (cancellation.get("cancel_reason", "") or "")[:200]
+                        row["cancellation_initiator"] = (cancellation.get("cancellation_initiator", "") or "")[:20]
+                    else:
+                        # FBO: только cancel_reason_id (число), нет cancellation объекта
+                        cancel_id = posting.get("cancel_reason_id")
+                        row["cancel_reason"] = str(cancel_id)[:200] if cancel_id else ""
+                        row["cancellation_initiator"] = ""
+
                     if self.user_id:
                         row["user_id"] = self.user_id
                     batch.append(row)

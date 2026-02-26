@@ -1,9 +1,12 @@
 """
 Роутер для дашборда - сводная аналитика
 """
+import logging
 from fastapi import APIRouter, HTTPException, Query, Depends
 from typing import Optional
 from datetime import datetime, timedelta
+
+logger = logging.getLogger(__name__)
 
 from ...db.supabase import get_supabase_client
 from ...auth import CurrentUser, get_current_user
@@ -367,8 +370,9 @@ async def get_unit_economics(
                             elif amount > 0:
                                 # Положительные: СПП, возмещения и т.д.
                                 costs_tree_credits += amount
-        except Exception:
-            pass  # Если costs-tree недоступен — fallback на mp_sales/mp_costs
+        except Exception as e:
+            logger.warning(f"costs-tree RPC failed for unit-economics (marketplace={marketplace}): {e}")
+            # fallback на mp_sales/mp_costs
 
         # revenue с учётом credits (для отображения: "Продажи" вкл. СПП)
         costs_tree_revenue = costs_tree_sales + costs_tree_credits
@@ -1219,8 +1223,9 @@ async def get_order_funnel(
                 unsettled_amount = round(total_revenue - settled_revenue, 2)
                 ratio = settled_revenue / total_revenue
                 unsettled_orders = max(0, total_orders - round(total_orders * ratio))
-        except Exception:
-            pass  # Если costs-tree недоступен, просто не показываем unsettled
+        except Exception as e:
+            logger.warning(f"costs-tree RPC failed for order-funnel unsettled calc: {e}")
+            # Если costs-tree недоступен, просто не показываем unsettled
 
         # 6. Summary
         buyout_percent = round(total_sales / total_orders * 100, 1) if total_orders > 0 else 0

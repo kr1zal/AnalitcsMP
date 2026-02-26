@@ -2,11 +2,12 @@
  * Хелперы для Unit Economics enterprise page
  * ABC-классификация, smart alerts, margin/color utilities
  */
-import type { UnitEconomicsItem } from '../../types';
+import type { UnitEconomicsItem, ProductMetrics } from '../../types';
 
 // ==================== TYPES ====================
 
 export type AbcGrade = 'A' | 'B' | 'C';
+export type AbcMetric = 'profit' | 'revenue';
 export type SortField =
   | 'name' | 'sales_count' | 'revenue' | 'purchase_costs'
   | 'mp_costs' | 'ad_cost' | 'drr' | 'net_profit'
@@ -41,7 +42,7 @@ export const FILTER_TABS: { key: ProductFilter; label: string; mobileLabel: stri
 export const SORT_OPTIONS: { value: SortField; label: string }[] = [
   { value: 'net_profit', label: 'Прибыль' },
   { value: 'revenue', label: 'Выручка' },
-  { value: 'margin', label: 'Маржа' },
+  { value: 'margin', label: 'Рентаб.' },
   { value: 'sales_count', label: 'Продажи' },
   { value: 'unit_profit', label: 'На ед.' },
   { value: 'name', label: 'Название' },
@@ -88,29 +89,63 @@ export function getRowBg(margin: number, profit: number): string {
 
 // ==================== ABC CLASSIFICATION ====================
 
-export function classifyABC(products: UnitEconomicsItem[]): Map<string, AbcGrade> {
-  const profitable = products
-    .filter((p) => p.metrics.net_profit > 0)
-    .sort((a, b) => b.metrics.net_profit - a.metrics.net_profit);
-
-  const totalProfit = profitable.reduce((s, p) => s + p.metrics.net_profit, 0);
+/**
+ * ABC-классификация по выбранной метрике (profit или revenue).
+ * Пороги: A=80%, B=95%, C=rest. Loss=always C (только при metric='profit').
+ */
+export function classifyABC(
+  products: UnitEconomicsItem[],
+  metric: AbcMetric = 'profit',
+): Map<string, AbcGrade> {
   const map = new Map<string, AbcGrade>();
 
-  if (totalProfit <= 0) {
-    for (const p of products) map.set(p.product.id, 'C');
-    return map;
-  }
+  if (metric === 'profit') {
+    const profitable = products
+      .filter((p) => p.metrics.net_profit > 0)
+      .sort((a, b) => b.metrics.net_profit - a.metrics.net_profit);
 
-  let cumulative = 0;
-  for (const p of profitable) {
-    cumulative += p.metrics.net_profit;
-    const pct = (cumulative / totalProfit) * 100;
-    map.set(p.product.id, pct <= 80 ? 'A' : pct <= 95 ? 'B' : 'C');
-  }
+    const totalProfit = profitable.reduce((s, p) => s + p.metrics.net_profit, 0);
 
-  // Loss-making = always C
-  for (const p of products) {
-    if (!map.has(p.product.id)) map.set(p.product.id, 'C');
+    if (totalProfit <= 0) {
+      for (const p of products) map.set(p.product.id, 'C');
+      return map;
+    }
+
+    let cumulative = 0;
+    for (const p of profitable) {
+      cumulative += p.metrics.net_profit;
+      const pct = (cumulative / totalProfit) * 100;
+      map.set(p.product.id, pct <= 80 ? 'A' : pct <= 95 ? 'B' : 'C');
+    }
+
+    // Loss-making = always C
+    for (const p of products) {
+      if (!map.has(p.product.id)) map.set(p.product.id, 'C');
+    }
+  } else {
+    // ABC by revenue — все товары с revenue > 0
+    const withRevenue = products
+      .filter((p) => p.metrics.revenue > 0)
+      .sort((a, b) => b.metrics.revenue - a.metrics.revenue);
+
+    const totalRevenue = withRevenue.reduce((s, p) => s + p.metrics.revenue, 0);
+
+    if (totalRevenue <= 0) {
+      for (const p of products) map.set(p.product.id, 'C');
+      return map;
+    }
+
+    let cumulative = 0;
+    for (const p of withRevenue) {
+      cumulative += p.metrics.revenue;
+      const pct = (cumulative / totalRevenue) * 100;
+      map.set(p.product.id, pct <= 80 ? 'A' : pct <= 95 ? 'B' : 'C');
+    }
+
+    // No revenue = C
+    for (const p of products) {
+      if (!map.has(p.product.id)) map.set(p.product.id, 'C');
+    }
   }
 
   return map;
@@ -139,7 +174,7 @@ export function getAlerts(item: UnitEconomicsItem): AlertItem[] {
     alerts.push({
       key: 'margin_low',
       icon: 'margin_low',
-      tooltip: `Маржа ${margin.toFixed(1)}% — ниже 5%`,
+      tooltip: `Рентабельность ${margin.toFixed(1)}% — ниже 5%`,
       color: 'text-amber-500',
     });
   }
@@ -165,6 +200,18 @@ export function getContribution(item: UnitEconomicsItem, totalProfit: number): n
 
 // ==================== SORTING ====================
 
+/** Sortable numeric fields from ProductMetrics */
+const METRIC_SORT_FIELDS: Record<string, keyof ProductMetrics> = {
+  sales_count: 'sales_count',
+  revenue: 'revenue',
+  purchase_costs: 'purchase_costs',
+  mp_costs: 'mp_costs',
+  ad_cost: 'ad_cost',
+  drr: 'drr',
+  net_profit: 'net_profit',
+  unit_profit: 'unit_profit',
+};
+
 export function getSortValue(
   item: UnitEconomicsItem,
   field: SortField,
@@ -175,7 +222,10 @@ export function getSortValue(
     case 'margin': return getMargin(item);
     case 'contribution': return getContribution(item, extras.totalProfit ?? 0);
     case 'plan_completion': return extras.planMap?.get(item.product.id) ?? -1;
-    default: return (item.metrics as unknown as Record<string, number>)[field] ?? 0;
+    default: {
+      const metricKey = METRIC_SORT_FIELDS[field];
+      return metricKey ? (item.metrics[metricKey] ?? 0) : 0;
+    }
   }
 }
 
