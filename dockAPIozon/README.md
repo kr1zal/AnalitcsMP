@@ -45,6 +45,9 @@
 | 031 | `031_storage_costs.sql` | 5.md | `mp_storage_costs` (legacy) |
 | 032 | `032_storage_costs_daily.sql` | 5.md | `mp_storage_costs_daily` (daily per-product) |
 | 033 | `033_delivery_date.sql` | 12.md | `delivery_date` в mp_orders + throttle |
+| 034 | `034_mp_orders_quantity.sql` | -- | `quantity INT` в mp_orders (DATA-001) |
+| 035 | `035_scale_fixes.sql` | -- | SUPERSEDED by 035b |
+| 035b | `035b_scale_fixes_v2.sql` | -- | `posting_number` idx + 2 RPC (batch_update, get_ozon_ue_delivered) |
 
 ## Как копировать с docs.ozon.ru
 

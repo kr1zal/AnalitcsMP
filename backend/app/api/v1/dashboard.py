@@ -428,80 +428,50 @@ async def get_unit_economics(
 
         try:
             if not marketplace or marketplace in ("all", "ozon"):
-                # Step A: Check if we have delivery_date data in mp_orders for this period.
-                # If yes → filter mp_costs_details by order_dates of delivered orders.
-                # If no → fallback to current order_date-based filtering.
-                delivered_order_dates_by_product: dict[str, set[str]] = {}  # {product_id: {order_date, ...}}
+                # Step A: Try RPC get_ozon_ue_delivered (Rule #49: single SQL, exact JOIN)
+                # Returns both delivered orders (source='order') and their costs (source='cost')
+                # Uses posting_number JOIN (exact) with order_date fallback (legacy data)
                 try:
-                    delivery_q = (
-                        supabase.table("mp_orders")
-                        .select("product_id, order_date, delivery_date")
-                        .eq("user_id", current_user.id)
-                        .eq("marketplace", "ozon")
-                        .not_.is_("delivery_date", "null")
-                        .gte("delivery_date", f"{date_from}T00:00:00")
-                        .lte("delivery_date", f"{date_to}T23:59:59")
-                        .limit(10000)
-                    )
+                    rpc_params = {
+                        "p_user_id": current_user.id,
+                        "p_date_from": date_from,
+                        "p_date_to": date_to,
+                    }
                     if fulfillment_type:
-                        delivery_q = delivery_q.eq("fulfillment_type", fulfillment_type)
-                    delivery_result = delivery_q.execute()
+                        rpc_params["p_fulfillment_type"] = fulfillment_type
+                    rpc_result = supabase.rpc("get_ozon_ue_delivered", rpc_params).execute()
 
-                    if delivery_result.data and len(delivery_result.data) > 0:
-                        using_delivery_date = True
-                        for drow in delivery_result.data:
-                            dpid = drow.get("product_id")
-                            if not dpid:
-                                continue
-                            # Extract order_date (YYYY-MM-DD) from the delivered order
-                            raw_od = str(drow.get("order_date", "") or "")[:10]
-                            if raw_od:
-                                if dpid not in delivered_order_dates_by_product:
-                                    delivered_order_dates_by_product[dpid] = set()
-                                delivered_order_dates_by_product[dpid].add(raw_od)
-                            # Count delivered quantities
-                            ozon_delivered_counts[dpid] = ozon_delivered_counts.get(dpid, 0) + 1
+                    if rpc_result.data and len(rpc_result.data) > 0:
+                        order_rows = [r for r in rpc_result.data if r.get("source") == "order"]
+                        cost_rows = [r for r in rpc_result.data if r.get("source") == "cost"]
 
-                        logger.info(f"UE Ozon: using delivery_date filter — "
-                                    f"{len(delivery_result.data)} delivered orders, "
-                                    f"{len(delivered_order_dates_by_product)} products")
+                        if order_rows:
+                            using_delivery_date = True
+                            for drow in order_rows:
+                                dpid = drow.get("product_id")
+                                if not dpid:
+                                    continue
+                                qty = int(drow.get("quantity") or 1)
+                                ozon_delivered_counts[dpid] = ozon_delivered_counts.get(dpid, 0) + qty
+
+                            for row in cost_rows:
+                                pid = row.get("product_id")
+                                if not pid:
+                                    continue
+                                amt = float(row.get("amount", 0) or 0)
+                                cat = row.get("category", "")
+                                subcat = row.get("subcategory", "")
+                                ft_val = row.get("fulfillment_type", "FBO") or "FBO"
+                                _accumulate_od_row(pid, amt, cat, ft_val, subcat)
+
+                            logger.info(f"UE Ozon: RPC delivery_date — "
+                                        f"{len(order_rows)} delivered orders, "
+                                        f"{len(cost_rows)} cost rows, "
+                                        f"{len(ozon_delivered_counts)} products")
                 except Exception as e:
-                    logger.debug(f"mp_orders delivery_date query failed (column may not exist): {e}")
+                    logger.debug(f"get_ozon_ue_delivered RPC failed (may not exist yet): {e}")
 
-                # Query 1: per-order operations from mp_costs_details
-                if using_delivery_date and delivered_order_dates_by_product:
-                    # delivery_date mode: fetch costs_details for delivered orders only.
-                    # Collect all unique order_dates across all products, filter with IN.
-                    all_delivered_order_dates: set[str] = set()
-                    delivered_product_ids: list[str] = []
-                    for dpid, order_dates in delivered_order_dates_by_product.items():
-                        all_delivered_order_dates.update(order_dates)
-                        delivered_product_ids.append(dpid)
-
-                    # Single query with product_id IN [...] and order_date IN [...]
-                    od_query = (
-                        supabase.table("mp_costs_details")
-                        .select("product_id, category, subcategory, amount, fulfillment_type, order_date")
-                        .eq("user_id", current_user.id)
-                        .eq("marketplace", "ozon")
-                        .in_("product_id", delivered_product_ids)
-                        .in_("order_date", sorted(all_delivered_order_dates))
-                    )
-                    if fulfillment_type:
-                        od_query = od_query.eq("fulfillment_type", fulfillment_type)
-                    od_result = od_query.execute()
-
-                    for row in od_result.data:
-                        pid = row["product_id"]
-                        row_od = str(row.get("order_date", "") or "")[:10]
-                        # Double-check: this (product_id, order_date) must be in delivered set
-                        if pid in delivered_order_dates_by_product and row_od in delivered_order_dates_by_product[pid]:
-                            amt = float(row.get("amount", 0) or 0)
-                            cat = row.get("category", "")
-                            subcat = row.get("subcategory", "")
-                            ft_val = row.get("fulfillment_type", "FBO") or "FBO"
-                            _accumulate_od_row(pid, amt, cat, ft_val, subcat)
-                else:
+                if not using_delivery_date:
                     # Fallback: order_date mode (current logic)
                     od_query = (
                         supabase.table("mp_costs_details")

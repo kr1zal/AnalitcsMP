@@ -4,7 +4,7 @@ Use "npm run build" to check if code compiles or no. See results and fix code if
 Read and follow coding standards: .claude/rules/coding-standards.md
 # Analytics Dashboard — WB & Ozon
 
-5 SKU (витамины/БАДы), SaaS, per-user auth. **Production:** https://reviomp.ru
+Multi-seller SaaS (10-20+ селлеров, 50-200+ SKU каждый). **Тестовый аккаунт:** 5 SKU (витамины/БАДы). **Production:** https://reviomp.ru
 
 | VPS | Beget 83.222.16.15, Ubuntu 24.04 | SSH: `ssh root@83.222.16.15` пароль: `@vnDBp5VCt2+` |
 |-----|-----------------------------------|------------------------------------------------------|
@@ -38,7 +38,7 @@ Read and follow coding standards: .claude/rules/coding-standards.md
 - [ ] UE с разбивкой FBO/FBS
 - [ ] Улучшить PDF экспорт
 
-## Архитектурные решения (НЕ МЕНЯТЬ — 43 правила)
+## Архитектурные решения (НЕ МЕНЯТЬ — 49 правил)
 1. **Costs-tree:** отдельные параллельные запросы per marketplace (НЕ combined)
 2. **AccrualsCards:** данные через props из DashboardPage
 3. **DateRangePicker:** `captionLayout="label"` (НЕ dropdown)
@@ -87,6 +87,7 @@ Read and follow coding standards: .claude/rules/coding-standards.md
 46. **Landing NavBar:** sticky + backdrop-blur при скролле (classList.toggle, НЕ useState). Кликабельный логотип (scroll-to-top). `NAV_ITEMS` const. Clean gaps (hover:bg-gray-50, НЕ box-shadow). Hamburger 44px touch target. ARIA aria-expanded
 47. **ProductShowcase:** pill badge "Ключевые экраны" (bg-indigo-50). Gradient title (indigo→violet). Tab progress bar h-[3px] gradient (НЕ h-0.5 solid). Active tab: ring-1 + shadow-indigo + icon text-indigo-600. BrowserFrame: ring-1 ring-gray-900/[0.07] + shadow-[0_8px_60px]. CTA "Попробовать бесплатно →" (text link, НЕ button). Device toggle скрывает текст Desktop/Mobile на мобилке (hidden sm:inline)
 48. **Landing mobile overflow:** Root wrapper LandingPage ОБЯЗАН иметь `overflow-x-hidden`. Showcase container — `overflow-hidden`. Blur orbs: `w-full max-w-[Npx]` (НИКОГДА fixed `w-[600px]`). Negative inset на мобилке: `-inset-4` (НЕ `-inset-10`), desktop `sm:-inset-12`
+49. **Scale target (КРИТИЧНО):** Проект рассчитан на 10-20+ селлеров по 50-200+ SKU каждый. Текущие 5 SKU (витамины/БАДы) — ТОЛЬКО для тестирования. ЗАПРЕЩЕНО: оставлять N+1 queries, IN() с длинными списками, отсутствие batch/pagination, JOIN по неточным ключам (order_date вместо posting_number) с пометкой "для 5 SKU допустимо". ВСЕ запросы должны работать на масштабе 200 SKU × 100 orders/day × 60 дней = 1.2M строк. Решения: batch UPDATE через RPC, пагинация, JOIN по точным ключам (posting_number), `.limit()` на всех Supabase queries
 
 ## Формулы (КРИТИЧНО)
 ```
