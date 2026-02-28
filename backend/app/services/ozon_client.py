@@ -345,6 +345,43 @@ class OzonClient:
         }
         return await self._request("POST", "/v1/analytics/data", json=payload)
 
+    # ==================== ОТЧЁТЫ ====================
+
+    async def create_placement_report(self, date_from: str, date_to: str) -> str:
+        """
+        Создать отчёт о стоимости размещения по товарам.
+        Соответствует: FBO > Стоимость размещения в ЛК.
+        Лимит: 5 вызовов в день. Макс. период: 31 день.
+
+        Args:
+            date_from: "YYYY-MM-DD"
+            date_to: "YYYY-MM-DD"
+
+        Returns:
+            code (UUID) — идентификатор отчёта для get_report_info()
+        """
+        payload = {
+            "date_from": date_from,
+            "date_to": date_to,
+        }
+        result = await self._request("POST", "/v1/report/placement/by-products/create", json=payload)
+        return result.get("code", "")
+
+    async def get_report_info(self, code: str) -> dict:
+        """
+        Получить статус и ссылку на скачивание отчёта.
+
+        Args:
+            code: UUID отчёта из create_placement_report()
+
+        Returns:
+            dict with keys: code, status (waiting|processing|success|failed),
+            file (URL to XLSX), report_type, expires_at, error
+        """
+        payload = {"code": code}
+        result = await self._request("POST", "/v1/report/info", json=payload)
+        return result.get("result", {})
+
 
 class OzonPerformanceClient:
     """Клиент для Ozon Performance API (реклама)"""

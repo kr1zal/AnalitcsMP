@@ -81,7 +81,7 @@ Read and follow coding standards: .claude/rules/coding-standards.md
 40. **URL state sync:** `useFilterUrlSync` хук — двусторонняя синхронизация Zustand ↔ URL. Params: `?period=30d&mp=wb&ft=FBS&from=YYYY-MM-DD&to=YYYY-MM-DD`. Дефолтные значения (7d, all, all) НЕ пишутся в URL. `replaceState` (НЕ pushState). Сохраняет чужие query params. Хук подключен в FilterPanel (НЕ в каждой странице)
 41. **AdsPage sticky:** Страница рекламы имеет свою панель фильтров (НЕ общий FilterPanel). Sticky классы: mobile `sticky top-0 z-30`, desktop `sticky top-16 z-30`. НЕ заменять на общий FilterPanel — AdsPage использует локальный МП-фильтр (`selectedMarketplace` useState)
 42. **Даты ВСЕГДА в МСК TZ:** `getMaxAvailableDateYmd()` и `getTodayYmd()` форматируют через `toLocaleDateString('sv-SE', { timeZone: 'Europe/Moscow' })`. НИКОГДА не использовать `format(new Date(), 'yyyy-MM-dd')` для текущей даты — результат зависит от TZ браузера. Для вычисления дат на основе "сегодня" — только `formatDateMoscow()` из utils.ts
-43. **Purchase оси дат (миграция 020):** RPC `get_dashboard_summary` = order-based purchase для ВСЕХ МП (`purchase_price × sales_count` из mp_sales). UE Python endpoint = settlement-based для Ozon (`purchase_price × settled_qty` из mp_costs). Ключевой принцип: revenue и purchase ВСЕГДА на одной оси (RPC: обе order-based, UE: обе settlement-based из costs-tree). `mp_costs.settled_qty` НЕ удалять — используется в UE. Миграции: 019 (добавила settled_qty), 020 (откатила RPC на order-based). НИКОГДА не смешивать оси: order-based revenue + settlement-based purchase = profit > revenue (абсурд)
+43. **UE оси дат:** RPC = order-based для ВСЕХ МП. UE Python: Ozon = revenue/sales из mp_sales (order-based), удержания через payout rate из costs-tree (mp_costs = settlement-based, содержит удержания за старые заказы — нельзя напрямую). WB = proportional payout из costs-tree. Закупка = `purchase_price × sales_count` (все МП). Формула Ozon: `profit = revenue × (ozon_payout / ozon_tree_revenue) - purchase - ads`
 44. **Ozon реклама — DELETE before INSERT:** `mp_ad_costs` для Ozon имеет `product_id=NULL` (account-level). PostgreSQL: `NULL != NULL` в UNIQUE → UPSERT = INSERT дубликаты. Решение: DELETE за период перед INSERT в `sync_ads_ozon`. НЕ использовать UPSERT с NULL product_id для Ozon рекламы.
 45. **Landing Hero:** текстовый hero БЕЗ скриншота (скрин перенесён в карусель). H1 = primary USP "Прозрачная аналитика для маркетплейсов". Badge = differentiator "WB + Ozon в одном дашборде". Подзаголовок = secondary USP "Собери свой дашборд из виджетов". CTA + trust text inline (одна строка). Скриншот продукта ТОЛЬКО в DashboardCarousel (3 слайда: Дашборд, UE, Остатки). НЕ добавлять скриншот в hero
 46. **Landing NavBar:** sticky + backdrop-blur при скролле (classList.toggle, НЕ useState). Кликабельный логотип (scroll-to-top). `NAV_ITEMS` const. Clean gaps (hover:bg-gray-50, НЕ box-shadow). Hamburger 44px touch target. ARIA aria-expanded
@@ -92,9 +92,10 @@ Read and follow coding standards: .claude/rules/coding-standards.md
 ```
 profit = total_payout - purchase - ads  (БЕЗ costsTreeRatio — удалён 19.02.2026, индустриальный стандарт)
 COGS (RPC/Dashboard) = purchase_price × sales_count (order-based, из mp_sales — ВСЕ МП, миграция 020)
-COGS (UE/Python)     = purchase_price × settled_qty (settlement-based, Ozon) | × sales_count (WB)
+COGS (UE/Python)     = purchase_price × sales_count (order-based, все МП)
 displayed_revenue = costs_tree_sales + credits (СПП, возмещения)
-UE: profit_i = total_payout × (revenue_i / Σrevenue) - purchase_i - ad_i
+UE (WB): profit_i = total_payout × (revenue_i / Σrevenue) - purchase_i - ad_i
+UE (Ozon): profit_i = revenue_i × (ozon_payout / ozon_tree_revenue) - purchase_i - ad_i
 DRR = ad_cost / revenue × 100%
 Stock forecast: days_remaining = quantity / avg_daily_sales(30d)
 Per-MP profit: profit_mp = payout_mp - purchase×share - ad×share (share=pureSales_mp/totalPureSales)

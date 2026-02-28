@@ -192,6 +192,23 @@ async def process_sync_queue(request: Request):
     supabase = get_supabase_client()
     now = _now_utc()
 
+    # Watchdog: reset stuck "processing" entries (older than 30 min)
+    stale_cutoff = (now - timedelta(minutes=30)).isoformat()
+    stuck = (
+        supabase.table("mp_sync_queue")
+        .select("user_id, updated_at")
+        .eq("status", "processing")
+        .lte("updated_at", stale_cutoff)
+        .execute()
+    )
+    for entry in (stuck.data or []):
+        logger.warning(f"Queue watchdog: resetting stuck sync for {entry['user_id']} (processing since {entry['updated_at']})")
+        supabase.table("mp_sync_queue").update({
+            "status": "pending",
+            "next_sync_at": now.isoformat(),
+            "updated_at": _now_utc_iso(),
+        }).eq("user_id", entry["user_id"]).eq("status", "processing").execute()
+
     # Fetch all due queue entries: pending + next_sync_at <= now, ordered by priority
     due = (
         supabase.table("mp_sync_queue")
@@ -235,12 +252,16 @@ async def process_sync_queue(request: Request):
             "updated_at": _now_utc_iso(),
         }).eq("user_id", user_id).execute()
 
-        # Run sync
+        # Run sync (wrapped in try/except to guarantee status recovery)
         logger.info(f"Queue: syncing user {user_id} (plan={plan_name}, priority={entry['priority']})")
-        result = await _run_full_sync(user_id, trigger="auto")
-
-        # Update queue row
         next_sync = get_next_sync_utc(plan_name)
+        try:
+            result = await _run_full_sync(user_id, trigger="auto")
+        except Exception as e:
+            result = {"status": "error", "error": str(e)}
+            logger.exception(f"Queue: unhandled error syncing {user_id}")
+
+        # Update queue row (ALWAYS runs — prevents stuck processing)
         if result["status"] == "completed":
             supabase.table("mp_sync_queue").update({
                 "status": "completed",

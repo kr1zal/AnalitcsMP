@@ -181,8 +181,9 @@ export const DashboardPage = () => {
   // - Масштабируемости (при добавлении 3+ маркетплейсов)
   // - Гибкого кэширования React Query
   // ВСЕГДА загружаем оба МП — MarketplaceBreakdown показывает OZON и WB независимо от фильтра
+  const ozonFilters = { ...filters, marketplace: 'ozon' as const, include_children: true };
   const { data: ozonCostsTreeData, isLoading: ozonCostsTreeLoading } = useCostsTree(
-    { ...filters, marketplace: 'ozon', include_children: true },
+    ozonFilters,
   );
   const { data: wbCostsTreeData, isLoading: wbCostsTreeLoading } = useCostsTree(
     { ...filters, marketplace: 'wb', include_children: true },
@@ -337,12 +338,18 @@ export const DashboardPage = () => {
   const previousPeriod = summaryData?.previous_period;
   const revenueChange = previousPeriod?.revenue_change_percent || 0;
 
-  // Purchase: prefer UE (settlement-based for Ozon, consistent with costs-tree revenue axis)
+  // Purchase: prefer settled_purchase from RPC (settlement-based, migration 029)
+  // Falls back to UE sum, then to order-based RPC purchase_costs_total
   const purchaseCostsForTile = (() => {
+    // Primary: settlement-based purchase from RPC (migration 029)
+    if (summary?.settled_purchase != null && summary.settled_purchase > 0) {
+      return summary.settled_purchase;
+    }
+    // Fallback: UE sum (settlement-based for Ozon)
     if (unitEconomicsData?.products) {
       return unitEconomicsData.products.reduce((acc, p) => acc + (p.metrics.purchase_costs || 0), 0);
     }
-    // Fallback to RPC (order-based) while UE is loading
+    // Last resort: order-based from RPC
     return summary?.purchase_costs_total ?? 0;
   })();
 
@@ -453,12 +460,17 @@ export const DashboardPage = () => {
   const netProfitForTile = (() => {
     if (!summary) return 0;
 
-    // Prefer UE total profit (settlement-based, consistent with UE page and costs-tree revenue)
+    // Primary: settled_profit from RPC (migration 029) — settlement-based, consistent axis
+    if (summary.settled_profit != null && summary.settled_payout != null && summary.settled_payout !== 0) {
+      return summary.settled_profit;
+    }
+
+    // Fallback 1: UE total profit (settlement-based, consistent with UE page)
     if (unitEconomicsData?.products) {
       return unitEconomicsData.products.reduce((acc, p) => acc + (p.metrics.net_profit || 0), 0);
     }
 
-    // Fallback while UE is loading: payout - purchase - ads
+    // Fallback 2: payout - purchase - ads (from costs-tree)
     const ad = summary.ad_cost ?? 0;
     if (payoutForTile === null) {
       return summary.net_profit;

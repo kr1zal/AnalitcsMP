@@ -309,6 +309,40 @@ async def sync_costs(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.post("/sync/storage-ozon")
+async def sync_storage_ozon(
+    current_user: CurrentUser = Depends(get_current_user_or_cron),
+    sub: UserSubscription = Depends(get_subscription_or_cron),
+    days_back: int = 28,
+):
+    """
+    Синхронизация per-product storage costs из Ozon Placement Report API.
+    Лимит API: 5 вызовов в день. Макс. период: 31 день.
+
+    - **days_back**: количество дней для загрузки (по умолчанию 28)
+    """
+    try:
+        allowed_mps = sub.plan_config["marketplaces"]
+        if "ozon" not in allowed_mps:
+            raise HTTPException(status_code=403, detail="Ozon not available on your plan")
+
+        sync_service = SyncService(user_id=current_user.id)
+        date_from = datetime.now() - timedelta(days=days_back)
+        date_to = datetime.now()
+
+        result = await sync_service.sync_storage_ozon(date_from, date_to)
+
+        return {
+            "status": "completed",
+            "period": {"from": date_from.strftime("%Y-%m-%d"), "to": date_to.strftime("%Y-%m-%d")},
+            "results": result,
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.post("/sync/ads")
 async def sync_ads(
     current_user: CurrentUser = Depends(get_current_user_or_cron),

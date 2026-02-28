@@ -210,12 +210,11 @@ async def get_unit_economics(
 ):
     """
     Unit-экономика по товарам.
-    Методология ИДЕНТИЧНА дашборду:
-    - Payout (total_accrued) берётся из costs-tree и распределяется по товарам пропорционально выручке
-    - Закупка: WB = purchase_price × sales_count (order-based), Ozon = purchase_price × settled_qty (settlement-based)
-    - Реклама учитывается по товарам (mp_ad_costs)
-    - Формула: Прибыль = PayoutShare − Закупка − Реклама
-    - Гарантия: SUM(profit) = Dashboard profit
+    - Ozon: revenue/sales из mp_sales (order-based), удержания оценены через payout rate
+      из costs-tree (mp_costs = settlement-based, нельзя использовать напрямую)
+    - WB: proportional payout из costs-tree
+    - Закупка: purchase_price × sales_count (order-based, все МП)
+    - Реклама: mp_ad_costs per product
     """
     supabase = get_supabase_client()
 
@@ -290,11 +289,7 @@ async def get_unit_economics(
         ft_sales: dict[str, dict[str, dict]] = {}  # {product_id: {FBO: {sales, revenue}, FBS: {...}}}
         ft_costs: dict[str, dict[str, float]] = {}  # {product_id: {FBO: costs, FBS: costs}}
 
-        # 5b. Ozon settlement-based purchase: settled_qty из mp_costs (дата расчёта, а не заказа)
-        settled_qty_by_product: dict[str, int] = {}
-        ft_settled_qty: dict[str, dict[str, int]] = {}  # {product_id: {FBO: qty, FBS: qty}}
-        has_ozon_settled = False
-        ozon_product_ids: set[str] = set()  # product_id's с Ozon costs (для settlement purchase)
+        ozon_product_ids: set[str] = set()  # product_id's с Ozon costs
 
         for sale in sales_result.data:
             product_id = sale["product_id"]
@@ -316,24 +311,14 @@ async def get_unit_economics(
 
         for cost in costs_result.data:
             product_id = cost["product_id"]
-            if product_id not in product_metrics:
-                continue
-            product_metrics[product_id]["costs"] += float(cost.get("total_costs", 0))
 
-            # Ozon settled_qty: количество проданных единиц по дате расчёта
             cost_mp = cost.get("marketplace", "")
             if cost_mp == "ozon":
                 ozon_product_ids.add(product_id)
-                qty = int(cost.get("settled_qty", 0) or 0)
-                if qty > 0:
-                    has_ozon_settled = True
-                settled_qty_by_product[product_id] = settled_qty_by_product.get(product_id, 0) + qty
-                # Per FBO/FBS settled_qty
-                if include_ft_breakdown and not fulfillment_type:
-                    ft = cost.get("fulfillment_type", "FBO") or "FBO"
-                    if product_id not in ft_settled_qty:
-                        ft_settled_qty[product_id] = {}
-                    ft_settled_qty[product_id][ft] = ft_settled_qty[product_id].get(ft, 0) + qty
+
+            if product_id not in product_metrics:
+                continue
+            product_metrics[product_id]["costs"] += float(cost.get("total_costs", 0))
 
             # Track per fulfillment_type (only for Pro+ with fbs_analytics)
             if include_ft_breakdown and not fulfillment_type:
@@ -350,6 +335,10 @@ async def get_unit_economics(
         costs_tree_sales = 0.0  # Только tree item "Продажи" (для ratio)
         costs_tree_credits = 0.0  # Положительные items кроме "Продажи" (СПП, возмещения)
         total_payout = 0.0
+        # Per-MP payout for exact Ozon method
+        payout_by_mp: dict[str, float] = {}
+        sales_by_mp: dict[str, float] = {}
+        credits_by_mp: dict[str, float] = {}
         try:
             mp_list = [marketplace] if marketplace and marketplace != "all" else ["ozon", "wb"]
             for mp in mp_list:
@@ -361,15 +350,23 @@ async def get_unit_economics(
                     if isinstance(ct_data, list) and len(ct_data) > 0:
                         ct_data = ct_data[0]
                     if isinstance(ct_data, dict):
-                        total_payout += float(ct_data.get("total_accrued", 0) or 0)
+                        mp_payout = float(ct_data.get("total_accrued", 0) or 0)
+                        total_payout += mp_payout
+                        payout_by_mp[mp] = mp_payout
+                        mp_tree_sales = 0.0
+                        mp_tree_credits = 0.0
                         for item in ct_data.get("tree", []):
                             name = item.get("name", "")
                             amount = float(item.get("amount", 0) or 0)
                             if name == "Продажи":
                                 costs_tree_sales += abs(amount)
+                                mp_tree_sales += abs(amount)
                             elif amount > 0:
                                 # Положительные: СПП, возмещения и т.д.
                                 costs_tree_credits += amount
+                                mp_tree_credits += amount
+                        sales_by_mp[mp] = mp_tree_sales
+                        credits_by_mp[mp] = mp_tree_credits
         except Exception as e:
             logger.warning(f"costs-tree RPC failed for unit-economics (marketplace={marketplace}): {e}")
             # fallback на mp_sales/mp_costs
@@ -386,15 +383,165 @@ async def get_unit_economics(
                 share = m["revenue"] / total_mp_sales_revenue
                 ad_by_product[pid] = ad_by_product.get(pid, 0) + unattributed_ad * share
 
+        # 7b. Ozon order_date: запрашиваем mp_costs_details по order_date (дата заказа).
+        # Два запроса:
+        #   1) order_date IS NOT NULL → фильтр по order_date (per-order: комиссия, логистика, продажи)
+        #   2) order_date IS NULL → фильтр по date/settlement (account-level: хранение FBO и т.п.)
+        # Это даёт точное совпадение с ЛК Ozon.
+        ozon_order_date_by_product: dict[str, dict] = {}  # {product_id: {payout, revenue}}
+        ozon_order_date_ft_by_product: dict[str, dict[str, dict]] = {}  # {product_id: {FBO: {payout, revenue}, FBS: ...}}
+
+        # Subcategories excluded from UE payout (not shown in ЛК UE, stay in costs-tree)
+        _UE_EXCLUDED_SUBCATEGORIES = {"Бонусы продавца"}
+
+        def _accumulate_od_row(pid: str, amt: float, cat: str, ft_val: str, subcat: str = ""):
+            """Accumulate order_date row into per-product and per-FT dicts."""
+            if subcat in _UE_EXCLUDED_SUBCATEGORIES:
+                return
+            if pid not in ozon_order_date_by_product:
+                ozon_order_date_by_product[pid] = {"payout": 0.0, "revenue": 0.0}
+            ozon_order_date_by_product[pid]["payout"] += amt
+            if cat == "Продажи" or amt > 0:
+                ozon_order_date_by_product[pid]["revenue"] += abs(amt)
+            if include_ft_breakdown and not fulfillment_type:
+                if pid not in ozon_order_date_ft_by_product:
+                    ozon_order_date_ft_by_product[pid] = {}
+                if ft_val not in ozon_order_date_ft_by_product[pid]:
+                    ozon_order_date_ft_by_product[pid][ft_val] = {"payout": 0.0, "revenue": 0.0}
+                ozon_order_date_ft_by_product[pid][ft_val]["payout"] += amt
+                if cat == "Продажи" or amt > 0:
+                    ozon_order_date_ft_by_product[pid][ft_val]["revenue"] += abs(amt)
+
+        try:
+            if not marketplace or marketplace in ("all", "ozon"):
+                # Query 1: per-order operations (order_date IS NOT NULL)
+                od_query = (
+                    supabase.table("mp_costs_details")
+                    .select("product_id, category, subcategory, amount, fulfillment_type")
+                    .eq("user_id", current_user.id)
+                    .eq("marketplace", "ozon")
+                    .gte("order_date", date_from)
+                    .lte("order_date", date_to)
+                )
+                if fulfillment_type:
+                    od_query = od_query.eq("fulfillment_type", fulfillment_type)
+                od_result = od_query.execute()
+
+                for row in od_result.data:
+                    pid = row["product_id"]
+                    amt = float(row.get("amount", 0) or 0)
+                    cat = row.get("category", "")
+                    subcat = row.get("subcategory", "")
+                    ft_val = row.get("fulfillment_type", "FBO") or "FBO"
+                    _accumulate_od_row(pid, amt, cat, ft_val, subcat)
+
+                # Query 2a: check per-product storage from mp_storage_costs (Ozon Placement Report)
+                # If available → use exact per-product storage instead of equal distribution
+                per_product_storage: dict[str, float] = {}  # {product_id: storage_cost}
+                try:
+                    storage_q = (
+                        supabase.table("mp_storage_costs")
+                        .select("product_id, storage_cost, date_from, date_to")
+                        .eq("user_id", current_user.id)
+                        .eq("marketplace", "ozon")
+                        .lte("date_from", date_to)
+                        .gte("date_to", date_from)
+                    )
+                    storage_result = storage_q.execute()
+                    if storage_result.data:
+                        for sr in storage_result.data:
+                            s_pid = sr["product_id"]
+                            s_cost = float(sr.get("storage_cost", 0) or 0)
+                            # Prorate: storage report covers date_from..date_to (typically 28 days)
+                            # User may request a shorter period → prorate proportionally
+                            s_from = sr.get("date_from", "")
+                            s_to = sr.get("date_to", "")
+                            try:
+                                report_days = (datetime.strptime(s_to, "%Y-%m-%d") - datetime.strptime(s_from, "%Y-%m-%d")).days + 1
+                                if report_days <= 0:
+                                    report_days = 29
+                            except Exception:
+                                report_days = 28
+                            request_days = (datetime.strptime(date_to, "%Y-%m-%d") - datetime.strptime(date_from, "%Y-%m-%d")).days + 1
+                            prorated = s_cost * min(request_days, report_days) / report_days
+                            per_product_storage[s_pid] = per_product_storage.get(s_pid, 0) + prorated
+                except Exception as e:
+                    logger.debug(f"mp_storage_costs query failed (table may not exist): {e}")
+                    # Fallback: per_product_storage stays empty → use account-level storage
+
+                has_per_product_storage = bool(per_product_storage)
+
+                # Query 2: account-level operations (order_date IS NULL, e.g. storage fees)
+                # These have no order_date → use settlement date as period filter
+                null_od_query = (
+                    supabase.table("mp_costs_details")
+                    .select("product_id, category, subcategory, amount, fulfillment_type")
+                    .eq("user_id", current_user.id)
+                    .eq("marketplace", "ozon")
+                    .is_("order_date", "null")
+                    .gte("date", date_from)
+                    .lte("date", date_to)
+                )
+                if fulfillment_type:
+                    null_od_query = null_od_query.eq("fulfillment_type", fulfillment_type)
+                null_od_result = null_od_query.execute()
+
+                for row in null_od_result.data:
+                    pid = row["product_id"]
+                    amt = float(row.get("amount", 0) or 0)
+                    cat = row.get("category", "")
+                    subcat = row.get("subcategory", "")
+                    ft_val = row.get("fulfillment_type", "FBO") or "FBO"
+                    # TODO: per-product storage from mp_storage_costs has monthly granularity.
+                    # Using daily charges from mp_costs_details (equal distribution) is closer
+                    # to ЛК numbers than prorated monthly total. Future: store daily per-product
+                    # storage costs from XLSX report for exact match.
+                    _accumulate_od_row(pid, amt, cat, ft_val, subcat)
+        except Exception as e:
+            logger.warning(f"order_date query failed for Ozon UE: {e}")
+            # fallback: ozon_order_date_by_product stays empty → payout_rate method will be used
+
         # 8. Формирование результата
-        # Dashboard: Продажи = costs-tree "Продажи" + credits (СПП, возмещения)
-        # UE per product: распределяем пропорционально mp_sales revenue share.
+        # Ozon PRIMARY: order_date-based payout from mp_costs_details (точное совпадение с ЛК).
+        #   payout = SUM(all amounts WHERE order_date IN period) — уже включает ВСЕ finance deductions.
+        #   profit = order_payout - purchase (ads УЖЕ внутри payout как finance-deduction).
         #
-        # Формула (всегда 100%):
+        # Ozon FALLBACK: payout RATE from costs-tree (если order_date данных нет).
+        #   payout_rate = ozon_payout / ozon_tree_revenue.
+        #   profit = mp_sales_revenue × payout_rate - purchase - ads.
+        #
+        # WB: proportional payout (нет per-product breakdown в costs_details)
         #   displayed_revenue = (costs_tree_sales + credits) × share
-        #   mp_deductions     = displayed_revenue − payout_share  (>=0 т.к. revenue включает credits)
-        #   profit            = payout_share − purchase − ads
-        #   → revenue = mp_deductions + purchase + ads + profit  ✓
+        #   profit = wb_payout × share - purchase - ads
+
+        # Per-MP payout и revenue (для proportional share)
+        wb_payout = payout_by_mp.get("wb", 0)
+        wb_tree_revenue = sales_by_mp.get("wb", 0) + credits_by_mp.get("wb", 0)
+        ozon_payout = payout_by_mp.get("ozon", 0)
+        ozon_tree_revenue = sales_by_mp.get("ozon", 0) + credits_by_mp.get("ozon", 0)
+
+        # Per-MP product sets (для proportional share среди товаров одного МП)
+        wb_product_ids: set[str] = set()
+        for pid, product in products.items():
+            if product.get("wb_nm_id") and not product.get("ozon_product_id"):
+                wb_product_ids.add(pid)
+            elif product.get("wb_vendor_code") and not product.get("ozon_product_id"):
+                wb_product_ids.add(pid)
+        for sale in sales_result.data:
+            if sale.get("marketplace") == "wb":
+                wb_product_ids.add(sale["product_id"])
+
+        wb_total_mp_sales_revenue = sum(
+            product_metrics.get(pid, {}).get("revenue", 0)
+            for pid in wb_product_ids
+            if pid in product_metrics
+        )
+        ozon_total_mp_sales_revenue = sum(
+            product_metrics.get(pid, {}).get("revenue", 0)
+            for pid in ozon_product_ids
+            if pid in product_metrics
+        )
+
         result = []
         for product_id, metrics in product_metrics.items():
             if product_id not in products:
@@ -405,25 +552,48 @@ async def get_unit_economics(
             mp_sales_revenue = metrics["revenue"]  # из mp_sales (аналитика)
             costs = metrics["costs"]  # из mp_costs (fallback)
             purchase_price = float(product.get("purchase_price", 0))
-            # Settlement-based purchase для Ozon: settled_qty из mp_costs (дата расчёта)
-            # WB: order-based (sales_count из mp_sales) — работает корректно
             is_ozon = product_id in ozon_product_ids or bool(product.get("ozon_product_id"))
-            if is_ozon and has_ozon_settled and product_id in settled_qty_by_product:
-                raw_purchase = purchase_price * settled_qty_by_product[product_id]
-            else:
-                raw_purchase = purchase_price * sales_count
+            # Purchase: order-based для всех МП (purchase_price × sales_count)
+            raw_purchase = purchase_price * sales_count
             ad_cost = ad_by_product.get(product_id, 0)
 
-            if use_payout and total_mp_sales_revenue > 0 and costs_tree_revenue > 0:
-                # Доля товара в общей выручке (по mp_sales)
-                share = mp_sales_revenue / total_mp_sales_revenue
-                # Выручка из costs-tree (как на Dashboard "Продажи")
-                displayed_revenue = costs_tree_revenue * share
-                # Начислено (payout) для этого товара
-                payout_share = total_payout * share
-                # Удержания МП = Выручка − Начислено (всегда >= 0 т.к. CT revenue > payout)
+            if is_ozon and product_id in ozon_order_date_by_product:
+                # Ozon PRIMARY: order_date-based exact matching.
+                # payout = SUM(all mp_costs_details amounts WHERE order_date IN period).
+                # Finance payout already includes ALL deductions (commission, logistics, ads).
+                # profit = order_payout - purchase (NO separate ad subtraction — ads already deducted).
+                od_data = ozon_order_date_by_product[product_id]
+                order_payout = od_data["payout"]
+                order_revenue = od_data["revenue"]
+                displayed_revenue = order_revenue if order_revenue > 0 else mp_sales_revenue
+                mp_costs_consistent = max(0, displayed_revenue - order_payout)
+                net_profit = order_payout - raw_purchase
+                # Ad cost still tracked for DRR display, but NOT subtracted from profit
+                # (it's already inside order_payout as finance deduction)
+            elif is_ozon and ozon_tree_revenue > 0:
+                # Ozon FALLBACK 1: payout rate from costs-tree.
+                # Used when order_date data not yet available (before re-sync).
+                payout_rate = ozon_payout / ozon_tree_revenue
+                displayed_revenue = mp_sales_revenue
+                payout_share = mp_sales_revenue * payout_rate
                 mp_costs_consistent = max(0, displayed_revenue - payout_share)
-                # Прибыль = Начислено − Закупка − Реклама
+                net_profit = payout_share - raw_purchase - ad_cost
+            elif is_ozon:
+                # Ozon FALLBACK 2: no costs-tree, no order_date → mp_sales/mp_costs
+                displayed_revenue = mp_sales_revenue
+                mp_costs_consistent = costs
+                net_profit = mp_sales_revenue - costs - raw_purchase - ad_cost
+            elif use_payout and total_mp_sales_revenue > 0 and costs_tree_revenue > 0:
+                # WB: proportional within WB costs-tree
+                if wb_total_mp_sales_revenue > 0 and wb_tree_revenue > 0:
+                    share = mp_sales_revenue / wb_total_mp_sales_revenue
+                    displayed_revenue = wb_tree_revenue * share
+                    payout_share = wb_payout * share
+                else:
+                    share = mp_sales_revenue / total_mp_sales_revenue if total_mp_sales_revenue > 0 else 0
+                    displayed_revenue = costs_tree_revenue * share
+                    payout_share = total_payout * share
+                mp_costs_consistent = max(0, displayed_revenue - payout_share)
                 net_profit = payout_share - raw_purchase - ad_cost
             else:
                 # Fallback: если costs-tree недоступен — mp_sales/mp_costs
@@ -447,15 +617,25 @@ async def get_unit_economics(
                     if ft_cnt <= 0 and ft_rev <= 0:
                         continue
                     c = ft_costs.get(product_id, {}).get(ft_key, 0)
-                    # Ozon: settlement-based purchase per FBO/FBS
-                    if is_ozon and has_ozon_settled and product_id in ft_settled_qty:
-                        ft_purchase = purchase_price * ft_settled_qty.get(product_id, {}).get(ft_key, 0)
-                    else:
-                        ft_purchase = purchase_price * ft_cnt
+                    ft_purchase = purchase_price * ft_cnt
                     # Proportional ad: ad_ft = ad × (ft_revenue / total_revenue)
                     ft_ad = ad_cost * (ft_rev / mp_sales_revenue) if mp_sales_revenue > 0 else 0
-                    # Profit: payout_share - purchase - ads (same payout distribution)
-                    if use_payout and total_mp_sales_revenue > 0:
+                    if is_ozon and product_id in ozon_order_date_ft_by_product:
+                        # Ozon PRIMARY: order_date-based per FT
+                        ft_od = ozon_order_date_ft_by_product[product_id].get(ft_key, {})
+                        ft_payout = ft_od.get("payout", 0.0)
+                        ft_od_revenue = ft_od.get("revenue", 0.0)
+                        # profit = ft_payout - ft_purchase (ads already in payout)
+                        ft_profit = ft_payout - ft_purchase
+                        if ft_od_revenue > 0:
+                            ft_rev = ft_od_revenue  # use order_date revenue for display
+                    elif is_ozon and ozon_tree_revenue > 0:
+                        # Ozon FALLBACK: payout rate per FT
+                        ft_payout_rate = ozon_payout / ozon_tree_revenue
+                        ft_payout = ft_rev * ft_payout_rate
+                        ft_profit = ft_payout - ft_purchase - ft_ad
+                    elif use_payout and total_mp_sales_revenue > 0:
+                        # WB: proportional payout
                         ft_payout = total_payout * (ft_rev / total_mp_sales_revenue)
                         ft_profit = ft_payout - ft_purchase - ft_ad
                     else:
@@ -848,10 +1028,12 @@ async def get_costs_tree(
         date_to = datetime.now().strftime("%Y-%m-%d")
 
     try:
-        return _fetch_costs_tree_merged(
+        result = _fetch_costs_tree_merged(
             supabase, date_from, date_to, marketplace, product_id,
             include_children, current_user.id, fulfillment_type,
         )
+
+        return result
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
