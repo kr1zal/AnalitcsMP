@@ -3269,13 +3269,14 @@ class SyncService:
                     if not posting_number or not delivery_date_str or status_val != "Доставлен":
                         continue
 
-                    # Parse delivery_date: "2026-02-24 12:51:08"
+                    # Parse delivery_date: "2026-02-24 12:51:08" (Ozon CSV = Moscow TZ, Rule #42)
+                    from datetime import timezone as _tz
+                    _MSK = _tz(timedelta(hours=3))
                     try:
-                        delivery_dt = datetime.strptime(delivery_date_str, "%Y-%m-%d %H:%M:%S")
+                        delivery_dt = datetime.strptime(delivery_date_str, "%Y-%m-%d %H:%M:%S").replace(tzinfo=_MSK)
                     except ValueError:
-                        # Try alternative format
                         try:
-                            delivery_dt = datetime.strptime(delivery_date_str[:10], "%Y-%m-%d")
+                            delivery_dt = datetime.strptime(delivery_date_str[:10], "%Y-%m-%d").replace(tzinfo=_MSK)
                         except ValueError:
                             logger.debug(f"Ozon delivery dates: unparseable date '{delivery_date_str}' for {posting_number}")
                             continue
@@ -3383,7 +3384,7 @@ class SyncService:
             tb = traceback.format_exc()
             logger.error(f"Ошибка синхронизации delivery dates Ozon: {error_msg}\n{tb}")
             self._log_sync("ozon", "delivery_dates", "error", 0, error_msg, started_at)
-            return {"status": "error", "message": error_msg, "traceback": tb}
+            return {"status": "error", "message": error_msg}
 
     # ==================== ПОЛНАЯ СИНХРОНИЗАЦИЯ ====================
 

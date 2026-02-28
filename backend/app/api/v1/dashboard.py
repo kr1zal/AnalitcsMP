@@ -441,11 +441,10 @@ async def get_unit_economics(
                         .not_.is_("delivery_date", "null")
                         .gte("delivery_date", f"{date_from}T00:00:00")
                         .lte("delivery_date", f"{date_to}T23:59:59")
+                        .limit(10000)
                     )
                     if fulfillment_type:
-                        # mp_orders may not have fulfillment_type column,
-                        # so we don't filter by it here — filter in costs_details instead
-                        pass
+                        delivery_q = delivery_q.eq("fulfillment_type", fulfillment_type)
                     delivery_result = delivery_q.execute()
 
                     if delivery_result.data and len(delivery_result.data) > 0:
