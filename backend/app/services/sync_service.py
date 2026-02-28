@@ -2105,6 +2105,9 @@ class SyncService:
                 # Используется в UE endpoint для фильтрации по дате заказа (не settlement)
                 order_date = str(posting.get("order_date") or "")[:10] or None
 
+                # posting_number for exact JOIN with mp_orders (Rule #49: DATA-002 fix)
+                raw_posting_number = str(posting.get("posting_number") or "").strip() or None
+
                 detail_records = self._classify_ozon_operation(op)
 
                 if items:
@@ -2133,6 +2136,14 @@ class SyncService:
                         if not pid:
                             continue
 
+                        # posting_number matching mp_orders.order_id format (Rule #49)
+                        item_posting_number = None
+                        if raw_posting_number:
+                            if len(items) > 1 and sku:
+                                item_posting_number = f"{raw_posting_number}_{sku}"
+                            else:
+                                item_posting_number = raw_posting_number
+
                         # share by quantity (fallback: equal split)
                         try:
                             q = int(item.get("quantity", 1) or 1)
@@ -2145,7 +2156,7 @@ class SyncService:
                         for rec in detail_records:
                             alloc = rec.get("allocation")
                             amt = rec["amount"] * share if alloc == "order" else rec["amount"]
-                            key = (pid, date, ft, rec["category"], rec["subcategory"], order_date)
+                            key = (pid, date, ft, rec["category"], rec["subcategory"], order_date, item_posting_number)
                             if key not in details_agg:
                                 details_agg[key] = {
                                     "amount": 0,
@@ -2177,7 +2188,7 @@ class SyncService:
                         rem = abs_cents % n
 
                         for i, pid in enumerate(ozon_product_ids):
-                            key = (pid, date, ft, rec["category"], rec["subcategory"], order_date)
+                            key = (pid, date, ft, rec["category"], rec["subcategory"], order_date, None)
                             if key not in details_agg:
                                 details_agg[key] = {
                                     "amount": 0,
@@ -2201,7 +2212,7 @@ class SyncService:
             delete_query.execute()
 
             # Сохраняем mp_costs_details
-            for (pid, date, ft, category, subcategory, od), data in details_agg.items():
+            for (pid, date, ft, category, subcategory, od, pn), data in details_agg.items():
                 insert_row = {
                     "product_id": pid,
                     "marketplace": "ozon",
@@ -2215,6 +2226,8 @@ class SyncService:
                 }
                 if od:
                     insert_row["order_date"] = od
+                if pn:
+                    insert_row["posting_number"] = pn
                 if self.user_id:
                     insert_row["user_id"] = self.user_id
                 self.supabase.table("mp_costs_details").insert(insert_row).execute()
@@ -3187,7 +3200,7 @@ class SyncService:
             tb = traceback.format_exc()
             logger.error(f"Ошибка синхронизации storage Ozon: {error_msg}\n{tb}")
             self._log_sync("ozon", "storage", "error", 0, error_msg, started_at)
-            return {"status": "error", "message": error_msg, "traceback": tb}
+            return {"status": "error", "message": error_msg}
 
     # ==================== DELIVERY DATES OZON ====================
 
@@ -3303,10 +3316,9 @@ class SyncService:
                 self._log_sync("ozon", "delivery_dates", "success", 0, started_at=started_at)
                 return {"status": "success", "records": 0}
 
-            # 5. UPDATE mp_orders SET delivery_date WHERE order_id matches posting_number
-            # mp_orders.order_id = posting_number for single-item postings
-            # mp_orders.order_id = f"{posting_number}_{sku}" for multi-item postings
-            # Strategy: try exact match first, then try with SKU suffix
+            # 5. Batch UPDATE mp_orders via RPC (Rule #49: PERF-002 fix)
+            # Replaces N+1 individual UPDATEs with single SQL call via UNNEST.
+            # mp_orders.order_id = posting_number (single) or posting_number_sku (multi).
 
             # Group by posting_number to detect multi-item postings
             postings_by_number: dict[str, list[dict]] = {}
@@ -3316,62 +3328,55 @@ class SyncService:
                     postings_by_number[pn] = []
                 postings_by_number[pn].append(row)
 
+            # Build batch arrays for RPC
+            batch_order_ids: list[str] = []
+            batch_delivery_dates: list[str] = []
+            batch_quantities: list[int] = []
+
             for posting_number, rows in postings_by_number.items():
                 delivery_date_iso = rows[0]["delivery_date"]
                 is_multi_item = len(rows) > 1
 
                 if is_multi_item:
-                    # Multi-item posting: order_id = f"{posting_number}_{sku}"
                     for row in rows:
                         order_id = f"{posting_number}_{row['sku']}"
-                        try:
-                            update_q = (
-                                self.supabase.table("mp_orders")
-                                .update({"delivery_date": delivery_date_iso})
-                                .eq("marketplace", "ozon")
-                                .eq("order_id", order_id)
-                            )
-                            if self.user_id:
-                                update_q = update_q.eq("user_id", self.user_id)
-                            result = update_q.execute()
-                            if result.data:
-                                updated_count += len(result.data)
-                        except Exception as e:
-                            logger.debug(f"Ozon delivery dates: update failed for {order_id}: {e}")
+                        batch_order_ids.append(order_id)
+                        batch_delivery_dates.append(delivery_date_iso)
+                        batch_quantities.append(row.get("quantity", 1))
                 else:
-                    # Single-item posting: order_id = posting_number
-                    # BUT some single-item postings may have been stored as posting_number_sku
-                    # Try exact match first
-                    try:
-                        update_q = (
-                            self.supabase.table("mp_orders")
-                            .update({"delivery_date": delivery_date_iso})
-                            .eq("marketplace", "ozon")
-                            .eq("order_id", posting_number)
-                        )
-                        if self.user_id:
-                            update_q = update_q.eq("user_id", self.user_id)
-                        result = update_q.execute()
-                        if result.data:
-                            updated_count += len(result.data)
-                        else:
-                            # Fallback: try with SKU suffix
-                            sku = rows[0]["sku"]
-                            if sku:
-                                order_id_with_sku = f"{posting_number}_{sku}"
-                                update_q2 = (
-                                    self.supabase.table("mp_orders")
-                                    .update({"delivery_date": delivery_date_iso})
-                                    .eq("marketplace", "ozon")
-                                    .eq("order_id", order_id_with_sku)
-                                )
-                                if self.user_id:
-                                    update_q2 = update_q2.eq("user_id", self.user_id)
-                                result2 = update_q2.execute()
-                                if result2.data:
-                                    updated_count += len(result2.data)
-                    except Exception as e:
-                        logger.debug(f"Ozon delivery dates: update failed for {posting_number}: {e}")
+                    # Single-item: try both posting_number and posting_number_sku
+                    batch_order_ids.append(posting_number)
+                    batch_delivery_dates.append(delivery_date_iso)
+                    batch_quantities.append(rows[0].get("quantity", 1))
+                    # Also add with SKU suffix as fallback
+                    sku = rows[0].get("sku", "")
+                    if sku:
+                        batch_order_ids.append(f"{posting_number}_{sku}")
+                        batch_delivery_dates.append(delivery_date_iso)
+                        batch_quantities.append(rows[0].get("quantity", 1))
+
+            # Execute single batch RPC call (replaces ~600+ individual HTTP requests)
+            if batch_order_ids and self.user_id:
+                try:
+                    result = self.supabase.rpc("batch_update_delivery_dates", {
+                        "p_user_id": self.user_id,
+                        "p_order_ids": batch_order_ids,
+                        "p_delivery_dates": batch_delivery_dates,
+                        "p_quantities": batch_quantities,
+                    }).execute()
+                    updated_count = result.data if isinstance(result.data, int) else 0
+                except Exception as e:
+                    logger.warning(f"Ozon delivery dates: batch RPC failed, falling back to individual updates: {e}")
+                    # Fallback: individual updates (for backward compat if RPC not yet deployed)
+                    for i, order_id in enumerate(batch_order_ids):
+                        try:
+                            self.supabase.table("mp_orders").update({
+                                "delivery_date": batch_delivery_dates[i],
+                                "quantity": batch_quantities[i],
+                            }).eq("user_id", self.user_id).eq("marketplace", "ozon").eq("order_id", order_id).execute()
+                            updated_count += 1
+                        except Exception:
+                            pass
 
             logger.info(f"Ozon delivery dates sync: {updated_count} orders updated with delivery_date "
                         f"(from {len(all_rows)} CSV rows, {len(postings_by_number)} unique postings)")

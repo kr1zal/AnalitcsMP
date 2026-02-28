@@ -117,6 +117,7 @@ UE endpoint (`/dashboard/unit-economics`) переведён на `get_current_u
 | 031 | `031_storage_costs.sql` | Таблица `mp_storage_costs` (legacy, period-based) |
 | 032 | `032_storage_costs_daily.sql` | Таблица `mp_storage_costs_daily` (daily per-product) + `last_storage_sync_at` |
 | 033 | `033_delivery_date.sql` | `delivery_date TIMESTAMPTZ` в mp_orders + index + `last_delivery_sync_at` |
+| 034 | `034_mp_orders_quantity.sql` | `quantity INT DEFAULT 1` в mp_orders (DATA-001 fix) |
 
 ### Изменённые файлы (deployed 28.02.2026)
 
@@ -212,6 +213,16 @@ profit = per_order_payout - daily_storage - COGS
 | mp_costs таблица (агрегат) | Без изменений |
 | Формулы в CLAUDE.md | Без изменений |
 
+## Известные ограничения (MUST FIX — Rule #49)
+
+> **Rule #49:** Проект рассчитан на 10-20+ селлеров по 50-200+ SKU. Текущие 5 SKU — ТОЛЬКО для тестирования.
+
+| # | Проблема | Масштаб при 200 SKU | Решение | Статус |
+|---|---------|---------------------|---------|--------|
+| PERF-002 | N+1 UPDATE в sync_delivery_dates | 12000 HTTP-запросов, 10-20 мин | `batch_update_delivery_dates` RPC (UNNEST) | **DONE** (035) |
+| PERF-003 | Двойной IN() в od_query | URL > 100KB → 414 error | `get_ozon_ue_delivered` RPC | **DONE** (035) |
+| DATA-002 | JOIN по (product_id, order_date) | Коллизии при >10 orders/day/SKU | `posting_number` в mp_costs_details + exact JOIN | **DONE** (035) |
+
 ## Ключевые уроки
 
 1. **Settlement ≠ Order date.** Ozon рассчитывает финансы с задержкой 1-5 дней. Фильтр по settlement date захватывает "чужие" заказы.
@@ -224,9 +235,11 @@ profit = per_order_payout - daily_storage - COGS
 
 5. **Storage: daily > monthly > equal.** API Placement Report даёт ежедневные per-product данные. Monthly proration хуже чем equal distribution. Daily — точное совпадение.
 
-6. **COGS: delivered ≠ ordered.** ЛК использует delivered_count, Analytics API отдаёт ordered_units. Для закрытых периодов (>7 дней) разница стремится к нулю.
+6. **COGS: delivered ≠ ordered.** ЛК использует delivered_count. Решено: миграция 034 (quantity), sync_orders_ozon сохраняет quantity, dashboard.py использует `qty = drow.get("quantity", 1)`.
 
-7. **Ozon settles at shipment, not delivery.** Finance API содержит операции для отгруженных (но не доставленных) заказов. ЛК считает только доставленные. Это создаёт временный gap для "горячих" периодов.
+7. **Ozon settles at shipment, not delivery.** Finance API содержит операции для отгруженных (но не доставленных) заказов. ЛК считает только доставленные. Решено: delivery_date filter (Phase 2).
+
+8. **Scale-first design (Rule #49).** НИКОГДА не оставлять N+1 queries, неточные JOIN, отсутствие batch с пометкой "для 5 SKU допустимо". Все решения ОБЯЗАНЫ работать на 200+ SKU × 100 orders/day × 10+ селлеров.
 
 ## Все 13 категорий Ozon costs (reference)
 
