@@ -2928,6 +2928,49 @@ class SyncService:
 
     # ==================== ХРАНЕНИЕ OZON (per-product) ====================
 
+    def _build_legacy_storage_rows(
+        self,
+        daily_agg: dict,
+        ozon_sku_map: dict,
+        products_map: dict,
+        date_from_str: str,
+        date_to_str: str,
+    ) -> list[dict]:
+        """
+        Aggregate daily_agg back to period-level for legacy mp_storage_costs table.
+        Keeps backward compatibility while we transition to mp_storage_costs_daily.
+        """
+        # Re-aggregate by SKU (sum cost, max qty/volume across all dates)
+        sku_totals: dict[str, dict] = {}  # {sku_str: {cost, qty, volume_ml, barcode}}
+        for (_, sku_str), agg in daily_agg.items():
+            if sku_str not in sku_totals:
+                sku_totals[sku_str] = {"cost": 0.0, "qty": 0, "volume_ml": 0.0, "barcode": agg["barcode"]}
+            sku_totals[sku_str]["cost"] += agg["cost"]
+            sku_totals[sku_str]["qty"] = max(sku_totals[sku_str]["qty"], agg["qty"])
+            sku_totals[sku_str]["volume_ml"] = max(sku_totals[sku_str]["volume_ml"], agg["volume_ml"])
+
+        rows = []
+        for sku_str, totals in sku_totals.items():
+            if totals["cost"] <= 0:
+                continue
+            barcode = ozon_sku_map.get(sku_str) or totals["barcode"]
+            product = products_map.get(barcode)
+            if not product:
+                continue
+            row = {
+                "marketplace": "ozon",
+                "product_id": product["id"],
+                "date_from": date_from_str,
+                "date_to": date_to_str,
+                "storage_cost": round(totals["cost"], 2),
+                "quantity": totals["qty"],
+                "volume_liters": round(totals["volume_ml"] / 1000, 2),
+            }
+            if self.user_id:
+                row["user_id"] = self.user_id
+            rows.append(row)
+        return rows
+
     async def sync_storage_ozon(self, date_from: datetime, date_to: datetime) -> dict:
         """
         Синхронизация per-product storage costs из Ozon Placement Report API.
@@ -2991,16 +3034,39 @@ class SyncService:
             # XLSX structure (from Ozon Placement Report API):
             # Row 0 = headers: Дата | SKU | Артикул | Категория | Тип | Склад | Признак |
             #   Суммарный объем(мл) | Кол-во экз | Платный объем(мл) | Кол-во платных | Начисленная стоимость
-            # Row 1+ = data (daily, per-warehouse → aggregate by SKU)
-            # Col[1] = SKU (int), Col[2] = Артикул (barcode), Col[8] = qty, Col[7] = volume(ml), Col[11] = cost(RUB)
+            # Row 1+ = data (daily, per-warehouse → aggregate by date+SKU)
+            # Col[0] = date, Col[1] = SKU (int), Col[2] = barcode, Col[7] = volume(ml),
+            # Col[8] = qty, Col[11] = cost(RUB)
             ozon_sku_map = self.ozon_sku_map  # {str(sku): barcode}
             products_map = self._get_products_map()  # {barcode: {id, ...}}
 
-            # Aggregate per SKU: sum cost, max qty, max volume
-            sku_agg: dict[str, dict] = {}  # {sku_str: {cost, qty, volume_ml}}
+            # Aggregate per (date, SKU): sum cost across warehouses, max qty/volume per day
+            # Key = (date_str, sku_str)
+            daily_agg: dict[tuple[str, str], dict] = {}
             for row in rows_data[1:]:  # skip header row
                 if not row or len(row) < 12:
                     continue
+
+                # Parse date (col 0) — may be datetime object or string
+                date_val = row[0]
+                if date_val is None:
+                    continue
+                if isinstance(date_val, datetime):
+                    row_date_str = date_val.strftime("%Y-%m-%d")
+                elif hasattr(date_val, "strftime"):
+                    row_date_str = date_val.strftime("%Y-%m-%d")
+                else:
+                    # String like "2026-02-21" or "21.02.2026"
+                    raw = str(date_val).strip()
+                    if "." in raw and len(raw) == 10:
+                        # DD.MM.YYYY → YYYY-MM-DD
+                        parts = raw.split(".")
+                        if len(parts) == 3:
+                            row_date_str = f"{parts[2]}-{parts[1]}-{parts[0]}"
+                        else:
+                            continue
+                    else:
+                        row_date_str = raw[:10]  # "YYYY-MM-DD..."
 
                 sku_val = row[1]
                 if not sku_val:
@@ -3030,16 +3096,21 @@ class SyncService:
                 except (ValueError, TypeError):
                     pass
 
-                if sku_str not in sku_agg:
-                    sku_agg[sku_str] = {"cost": 0.0, "qty": 0, "volume_ml": 0.0, "barcode": str(row[2] or "")}
-                sku_agg[sku_str]["cost"] += cost
-                sku_agg[sku_str]["qty"] = max(sku_agg[sku_str]["qty"], qty)
-                sku_agg[sku_str]["volume_ml"] = max(sku_agg[sku_str]["volume_ml"], vol_ml)
+                key = (row_date_str, sku_str)
+                if key not in daily_agg:
+                    daily_agg[key] = {"cost": 0.0, "qty": 0, "volume_ml": 0.0, "barcode": str(row[2] or "")}
+                daily_agg[key]["cost"] += cost
+                daily_agg[key]["qty"] = max(daily_agg[key]["qty"], qty)
+                daily_agg[key]["volume_ml"] = max(daily_agg[key]["volume_ml"], vol_ml)
 
-            logger.info(f"Ozon storage: aggregated {len(sku_agg)} SKUs from {len(rows_data)-1} rows")
+            unique_skus = len(set(k[1] for k in daily_agg))
+            unique_dates = len(set(k[0] for k in daily_agg))
+            logger.info(f"Ozon storage: aggregated {len(daily_agg)} (date,SKU) pairs "
+                        f"({unique_skus} SKUs, {unique_dates} dates) from {len(rows_data)-1} rows")
 
+            # Build insert rows for mp_storage_costs_daily
             insert_rows = []
-            for sku_str, agg in sku_agg.items():
+            for (row_date, sku_str), agg in daily_agg.items():
                 storage_cost = agg["cost"]
                 if storage_cost <= 0:
                     continue
@@ -3057,8 +3128,7 @@ class SyncService:
                 insert_row = {
                     "marketplace": "ozon",
                     "product_id": product_id,
-                    "date_from": date_from_str,
-                    "date_to": date_to_str,
+                    "date": row_date,
                     "storage_cost": round(storage_cost, 2),
                     "quantity": agg["qty"],
                     "volume_liters": volume_liters,
@@ -3067,23 +3137,45 @@ class SyncService:
                     insert_row["user_id"] = self.user_id
 
                 insert_rows.append(insert_row)
-                logger.info(f"Ozon storage: {barcode} (SKU {sku_str}) = {storage_cost:.2f} RUB, qty={agg['qty']}")
 
-            # 5. UPSERT (delete + insert for the period to avoid duplicates)
             if insert_rows:
-                # Delete existing records for this period
-                del_query = self.supabase.table("mp_storage_costs") \
+                logger.info(f"Ozon storage: inserting {len(insert_rows)} daily rows "
+                            f"for {date_from_str} - {date_to_str}")
+
+            # Also write to legacy mp_storage_costs (period-based, for backward compat)
+            legacy_rows = self._build_legacy_storage_rows(daily_agg, ozon_sku_map, products_map,
+                                                          date_from_str, date_to_str)
+
+            # 5. UPSERT daily rows (delete period + insert)
+            if insert_rows:
+                # Delete existing daily records for this date range
+                del_query = self.supabase.table("mp_storage_costs_daily") \
+                    .delete() \
+                    .eq("marketplace", "ozon") \
+                    .gte("date", date_from_str) \
+                    .lte("date", date_to_str)
+                if self.user_id:
+                    del_query = del_query.eq("user_id", self.user_id)
+                del_query.execute()
+
+                # Insert daily rows in batches (Supabase limit)
+                batch_size = 500
+                for i in range(0, len(insert_rows), batch_size):
+                    batch = insert_rows[i:i + batch_size]
+                    self.supabase.table("mp_storage_costs_daily").insert(batch).execute()
+                records_count = len(insert_rows)
+
+            # 5b. Also upsert legacy mp_storage_costs (period-based)
+            if legacy_rows:
+                del_legacy = self.supabase.table("mp_storage_costs") \
                     .delete() \
                     .eq("marketplace", "ozon") \
                     .eq("date_from", date_from_str) \
                     .eq("date_to", date_to_str)
                 if self.user_id:
-                    del_query = del_query.eq("user_id", self.user_id)
-                del_query.execute()
-
-                # Insert new
-                self.supabase.table("mp_storage_costs").insert(insert_rows).execute()
-                records_count = len(insert_rows)
+                    del_legacy = del_legacy.eq("user_id", self.user_id)
+                del_legacy.execute()
+                self.supabase.table("mp_storage_costs").insert(legacy_rows).execute()
 
             logger.info(f"Ozon storage sync: {records_count} products saved for {date_from_str} - {date_to_str}")
             self._log_sync("ozon", "storage", "success", records_count, started_at=started_at)
@@ -3095,6 +3187,202 @@ class SyncService:
             tb = traceback.format_exc()
             logger.error(f"Ошибка синхронизации storage Ozon: {error_msg}\n{tb}")
             self._log_sync("ozon", "storage", "error", 0, error_msg, started_at)
+            return {"status": "error", "message": error_msg, "traceback": tb}
+
+    # ==================== DELIVERY DATES OZON ====================
+
+    async def sync_delivery_dates_ozon(self, date_from: datetime, date_to: datetime) -> dict:
+        """
+        Синхронизация delivery_date из Ozon Postings Report CSV.
+        API: /v1/report/postings/create → /v1/report/info → download CSV.
+        Два запроса: FBO + FBS (delivery_schema принимает одно значение за раз).
+        Результат: UPDATE mp_orders SET delivery_date WHERE order_id = posting_number.
+        """
+        import asyncio
+        import csv
+        import io
+        import httpx as _httpx
+
+        started_at = datetime.now()
+        updated_count = 0
+        date_from_iso = date_from.strftime("%Y-%m-%dT00:00:00.000Z")
+        date_to_iso = date_to.strftime("%Y-%m-%dT23:59:59.999Z")
+
+        try:
+            all_rows: list[dict] = []
+
+            for schema in ("fbo", "fbs"):
+                # 1. Создаём отчёт
+                logger.info(f"Ozon delivery dates: creating postings report ({schema}) "
+                            f"{date_from.strftime('%Y-%m-%d')} - {date_to.strftime('%Y-%m-%d')}")
+                try:
+                    code = await self.ozon_client.create_postings_report(
+                        date_from_iso, date_to_iso, delivery_schema=schema
+                    )
+                except Exception as e:
+                    logger.warning(f"Ozon delivery dates: failed to create {schema} report: {e}")
+                    continue
+
+                if not code:
+                    logger.warning(f"Ozon delivery dates: empty code for {schema} report")
+                    continue
+
+                # 2. Поллим статус (каждые 5 сек, макс 2 мин = 24 попытки)
+                file_url = None
+                for attempt in range(24):
+                    await asyncio.sleep(5)
+                    info = await self.ozon_client.get_report_info(code)
+                    status = info.get("status", "")
+                    logger.info(f"Ozon delivery report ({schema}) status: {status} (attempt {attempt + 1})")
+
+                    if status == "success":
+                        file_url = info.get("file", "")
+                        break
+                    elif status == "failed":
+                        error_msg = info.get("error", "unknown error")
+                        logger.warning(f"Ozon delivery report ({schema}) failed: {error_msg}")
+                        break
+                    # waiting / processing — continue polling
+
+                if not file_url:
+                    logger.warning(f"Ozon delivery report ({schema}): no file URL (timeout or failed)")
+                    continue
+
+                # 3. Скачиваем CSV
+                logger.info(f"Ozon delivery dates: downloading CSV ({schema}) from {file_url[:80]}...")
+                async with _httpx.AsyncClient(timeout=60.0, follow_redirects=True) as http_client:
+                    response = await http_client.get(file_url)
+                    response.raise_for_status()
+                    csv_bytes = response.content
+
+                # 4. Парсим CSV (delimiter=';', UTF-8 with BOM)
+                csv_text = csv_bytes.decode("utf-8-sig")
+                reader = csv.DictReader(io.StringIO(csv_text), delimiter=";")
+
+                schema_rows = 0
+                for row in reader:
+                    posting_number = (row.get("Номер отправления") or "").strip()
+                    delivery_date_str = (row.get("Дата доставки") or "").strip()
+                    status_val = (row.get("Статус") or "").strip()
+
+                    # Only delivered orders have a delivery date
+                    if not posting_number or not delivery_date_str or status_val != "Доставлен":
+                        continue
+
+                    # Parse delivery_date: "2026-02-24 12:51:08"
+                    try:
+                        delivery_dt = datetime.strptime(delivery_date_str, "%Y-%m-%d %H:%M:%S")
+                    except ValueError:
+                        # Try alternative format
+                        try:
+                            delivery_dt = datetime.strptime(delivery_date_str[:10], "%Y-%m-%d")
+                        except ValueError:
+                            logger.debug(f"Ozon delivery dates: unparseable date '{delivery_date_str}' for {posting_number}")
+                            continue
+
+                    sku = (row.get("SKU") or "").strip()
+                    quantity_str = (row.get("Количество") or "1").strip()
+                    try:
+                        quantity = int(quantity_str)
+                    except ValueError:
+                        quantity = 1
+
+                    all_rows.append({
+                        "posting_number": posting_number,
+                        "delivery_date": delivery_dt.isoformat(),
+                        "sku": sku,
+                        "quantity": quantity,
+                    })
+                    schema_rows += 1
+
+                logger.info(f"Ozon delivery dates ({schema}): parsed {schema_rows} delivered rows from CSV")
+
+            if not all_rows:
+                logger.info("Ozon delivery dates: no delivered rows found in CSV reports")
+                self._log_sync("ozon", "delivery_dates", "success", 0, started_at=started_at)
+                return {"status": "success", "records": 0}
+
+            # 5. UPDATE mp_orders SET delivery_date WHERE order_id matches posting_number
+            # mp_orders.order_id = posting_number for single-item postings
+            # mp_orders.order_id = f"{posting_number}_{sku}" for multi-item postings
+            # Strategy: try exact match first, then try with SKU suffix
+
+            # Group by posting_number to detect multi-item postings
+            postings_by_number: dict[str, list[dict]] = {}
+            for row in all_rows:
+                pn = row["posting_number"]
+                if pn not in postings_by_number:
+                    postings_by_number[pn] = []
+                postings_by_number[pn].append(row)
+
+            for posting_number, rows in postings_by_number.items():
+                delivery_date_iso = rows[0]["delivery_date"]
+                is_multi_item = len(rows) > 1
+
+                if is_multi_item:
+                    # Multi-item posting: order_id = f"{posting_number}_{sku}"
+                    for row in rows:
+                        order_id = f"{posting_number}_{row['sku']}"
+                        try:
+                            update_q = (
+                                self.supabase.table("mp_orders")
+                                .update({"delivery_date": delivery_date_iso})
+                                .eq("marketplace", "ozon")
+                                .eq("order_id", order_id)
+                            )
+                            if self.user_id:
+                                update_q = update_q.eq("user_id", self.user_id)
+                            result = update_q.execute()
+                            if result.data:
+                                updated_count += len(result.data)
+                        except Exception as e:
+                            logger.debug(f"Ozon delivery dates: update failed for {order_id}: {e}")
+                else:
+                    # Single-item posting: order_id = posting_number
+                    # BUT some single-item postings may have been stored as posting_number_sku
+                    # Try exact match first
+                    try:
+                        update_q = (
+                            self.supabase.table("mp_orders")
+                            .update({"delivery_date": delivery_date_iso})
+                            .eq("marketplace", "ozon")
+                            .eq("order_id", posting_number)
+                        )
+                        if self.user_id:
+                            update_q = update_q.eq("user_id", self.user_id)
+                        result = update_q.execute()
+                        if result.data:
+                            updated_count += len(result.data)
+                        else:
+                            # Fallback: try with SKU suffix
+                            sku = rows[0]["sku"]
+                            if sku:
+                                order_id_with_sku = f"{posting_number}_{sku}"
+                                update_q2 = (
+                                    self.supabase.table("mp_orders")
+                                    .update({"delivery_date": delivery_date_iso})
+                                    .eq("marketplace", "ozon")
+                                    .eq("order_id", order_id_with_sku)
+                                )
+                                if self.user_id:
+                                    update_q2 = update_q2.eq("user_id", self.user_id)
+                                result2 = update_q2.execute()
+                                if result2.data:
+                                    updated_count += len(result2.data)
+                    except Exception as e:
+                        logger.debug(f"Ozon delivery dates: update failed for {posting_number}: {e}")
+
+            logger.info(f"Ozon delivery dates sync: {updated_count} orders updated with delivery_date "
+                        f"(from {len(all_rows)} CSV rows, {len(postings_by_number)} unique postings)")
+            self._log_sync("ozon", "delivery_dates", "success", updated_count, started_at=started_at)
+            return {"status": "success", "records": updated_count}
+
+        except Exception as e:
+            import traceback
+            error_msg = str(e) or repr(e)
+            tb = traceback.format_exc()
+            logger.error(f"Ошибка синхронизации delivery dates Ozon: {error_msg}\n{tb}")
+            self._log_sync("ozon", "delivery_dates", "error", 0, error_msg, started_at)
             return {"status": "error", "message": error_msg, "traceback": tb}
 
     # ==================== ПОЛНАЯ СИНХРОНИЗАЦИЯ ====================

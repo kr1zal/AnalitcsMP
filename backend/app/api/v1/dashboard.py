@@ -9,8 +9,8 @@ from datetime import datetime, timedelta
 logger = logging.getLogger(__name__)
 
 from ...db.supabase import get_supabase_client
-from ...auth import CurrentUser, get_current_user
-from ...subscription import get_user_subscription, UserSubscription, require_feature
+from ...auth import CurrentUser, get_current_user, get_current_user_or_cron
+from ...subscription import get_user_subscription, get_subscription_or_cron, UserSubscription, require_feature, has_feature
 from ...plans import has_feature
 
 router = APIRouter()
@@ -201,8 +201,8 @@ async def get_summary(
 
 @router.get("/dashboard/unit-economics")
 async def get_unit_economics(
-    current_user: CurrentUser = Depends(get_current_user),
-    sub: UserSubscription = Depends(require_feature("unit_economics")),
+    current_user: CurrentUser = Depends(get_current_user_or_cron),
+    sub: UserSubscription = Depends(get_subscription_or_cron),
     date_from: Optional[str] = Query(None),
     date_to: Optional[str] = Query(None),
     marketplace: Optional[str] = Query(None),
@@ -216,6 +216,10 @@ async def get_unit_economics(
     - Закупка: purchase_price × sales_count (order-based, все МП)
     - Реклама: mp_ad_costs per product
     """
+    # Feature gate (cron bypasses — internal access)
+    if current_user.email != "cron@system" and not has_feature(sub.plan, "unit_economics"):
+        raise HTTPException(status_code=403, detail="Feature 'unit_economics' requires Pro plan")
+
     supabase = get_supabase_client()
 
     # Feature gate: FBS filtering requires Pro+ plan
@@ -383,16 +387,26 @@ async def get_unit_economics(
                 share = m["revenue"] / total_mp_sales_revenue
                 ad_by_product[pid] = ad_by_product.get(pid, 0) + unattributed_ad * share
 
-        # 7b. Ozon order_date: запрашиваем mp_costs_details по order_date (дата заказа).
-        # Два запроса:
-        #   1) order_date IS NOT NULL → фильтр по order_date (per-order: комиссия, логистика, продажи)
-        #   2) order_date IS NULL → фильтр по date/settlement (account-level: хранение FBO и т.п.)
-        # Это даёт точное совпадение с ЛК Ozon.
+        # 7b. Ozon UE: PRIMARY = delivery_date (доставлено), FALLBACK = order_date (заказано).
+        #
+        # delivery_date approach (matches Ozon LK exactly):
+        #   1) Из mp_orders: get delivered orders WHERE delivery_date BETWEEN from AND to
+        #   2) Use their order_dates to filter mp_costs_details (finance data)
+        #   3) COGS: purchase_price × delivered_count (from mp_orders)
+        #
+        # Fallback (if no delivery_date data synced yet):
+        #   Current logic: mp_costs_details WHERE order_date BETWEEN from AND to
         ozon_order_date_by_product: dict[str, dict] = {}  # {product_id: {payout, revenue}}
         ozon_order_date_ft_by_product: dict[str, dict[str, dict]] = {}  # {product_id: {FBO: {payout, revenue}, FBS: ...}}
 
+        # Delivered counts per product (from mp_orders with delivery_date)
+        ozon_delivered_counts: dict[str, int] = {}  # {product_id: delivered_qty}
+
         # Subcategories excluded from UE payout (not shown in ЛК UE, stay in costs-tree)
         _UE_EXCLUDED_SUBCATEGORIES = {"Бонусы продавца"}
+
+        # Flag: are we using delivery_date or order_date filtering?
+        using_delivery_date = False
 
         def _accumulate_od_row(pid: str, amt: float, cat: str, ft_val: str, subcat: str = ""):
             """Accumulate order_date row into per-product and per-FT dicts."""
@@ -414,62 +428,158 @@ async def get_unit_economics(
 
         try:
             if not marketplace or marketplace in ("all", "ozon"):
-                # Query 1: per-order operations (order_date IS NOT NULL)
-                od_query = (
-                    supabase.table("mp_costs_details")
-                    .select("product_id, category, subcategory, amount, fulfillment_type")
-                    .eq("user_id", current_user.id)
-                    .eq("marketplace", "ozon")
-                    .gte("order_date", date_from)
-                    .lte("order_date", date_to)
-                )
-                if fulfillment_type:
-                    od_query = od_query.eq("fulfillment_type", fulfillment_type)
-                od_result = od_query.execute()
-
-                for row in od_result.data:
-                    pid = row["product_id"]
-                    amt = float(row.get("amount", 0) or 0)
-                    cat = row.get("category", "")
-                    subcat = row.get("subcategory", "")
-                    ft_val = row.get("fulfillment_type", "FBO") or "FBO"
-                    _accumulate_od_row(pid, amt, cat, ft_val, subcat)
-
-                # Query 2a: check per-product storage from mp_storage_costs (Ozon Placement Report)
-                # If available → use exact per-product storage instead of equal distribution
-                per_product_storage: dict[str, float] = {}  # {product_id: storage_cost}
+                # Step A: Check if we have delivery_date data in mp_orders for this period.
+                # If yes → filter mp_costs_details by order_dates of delivered orders.
+                # If no → fallback to current order_date-based filtering.
+                delivered_order_dates_by_product: dict[str, set[str]] = {}  # {product_id: {order_date, ...}}
                 try:
-                    storage_q = (
-                        supabase.table("mp_storage_costs")
-                        .select("product_id, storage_cost, date_from, date_to")
+                    delivery_q = (
+                        supabase.table("mp_orders")
+                        .select("product_id, order_date, delivery_date")
                         .eq("user_id", current_user.id)
                         .eq("marketplace", "ozon")
-                        .lte("date_from", date_to)
-                        .gte("date_to", date_from)
+                        .not_.is_("delivery_date", "null")
+                        .gte("delivery_date", f"{date_from}T00:00:00")
+                        .lte("delivery_date", f"{date_to}T23:59:59")
                     )
-                    storage_result = storage_q.execute()
-                    if storage_result.data:
-                        for sr in storage_result.data:
+                    if fulfillment_type:
+                        # mp_orders may not have fulfillment_type column,
+                        # so we don't filter by it here — filter in costs_details instead
+                        pass
+                    delivery_result = delivery_q.execute()
+
+                    if delivery_result.data and len(delivery_result.data) > 0:
+                        using_delivery_date = True
+                        for drow in delivery_result.data:
+                            dpid = drow.get("product_id")
+                            if not dpid:
+                                continue
+                            # Extract order_date (YYYY-MM-DD) from the delivered order
+                            raw_od = str(drow.get("order_date", "") or "")[:10]
+                            if raw_od:
+                                if dpid not in delivered_order_dates_by_product:
+                                    delivered_order_dates_by_product[dpid] = set()
+                                delivered_order_dates_by_product[dpid].add(raw_od)
+                            # Count delivered quantities
+                            ozon_delivered_counts[dpid] = ozon_delivered_counts.get(dpid, 0) + 1
+
+                        logger.info(f"UE Ozon: using delivery_date filter — "
+                                    f"{len(delivery_result.data)} delivered orders, "
+                                    f"{len(delivered_order_dates_by_product)} products")
+                except Exception as e:
+                    logger.debug(f"mp_orders delivery_date query failed (column may not exist): {e}")
+
+                # Query 1: per-order operations from mp_costs_details
+                if using_delivery_date and delivered_order_dates_by_product:
+                    # delivery_date mode: fetch costs_details for delivered orders only.
+                    # Collect all unique order_dates across all products, filter with IN.
+                    all_delivered_order_dates: set[str] = set()
+                    delivered_product_ids: list[str] = []
+                    for dpid, order_dates in delivered_order_dates_by_product.items():
+                        all_delivered_order_dates.update(order_dates)
+                        delivered_product_ids.append(dpid)
+
+                    # Single query with product_id IN [...] and order_date IN [...]
+                    od_query = (
+                        supabase.table("mp_costs_details")
+                        .select("product_id, category, subcategory, amount, fulfillment_type, order_date")
+                        .eq("user_id", current_user.id)
+                        .eq("marketplace", "ozon")
+                        .in_("product_id", delivered_product_ids)
+                        .in_("order_date", sorted(all_delivered_order_dates))
+                    )
+                    if fulfillment_type:
+                        od_query = od_query.eq("fulfillment_type", fulfillment_type)
+                    od_result = od_query.execute()
+
+                    for row in od_result.data:
+                        pid = row["product_id"]
+                        row_od = str(row.get("order_date", "") or "")[:10]
+                        # Double-check: this (product_id, order_date) must be in delivered set
+                        if pid in delivered_order_dates_by_product and row_od in delivered_order_dates_by_product[pid]:
+                            amt = float(row.get("amount", 0) or 0)
+                            cat = row.get("category", "")
+                            subcat = row.get("subcategory", "")
+                            ft_val = row.get("fulfillment_type", "FBO") or "FBO"
+                            _accumulate_od_row(pid, amt, cat, ft_val, subcat)
+                else:
+                    # Fallback: order_date mode (current logic)
+                    od_query = (
+                        supabase.table("mp_costs_details")
+                        .select("product_id, category, subcategory, amount, fulfillment_type")
+                        .eq("user_id", current_user.id)
+                        .eq("marketplace", "ozon")
+                        .gte("order_date", date_from)
+                        .lte("order_date", date_to)
+                    )
+                    if fulfillment_type:
+                        od_query = od_query.eq("fulfillment_type", fulfillment_type)
+                    od_result = od_query.execute()
+
+                    for row in od_result.data:
+                        pid = row["product_id"]
+                        amt = float(row.get("amount", 0) or 0)
+                        cat = row.get("category", "")
+                        subcat = row.get("subcategory", "")
+                        ft_val = row.get("fulfillment_type", "FBO") or "FBO"
+                        _accumulate_od_row(pid, amt, cat, ft_val, subcat)
+
+                # Query 2a: check per-product DAILY storage from mp_storage_costs_daily
+                # (Ozon Placement Report XLSX with daily granularity).
+                # If available → use exact per-product daily storage instead of equal distribution.
+                per_product_storage: dict[str, float] = {}  # {product_id: total_storage_cost}
+                try:
+                    daily_storage_q = (
+                        supabase.table("mp_storage_costs_daily")
+                        .select("product_id, storage_cost")
+                        .eq("user_id", current_user.id)
+                        .eq("marketplace", "ozon")
+                        .gte("date", date_from)
+                        .lte("date", date_to)
+                    )
+                    daily_storage_result = daily_storage_q.execute()
+                    if daily_storage_result.data:
+                        for sr in daily_storage_result.data:
                             s_pid = sr["product_id"]
                             s_cost = float(sr.get("storage_cost", 0) or 0)
-                            # Prorate: storage report covers date_from..date_to (typically 28 days)
-                            # User may request a shorter period → prorate proportionally
-                            s_from = sr.get("date_from", "")
-                            s_to = sr.get("date_to", "")
-                            try:
-                                report_days = (datetime.strptime(s_to, "%Y-%m-%d") - datetime.strptime(s_from, "%Y-%m-%d")).days + 1
-                                if report_days <= 0:
-                                    report_days = 29
-                            except Exception:
-                                report_days = 28
-                            request_days = (datetime.strptime(date_to, "%Y-%m-%d") - datetime.strptime(date_from, "%Y-%m-%d")).days + 1
-                            prorated = s_cost * min(request_days, report_days) / report_days
-                            per_product_storage[s_pid] = per_product_storage.get(s_pid, 0) + prorated
+                            per_product_storage[s_pid] = per_product_storage.get(s_pid, 0) + s_cost
                 except Exception as e:
-                    logger.debug(f"mp_storage_costs query failed (table may not exist): {e}")
-                    # Fallback: per_product_storage stays empty → use account-level storage
+                    logger.debug(f"mp_storage_costs_daily query failed (table may not exist): {e}")
+
+                # Fallback: try legacy mp_storage_costs (period-based) if daily table empty
+                if not per_product_storage:
+                    try:
+                        legacy_q = (
+                            supabase.table("mp_storage_costs")
+                            .select("product_id, storage_cost, date_from, date_to")
+                            .eq("user_id", current_user.id)
+                            .eq("marketplace", "ozon")
+                            .lte("date_from", date_to)
+                            .gte("date_to", date_from)
+                        )
+                        legacy_result = legacy_q.execute()
+                        if legacy_result.data:
+                            for sr in legacy_result.data:
+                                s_pid = sr["product_id"]
+                                s_cost = float(sr.get("storage_cost", 0) or 0)
+                                s_from = sr.get("date_from", "")
+                                s_to = sr.get("date_to", "")
+                                try:
+                                    report_days = (datetime.strptime(s_to, "%Y-%m-%d") - datetime.strptime(s_from, "%Y-%m-%d")).days + 1
+                                    if report_days <= 0:
+                                        report_days = 29
+                                except Exception:
+                                    report_days = 28
+                                request_days = (datetime.strptime(date_to, "%Y-%m-%d") - datetime.strptime(date_from, "%Y-%m-%d")).days + 1
+                                prorated = s_cost * min(request_days, report_days) / report_days
+                                per_product_storage[s_pid] = per_product_storage.get(s_pid, 0) + prorated
+                    except Exception as e:
+                        logger.debug(f"mp_storage_costs legacy query failed: {e}")
 
                 has_per_product_storage = bool(per_product_storage)
+                if has_per_product_storage:
+                    logger.info(f"UE Ozon: using per-product storage for {len(per_product_storage)} products "
+                                f"(total={sum(per_product_storage.values()):.2f} RUB)")
 
                 # Query 2: account-level operations (order_date IS NULL, e.g. storage fees)
                 # These have no order_date → use settlement date as period filter
@@ -492,19 +602,33 @@ async def get_unit_economics(
                     cat = row.get("category", "")
                     subcat = row.get("subcategory", "")
                     ft_val = row.get("fulfillment_type", "FBO") or "FBO"
-                    # TODO: per-product storage from mp_storage_costs has monthly granularity.
-                    # Using daily charges from mp_costs_details (equal distribution) is closer
-                    # to ЛК numbers than prorated monthly total. Future: store daily per-product
-                    # storage costs from XLSX report for exact match.
+
+                    # Skip equally-distributed storage if we have per-product daily data
+                    if has_per_product_storage and subcat == "Размещение товаров":
+                        continue
+
                     _accumulate_od_row(pid, amt, cat, ft_val, subcat)
+
+                # Apply per-product daily storage to payout (storage is a NEGATIVE charge)
+                if has_per_product_storage:
+                    for pid, storage_cost in per_product_storage.items():
+                        if pid not in ozon_order_date_by_product:
+                            ozon_order_date_by_product[pid] = {"payout": 0.0, "revenue": 0.0}
+                        # storage_cost is positive (amount from XLSX), subtract from payout
+                        ozon_order_date_by_product[pid]["payout"] -= storage_cost
         except Exception as e:
             logger.warning(f"order_date query failed for Ozon UE: {e}")
             # fallback: ozon_order_date_by_product stays empty → payout_rate method will be used
 
         # 8. Формирование результата
-        # Ozon PRIMARY: order_date-based payout from mp_costs_details (точное совпадение с ЛК).
-        #   payout = SUM(all amounts WHERE order_date IN period) — уже включает ВСЕ finance deductions.
-        #   profit = order_payout - purchase (ads УЖЕ внутри payout как finance-deduction).
+        # Ozon PRIMARY (delivery_date): filter mp_costs_details by order_dates of
+        #   delivered orders (delivery_date BETWEEN from AND to in mp_orders).
+        #   COGS = purchase_price × delivered_count (from mp_orders).
+        #   This matches Ozon LK exactly.
+        #
+        # Ozon SECONDARY (order_date fallback): if no delivery_date data synced yet,
+        #   mp_costs_details WHERE order_date BETWEEN from AND to.
+        #   COGS = purchase_price × sales_count (from mp_sales).
         #
         # Ozon FALLBACK: payout RATE from costs-tree (если order_date данных нет).
         #   payout_rate = ozon_payout / ozon_tree_revenue.
@@ -554,12 +678,16 @@ async def get_unit_economics(
             purchase_price = float(product.get("purchase_price", 0))
             is_ozon = product_id in ozon_product_ids or bool(product.get("ozon_product_id"))
             # Purchase: order-based для всех МП (purchase_price × sales_count)
-            raw_purchase = purchase_price * sales_count
+            # Ozon with delivery_date: use delivered_count instead of sales_count for COGS
+            if is_ozon and using_delivery_date and product_id in ozon_delivered_counts:
+                raw_purchase = purchase_price * ozon_delivered_counts[product_id]
+            else:
+                raw_purchase = purchase_price * sales_count
             ad_cost = ad_by_product.get(product_id, 0)
 
             if is_ozon and product_id in ozon_order_date_by_product:
-                # Ozon PRIMARY: order_date-based exact matching.
-                # payout = SUM(all mp_costs_details amounts WHERE order_date IN period).
+                # Ozon PRIMARY: delivery_date or order_date-based exact matching.
+                # payout = SUM(all mp_costs_details amounts WHERE order_date matches delivered orders).
                 # Finance payout already includes ALL deductions (commission, logistics, ads).
                 # profit = order_payout - purchase (NO separate ad subtraction — ads already deducted).
                 od_data = ozon_order_date_by_product[product_id]
