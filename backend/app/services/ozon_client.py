@@ -367,16 +367,43 @@ class OzonClient:
         result = await self._request("POST", "/v1/report/placement/by-products/create", json=payload)
         return result.get("code", "")
 
+    async def create_postings_report(
+        self, date_from: str, date_to: str, delivery_schema: str = "fbo"
+    ) -> str:
+        """
+        Создать отчёт об отправлениях (Postings Report).
+        CSV-отчёт содержит: posting_number, delivery_date, status, SKU, quantity.
+        Используется для получения точной даты доставки покупателю.
+
+        Args:
+            date_from: "YYYY-MM-DDTHH:MM:SS.000Z" (ISO 8601)
+            date_to: "YYYY-MM-DDTHH:MM:SS.000Z" (ISO 8601)
+            delivery_schema: "fbo" или "fbs" (одно значение за раз)
+
+        Returns:
+            code — идентификатор отчёта для get_report_info()
+        """
+        payload = {
+            "filter": {
+                "processed_at_from": date_from,
+                "processed_at_to": date_to,
+                "delivery_schema": [delivery_schema],
+            },
+            "language": "RU",
+        }
+        result = await self._request("POST", "/v1/report/postings/create", json=payload)
+        return (result.get("result") or {}).get("code", "")
+
     async def get_report_info(self, code: str) -> dict:
         """
         Получить статус и ссылку на скачивание отчёта.
 
         Args:
-            code: UUID отчёта из create_placement_report()
+            code: UUID отчёта из create_placement_report() или create_postings_report()
 
         Returns:
             dict with keys: code, status (waiting|processing|success|failed),
-            file (URL to XLSX), report_type, expires_at, error
+            file (URL to CSV/XLSX), report_type, expires_at, error
         """
         payload = {"code": code}
         result = await self._request("POST", "/v1/report/info", json=payload)

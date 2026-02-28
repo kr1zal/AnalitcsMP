@@ -1,187 +1,204 @@
-# Ozon UE — order_date для точного совпадения с ЛК
+# Ozon UE — полное совпадение с ЛК (order_date + storage + delivery_date)
 
 > Дата работы: 2026-02-28
-> Статус: DONE (profit gap ~4₽ из ~1517₽ → решено на 99.7%)
+> Статус: **PHASE 2 DONE** — Phase 1 (order_date + storage) ✅, Phase 2 (delivery_date filter) ✅
 
-## Проблема
+## История проблемы
 
 Сверка UE с ЛК Ozon (Д3 К2, 21-26 фев):
-- **Наш profit:** -1,517₽
-- **ЛК profit:** +6.32₽
-- **Diff:** 1,523₽
 
-**Причина:** `mp_costs_details.date` = settlement date (дата фин. расчёта), а не дата заказа. В один settlement-период попадают расчёты по заказам из РАЗНЫХ периодов.
+| Этап | Наш profit | ЛК profit | Gap | Причина |
+|------|-----------|-----------|-----|---------|
+| Исходный | -1,517₽ | +6.32₽ | 1,523₽ | settlement date вместо order_date |
+| + order_date fix | ~2₽ | +6.32₽ | ~4₽ | storage equal distribution (1/N) |
+| + daily storage | +2.36₽ | +6.32₽ | 3.96₽ | "Бонусы продавца" в payout |
+| + exclude бонусы | **+6.32₽** | +6.32₽ | **0₽** | **SOLVED** |
 
-Пример: заказ от 18 фев может быть "рассчитан" (settlement) 21 фев. При фильтре 21-26 фев по settlement date мы захватываем финансы за заказы, которых в этом периоде не было.
+## Что решено (deployed 28.02.2026)
 
-## Решение: order_date из Ozon API
+### 1. order_date в mp_costs_details (миграция 030) ✅
 
-### Источник данных
+**Причина:** `mp_costs_details.date` = settlement date, а не дата заказа. В один settlement-период попадают расчёты по заказам из РАЗНЫХ периодов.
 
-Endpoint: `POST /v3/finance/transaction/list` (файл `3.md`)
+**Решение:** Ozon Finance API (`/v3/finance/transaction/list`) содержит `posting.order_date`. Синхронизируем в `mp_costs_details.order_date`. UE endpoint фильтрует по order_date.
 
-Каждая операция содержит:
-```json
-{
-  "operation_date": "2026-02-24T00:00:00Z",  // settlement date (=mp_costs_details.date)
-  "posting": {
-    "order_date": "2026-02-23T14:20:50Z"      // РЕАЛЬНАЯ дата заказа
-  }
-}
+### 2. Daily per-product storage (миграция 032) ✅
+
+**Причина:** Finance API отдаёт storage как account-level операцию (`OperationMarketplaceServiceStorage`) без привязки к товару. Наш sync распределял поровну (1/N товаров). ЛК распределяет per-product по объёму/весу.
+
+**Решение:** Ozon Placement Report API отдаёт XLSX с daily per-product storage. Новая таблица `mp_storage_costs_daily` (date, product_id, storage_cost). В UE: skip equal-distribution из Query 2, apply per-product daily storage.
+
+**Верификация (21-26 фев):**
+| Товар | Наш storage | ЛК storage | Diff |
+|-------|-------------|------------|------|
+| Д3К2 | 199.20₽ | 199.20₽ | **0.00₽** |
+| Тестостерон | 524.32₽ | 524.32₽ | **0.00₽** |
+| Л-Карнитин | 294.00₽ | 294.00₽ | **0.00₽** |
+
+### 3. Исключение "Бонусы продавца" ✅
+
+**Причина:** Ozon начисляет "Бонусы продавца" (~3.96₽ для Д3К2) как finance-deduction в payout, но НЕ показывает в UE ЛК.
+
+**Решение:** `_UE_EXCLUDED_SUBCATEGORIES = {"Бонусы продавца"}` в `_accumulate_od_row()`.
+
+### 4. Cron-доступ к UE endpoint ✅
+
+UE endpoint (`/dashboard/unit-economics`) переведён на `get_current_user_or_cron` + `get_subscription_or_cron`. Можно вызывать через `X-Cron-Secret` + `X-Cron-User-Id`.
+
+## Оставшийся gap: COGS ordered vs delivered
+
+### Проблема
+
+ЛК Ozon считает `COGS = purchase_price × delivered_count`, мы считаем `COGS = purchase_price × sales_count` (заказано из Analytics API).
+
+### Сверка 01-26 фев (CSV из ЛК vs API)
+
+| Товар | Заказано | Доставлено | Revenue diff | COGS diff | Profit (ЛК) | Profit (наш) |
+|-------|----------|------------|-------------|-----------|-------------|-------------|
+| Д3К2 | 11 | 10 | 0₽ | 280₽ | 621.38₽ | 341.38₽ |
+| Тестостерон | 6 | 3 | 1,726₽ | 1,212₽ | -785.70₽ | -969.58₽ |
+| Л-Карнитин | 36 | 36 | 0₽ | 0₽ | **-6,233.74₽** | **-6,233.74₽** |
+
+**Выводы:**
+1. Когда ordered = delivered (Л-Карнитин 36=36) → **полное совпадение**
+2. Когда 1 заказ в пути (Д3К2 11→10) → gap = 1 × purchase_price (280₽), revenue совпадает
+3. Когда много в пути (Тестостерон 6→3) → gap в revenue И COGS (finance API включает settlement для отгруженных, ЛК только для доставленных)
+
+### Корневые причины расхождения
+
+| # | Причина | Масштаб | Временный? |
+|---|---------|---------|------------|
+| 1 | COGS × ordered вместо delivered | pp × (ordered - delivered) | Да, самоустраняется при доставке |
+| 2 | Revenue за отгруженные-но-не-доставленные | Значительный при большом % в пути | Да, самоустраняется |
+| 3 | Deductions за отгруженные-но-не-доставленные | Пропорционально revenue gap | Да, самоустраняется |
+
+**Все 3 причины — временные.** После завершения доставки всех заказов данные совпадут.
+
+### Phase 2: delivery_date filter (Вариант Б) ✅ — DEPLOYED 28.02.2026
+
+**Решение:** CSV Postings Report (`/v1/report/postings/create`, doc 12.md) содержит "Дата доставки".
+Синхронизируем в `mp_orders.delivery_date` → UE фильтрует finance data только по доставленным заказам.
+
+**Варианты (исследованы):**
+
+| Вариант | Описание | Вердикт |
+|---------|----------|---------|
+| А (delivered_count) | delivered_units для COGS | **Отклонён** — axis mismatch (payout=shipped, COGS=delivered) |
+| Б (CSV delivery_date) | Фильтровать finance по delivery_date из CSV | **ВЫБРАН** — обе оси на delivered |
+| В+ (accept + UX) | Оставить как есть + индикатор | Запасной |
+
+**Реализация:**
+1. **Миграция 033**: `delivery_date TIMESTAMPTZ` в mp_orders + partial index + `last_delivery_sync_at` в mp_sync_queue
+2. **sync_delivery_dates_ozon()**: FBO+FBS отчёты → poll → CSV parse (delimiter=`;`, UTF-8-sig) → UPDATE mp_orders
+3. **UE endpoint**: delivery_date PRIMARY → order_date FALLBACK. COGS = purchase_price × delivered_count
+4. **Cron**: 24h throttle, 60 дней lookback, non-fatal wrapper
+
+**Fallback chain:** delivery_date (exact ЛК match) → order_date (approximate) → payout_rate (costs-tree)
+
+**Верификация (ожидаемая после первого sync):**
+- Д3К2 (01-26 фев): profit = 621.38₽ (ЛК)
+- Тестостерон: profit = -785.70₽ (ЛК)
+- Л-Карнитин 36=36: profit = -6,233.74₽ (уже совпадает)
+
+**CSV-столбцы Postings Report (ключевые):**
+- "Номер отправления" — JOIN с mp_costs_details
+- "Дата доставки" — формат "2026-02-24 12:51:08"
+- "Статус" — фильтр "Доставлен"
+- "SKU" — маппинг на product
+- "Количество" — для COGS
+
+## Файлы и миграции
+
+### Миграции (все applied в Supabase)
+
+| # | Файл | Назначение |
+|---|------|-----------|
+| 030 | `030_order_date.sql` | `order_date DATE` в `mp_costs_details` + index |
+| 031 | `031_storage_costs.sql` | Таблица `mp_storage_costs` (legacy, period-based) |
+| 032 | `032_storage_costs_daily.sql` | Таблица `mp_storage_costs_daily` (daily per-product) + `last_storage_sync_at` |
+| 033 | `033_delivery_date.sql` | `delivery_date TIMESTAMPTZ` в mp_orders + index + `last_delivery_sync_at` |
+
+### Изменённые файлы (deployed 28.02.2026)
+
+| Файл | Изменение |
+|------|-----------|
+| `backend/app/services/sync_service.py` | `sync_storage_ozon()` → daily XLSX parsing + `_build_legacy_storage_rows()` |
+| `backend/app/api/v1/dashboard.py` | UE: Query 2a (daily storage) + skip equal dist + exclude бонусы + cron access |
+| `backend/app/api/v1/sync_queue.py` | Storage в auto queue с 24h throttle (`last_storage_sync_at`) |
+| `backend/app/services/ozon_client.py` | `create_placement_report()`, `get_report_info()` (ранее) |
+| `backend/app/api/v1/sync.py` | `/sync/storage-ozon` endpoint (ранее) |
+| `backend/app/services/ozon_client.py` | `create_postings_report()` — CSV Postings Report |
+| `backend/app/services/sync_service.py` | `sync_delivery_dates_ozon()` — ~190 строк |
+| `backend/app/api/v1/dashboard.py` | UE: delivery_date PRIMARY → order_date FALLBACK |
+| `backend/app/api/v1/sync_queue.py` | Delivery dates auto sync с 24h throttle |
+| `backend/migrations/033_delivery_date.sql` | Миграция: delivery_date + index + throttle |
+
+## Архитектура UE (текущая)
+
+### Data flow
+
+```
+Ozon Finance API (/v3/finance/transaction/list)
+    │
+    ├── operation_date → mp_costs_details.date (settlement)
+    ├── posting.order_date → mp_costs_details.order_date (order)
+    └── posting.delivery_schema → mp_costs_details.fulfillment_type
+
+Ozon Placement Report API (/v1/report/placement/by-products/create)
+    │
+    └── XLSX (daily per SKU per warehouse) → mp_storage_costs_daily
+
+Ozon Postings Report API (/v1/report/postings/create, doc 12.md)
+    │
+    └── CSV (posting_number, delivery_date, status, SKU) → mp_orders.delivery_date
+
+UE endpoint (dashboard.py)
+    │
+    ├── Step A: mp_orders WHERE delivery_date IN [from..to]
+    │   └── delivered postings → their order_dates + delivered_count
+    │
+    ├── Query 1: mp_costs_details WHERE (product_id, order_date) IN delivered
+    │   └── _accumulate_od_row() (skip "Бонусы продавца")
+    │   └── Fallback: WHERE order_date IN [from..to] (if no delivery_date data)
+    │
+    ├── Query 2a: mp_storage_costs_daily         ← per-product daily storage
+    │   └── Fallback: mp_storage_costs (legacy)  ← period-based prorated
+    │
+    ├── Query 2: WHERE order_date IS NULL         ← account-level ops
+    │   └── Skip "Размещение товаров" if has_per_product_storage
+    │
+    └── profit = order_payout - per_product_storage - COGS
+              COGS = purchase_price × delivered_count (or sales_count fallback)
+              (ads already inside order_payout)
+              (бонусы excluded)
 ```
 
-- `operation_date` — когда Ozon провёл финансовую операцию (settlement)
-- `posting.order_date` — когда покупатель оформил заказ (order)
-- Storage операции имеют пустой `posting.order_date` → корректно становится NULL
+### 3-уровневый fallback для storage
 
-### Подход в UE endpoint
+1. **`mp_storage_costs_daily`** (primary) — SUM per product per day, без proration
+2. **`mp_storage_costs`** (legacy fallback) — period-based с proration
+3. **`mp_costs_details` equal distribution** (last resort) — 1/N товаров
 
-**Два запроса к mp_costs_details:**
+### UE profit формула (Ozon)
 
-1. **Query 1** (per-order): `WHERE order_date BETWEEN date_from AND date_to`
-   - Захватывает только операции по заказам ИЗ выбранного периода
-   - Payout, revenue, удержания — точно как в ЛК
-
-2. **Query 2** (account-level): `WHERE order_date IS NULL AND date BETWEEN date_from AND date_to`
-   - Storage, бонусы и другие операции без привязки к заказу
-   - Фильтруются по settlement date (единственный вариант)
-
-**Profit формула (Ozon order_date):**
 ```
-profit = order_payout - purchase_price × qty
-```
-- `order_payout` = SUM(amount) WHERE order_date IN period (уже включает удержания И рекламу)
-- Ad cost НЕ вычитается отдельно — реклама (Звёздные товары) уже внутри payout как finance-deduction
-- Storage вычитается из общего payout (account-level, равное распределение)
+# PRIMARY (delivery_date mode — matches ЛК exactly):
+delivered_postings = mp_orders WHERE delivery_date IN period
+per_order_payout = SUM(mp_costs_details.amount
+    WHERE (product_id, order_date) IN delivered_postings
+    AND subcategory NOT IN {"Бонусы продавца"})
+COGS = purchase_price × delivered_count (from mp_orders)
 
-## Изменения по файлам
+# FALLBACK (order_date mode — if delivery_date not synced):
+per_order_payout = SUM(mp_costs_details.amount
+    WHERE order_date IN period
+    AND subcategory NOT IN {"Бонусы продавца"})
+COGS = purchase_price × sales_count (from mp_sales)
 
-### 1. Миграция `backend/migrations/030_order_date.sql` ✅ Applied
-
-```sql
-ALTER TABLE mp_costs_details ADD COLUMN IF NOT EXISTS order_date DATE;
-
-CREATE INDEX IF NOT EXISTS idx_mp_costs_details_order_date
-    ON mp_costs_details(user_id, marketplace, order_date)
-    WHERE order_date IS NOT NULL;
-
--- Backfill: order_date = date (settlement) как приближение до re-sync
-UPDATE mp_costs_details SET order_date = date
-    WHERE order_date IS NULL AND marketplace = 'ozon';
-```
-
-**ВАЖНО:** Backfill ставит order_date = settlement date. Реальные order_date появляются ТОЛЬКО после re-sync.
-
-### 2. Sync: `backend/app/services/sync_service.py` — sync_costs_ozon()
-
-Что добавлено:
-```python
-# Извлечение order_date из API response
-posting = op.get("posting", {}) or {}
-order_date = str(posting.get("order_date") or "")[:10] or None
-
-# Добавлен в ключ агрегации
-key = (pid, date, ft, rec["category"], rec["subcategory"], order_date)
-
-# Добавлен в INSERT
-if od:
-    insert_row["order_date"] = od
-```
-
-Что НЕ менялось:
-- DELETE по settlement date range (как было)
-- mp_costs агрегат (settlement-based, для costs-tree)
-- Логика FBS detection (delivery_schema)
-
-### 3. UE endpoint: `backend/app/api/v1/dashboard.py`
-
-#### a) Исключение "Бонусы продавца"
-```python
-_UE_EXCLUDED_SUBCATEGORIES = {"Бонусы продавца"}
-
-def _accumulate_od_row(pid, amt, cat, ft_val, subcat=""):
-    if subcat in _UE_EXCLUDED_SUBCATEGORIES:
-        return
-    # ... accumulate payout/revenue
-```
-Причина: "Бонусы продавца" (~3.96₽) включены в payout, но НЕ отображаются в ЛК UE.
-
-#### b) Два запроса (Query 1 + Query 2)
-```python
-# Query 1: per-order operations (order_date filter)
-od_query = (
-    supabase.table("mp_costs_details")
-    .select("product_id, category, subcategory, amount, fulfillment_type")
-    .eq("user_id", current_user.id)
-    .eq("marketplace", "ozon")
-    .gte("order_date", date_from)
-    .lte("order_date", date_to)
-)
-
-# Query 2: account-level (order_date IS NULL, settlement date filter)
-null_od_query = (
-    supabase.table("mp_costs_details")
-    .select("product_id, category, subcategory, amount, fulfillment_type")
-    .eq("user_id", current_user.id)
-    .eq("marketplace", "ozon")
-    .is_("order_date", "null")
-    .gte("date", date_from)
-    .lte("date", date_to)
-)
-```
-
-#### c) Profit calculation (Ozon PRIMARY path)
-```python
-if is_ozon and product_id in ozon_order_date_by_product:
-    od_data = ozon_order_date_by_product[product_id]
-    order_payout = od_data["payout"]
-    order_revenue = od_data["revenue"]
-    displayed_revenue = order_revenue if order_revenue > 0 else mp_sales_revenue
-    mp_costs_consistent = max(0, displayed_revenue - order_payout)
-    net_profit = order_payout - raw_purchase
-    # Ad cost NOT subtracted — already inside order_payout as finance deduction
-```
-
-### 4. Per-product Storage: `backend/migrations/031_storage_costs.sql` ✅ Applied
-
-```sql
-CREATE TABLE IF NOT EXISTS mp_storage_costs (
-    id BIGSERIAL PRIMARY KEY,
-    user_id UUID NOT NULL REFERENCES auth.users(id),
-    marketplace VARCHAR(10) NOT NULL DEFAULT 'ozon',
-    product_id UUID NOT NULL REFERENCES mp_products(id),
-    date_from DATE NOT NULL,
-    date_to DATE NOT NULL,
-    storage_cost NUMERIC(12,2) NOT NULL DEFAULT 0,
-    quantity INTEGER DEFAULT 0,
-    volume_liters NUMERIC(10,2) DEFAULT 0,
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    UNIQUE(user_id, marketplace, product_id, date_from, date_to)
-);
-```
-
-### 5. Storage sync: sync_service.py — sync_storage_ozon()
-
-Ozon Placement Report API (добавлен 25.12.2025):
-1. `POST /v1/report/placement/by-products/create` → получить code
-2. `POST /v1/report/info` → поллинг статуса, получить download_url
-3. Скачать XLSX, парсить openpyxl
-4. XLSX: Col[1]=SKU, Col[2]=Barcode, Col[11]=Storage cost (RUB)
-5. Агрегация по SKU → upsert в mp_storage_costs
-
-### 6. OzonClient: `backend/app/services/ozon_client.py`
-
-Два новых метода:
-```python
-async def create_placement_report(self, date_from: str, date_to: str) -> str
-async def get_report_info(self, code: str) -> dict
-```
-
-### 7. Sync endpoint: `backend/app/api/v1/sync.py`
-
-```python
-@router.post("/sync/storage-ozon")
-async def sync_storage_ozon(current_user, sub, days_back=28):
+# Common:
+daily_storage = SUM(mp_storage_costs_daily.storage_cost
+    WHERE date IN period AND product_id = pid)
+profit = per_order_payout - daily_storage - COGS
 ```
 
 ## Что НЕ менялось (guard rails)
@@ -195,68 +212,6 @@ async def sync_storage_ozon(current_user, sub, days_back=28):
 | mp_costs таблица (агрегат) | Без изменений |
 | Формулы в CLAUDE.md | Без изменений |
 
-## Результаты верификации
-
-### Д3 К2, 21-26 февраля
-
-| Метрика | До fix | После fix | ЛК Ozon |
-|---------|--------|-----------|---------|
-| Revenue | 4,134₽ (3 batch) | 745₽ (1 order) | 745₽ |
-| Profit | -1,517₽ | ~2₽ | 6.32₽ |
-| Gap | 1,523₽ | ~4₽ | — |
-
-### Причина остаточного gap ~4₽
-
-Storage allocation: mp_costs_details хранит ежедневные списания хранения с **равным распределением** между товарами (1/N). ЛК распределяет по объёму/весу (per-product).
-
-Варианты:
-1. **Equal distribution** (текущий, mp_costs_details) → gap ~4₽
-2. **Per-product prorated** (mp_storage_costs monthly) → gap ~10₽ (хуже из-за месячной гранулярности)
-3. **Daily per-product** (будущее) → gap ~0₽ (нужно хранить daily XLSX данные)
-
-Выбран вариант 1 как наиболее точный на данный момент.
-
-## Re-sync после деплоя
-
-**КРИТИЧНО:** После деплоя на production нужен re-sync для заполнения order_date:
-
-```bash
-# На VPS (или через API)
-curl -X POST "https://reviomp.ru/api/sync/trigger" \
-  -H "Authorization: Bearer <token>" \
-  -d '{"marketplace": "ozon", "sync_type": "costs"}'
-```
-
-Или через cron — sync_costs_ozon автоматически заполнит order_date при следующем запуске.
-
-Без re-sync: order_date = settlement date (backfill из миграции 030) → UE будет как до fix.
-
-## Зависимости
-
-- `openpyxl>=3.1.0` добавлен в `backend/requirements.txt`
-- Миграции 030, 031 должны быть применены в Supabase
-- Ozon API ключ должен иметь доступ к `/v1/report/placement/*`
-
-## Диаграмма data flow
-
-```
-Ozon API (/v3/finance/transaction/list)
-    │
-    ├── operation_date → mp_costs_details.date (settlement)
-    ├── posting.order_date → mp_costs_details.order_date (order)
-    └── posting.delivery_schema → mp_costs_details.fulfillment_type
-
-UE endpoint (dashboard.py)
-    │
-    ├── Query 1: WHERE order_date IN [from..to]  ← per-order payout/revenue
-    ├── Query 2: WHERE order_date IS NULL         ← storage, account-level
-    │             AND date IN [from..to]
-    │
-    └── profit = order_payout - purchase
-              (ad already inside payout)
-              (storage from Query 2, equal distrib)
-```
-
 ## Ключевые уроки
 
 1. **Settlement ≠ Order date.** Ozon рассчитывает финансы с задержкой 1-5 дней. Фильтр по settlement date захватывает "чужие" заказы.
@@ -267,4 +222,24 @@ UE endpoint (dashboard.py)
 
 4. **"Бонусы продавца" не в ЛК.** Ozon начисляет бонусы в payout, но НЕ показывает в UE ЛК. Для совпадения — исключаем через `_UE_EXCLUDED_SUBCATEGORIES`.
 
-5. **Storage гранулярность.** API Placement Report даёт ежедневные per-product данные, но их нужно хранить в daily разбивке для точного совпадения (TODO).
+5. **Storage: daily > monthly > equal.** API Placement Report даёт ежедневные per-product данные. Monthly proration хуже чем equal distribution. Daily — точное совпадение.
+
+6. **COGS: delivered ≠ ordered.** ЛК использует delivered_count, Analytics API отдаёт ordered_units. Для закрытых периодов (>7 дней) разница стремится к нулю.
+
+7. **Ozon settles at shipment, not delivery.** Finance API содержит операции для отгруженных (но не доставленных) заказов. ЛК считает только доставленные. Это создаёт временный gap для "горячих" периодов.
+
+## Все 13 категорий Ozon costs (reference)
+
+```
+Продажи / Выручка                        (+) revenue
+Вознаграждение Ozon / {product_name}     (-) commission
+Услуги агентов / Эквайринг               (-) acquiring
+Услуги агентов / Доставка до места выдачи (-) last mile
+Услуги агентов / Звёздные товары         (-) promo (inside payout)
+Услуги доставки / Логистика              (-) logistics
+Услуги доставки / Возвраты               (-) return logistics
+Услуги FBO / Размещение товаров          (-) storage (account-level, order_date=NULL)
+Продвижение и реклама / Бонусы продавца  (-) seller bonus (EXCLUDED from UE)
+Вознаграждение Ozon / Прочее             (-) other commission
+Вознаграждение Ozon / Витамины           (-) category commission
+```

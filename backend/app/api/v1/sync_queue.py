@@ -161,6 +161,81 @@ async def _run_full_sync(user_id: str, trigger: str) -> dict:
         sync_service = SyncService(user_id=user_id)
         result = await sync_service.sync_all(days_back=30)
         total_records = result.get("success_count", 0)
+
+        # Storage sync: run max 1/day (Ozon API limit 5 calls/day).
+        # Check last_storage_sync_at in mp_sync_queue → if >24h ago or NULL → run.
+        try:
+            supabase = get_supabase_client()
+            queue_row = supabase.table("mp_sync_queue") \
+                .select("last_storage_sync_at") \
+                .eq("user_id", user_id) \
+                .single() \
+                .execute()
+            last_storage = queue_row.data.get("last_storage_sync_at") if queue_row.data else None
+            should_run_storage = True
+            if last_storage:
+                try:
+                    last_dt = datetime.fromisoformat(last_storage.replace("Z", "+00:00"))
+                    if (_now_utc() - last_dt) < timedelta(hours=24):
+                        should_run_storage = False
+                        logger.info(f"Storage sync skipped for {user_id}: last sync {last_storage} (<24h)")
+                except (ValueError, TypeError):
+                    pass  # Parse error → run storage
+
+            if should_run_storage:
+                logger.info(f"Running Ozon storage sync for {user_id} (trigger={trigger})")
+                storage_from = datetime.now() - timedelta(days=28)
+                storage_to = datetime.now()
+                storage_result = await sync_service.sync_storage_ozon(storage_from, storage_to)
+                storage_status = storage_result.get("status", "error")
+                logger.info(f"Ozon storage sync for {user_id}: {storage_status}, "
+                            f"records={storage_result.get('records', 0)}")
+
+                # Update last_storage_sync_at regardless of result (throttle even on error)
+                supabase.table("mp_sync_queue").update({
+                    "last_storage_sync_at": _now_utc_iso(),
+                }).eq("user_id", user_id).execute()
+        except Exception as e:
+            # Storage sync failure should NOT fail the entire sync
+            logger.warning(f"Storage sync error for {user_id} (non-fatal): {e}")
+
+        # Delivery dates sync: run max 1/day (report generation has API limits).
+        # Check last_delivery_sync_at in mp_sync_queue → if >24h ago or NULL → run.
+        try:
+            supabase_dd = get_supabase_client()
+            dd_row = supabase_dd.table("mp_sync_queue") \
+                .select("last_delivery_sync_at") \
+                .eq("user_id", user_id) \
+                .single() \
+                .execute()
+            last_delivery = dd_row.data.get("last_delivery_sync_at") if dd_row.data else None
+            should_run_delivery = True
+            if last_delivery:
+                try:
+                    last_dd_dt = datetime.fromisoformat(last_delivery.replace("Z", "+00:00"))
+                    if (_now_utc() - last_dd_dt) < timedelta(hours=24):
+                        should_run_delivery = False
+                        logger.info(f"Delivery dates sync skipped for {user_id}: last sync {last_delivery} (<24h)")
+                except (ValueError, TypeError):
+                    pass  # Parse error → run delivery dates
+
+            if should_run_delivery:
+                logger.info(f"Running Ozon delivery dates sync for {user_id} (trigger={trigger})")
+                delivery_from = datetime.now() - timedelta(days=60)
+                delivery_to = datetime.now()
+                delivery_result = await sync_service.sync_delivery_dates_ozon(delivery_from, delivery_to)
+                delivery_status = delivery_result.get("status", "error")
+                logger.info(f"Ozon delivery dates sync for {user_id}: {delivery_status}, "
+                            f"records={delivery_result.get('records', 0)}")
+
+                # Update last_delivery_sync_at regardless of result (throttle even on error)
+                supabase_dd.table("mp_sync_queue").update({
+                    "last_delivery_sync_at": _now_utc_iso(),
+                }).eq("user_id", user_id).execute()
+        except Exception as e:
+            # Delivery dates sync failure should NOT fail the entire sync
+            logger.warning(f"Delivery dates sync error for {user_id} (non-fatal): {e}")
+
         _finish_log(log_id, "success", total_records)
         return {"status": "completed", "records": total_records}
     except Exception as e:
