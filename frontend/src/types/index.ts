@@ -98,6 +98,30 @@ export interface SalesSummary {
   total_costs: number;
   avg_check: number;
   costs_breakdown: CostsBreakdown;
+  /**
+   * Settlement-based выручка из mp_costs_details (category='Продажи').
+   * Финализированная выручка из фин. отчёта МП.
+   * Добавлено в миграции 029.
+   */
+  settled_revenue?: number;
+  /**
+   * Settlement-based payout (SUM всех categories из mp_costs_details).
+   * Эквивалент costs-tree total_accrued, но из RPC.
+   * Добавлено в миграции 029.
+   */
+  settled_payout?: number;
+  /**
+   * Settlement-based закупка (purchase_price * settled_qty из mp_costs).
+   * Для Ozon: settled_qty по дате расчёта. Fallback на order-based если settled_qty=0.
+   * Добавлено в миграции 029.
+   */
+  settled_purchase?: number;
+  /**
+   * Settlement-based прибыль = settled_payout - settled_purchase - ad_cost.
+   * Консистентна с осью выручки (все поля settlement-based).
+   * Добавлено в миграции 029.
+   */
+  settled_profit?: number;
 }
 
 export interface PreviousPeriod {
@@ -105,6 +129,14 @@ export interface PreviousPeriod {
   sales: number;
   orders: number;
   revenue_change_percent: number;
+  /** Settlement-based profit for prev period (migration 029) */
+  settled_profit?: number;
+  /** Settlement-based purchase for prev period (migration 029) */
+  settled_purchase?: number;
+  /** Settlement-based revenue for prev period (migration 029) */
+  settled_revenue?: number;
+  /** Settlement-based payout for prev period (migration 029) */
+  settled_payout?: number;
 }
 
 export interface DashboardSummaryResponse {

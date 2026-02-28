@@ -1966,6 +1966,37 @@ class SyncService:
                 delivery_schema = str(posting.get("delivery_schema") or "").upper()
                 ft = self.DELIVERY_SCHEMA_MAP.get(delivery_schema, "FBO")
 
+                # FIX: OperationMarketplaceServiceStorage может приходить без items
+                # (storage charges — account-level, без привязки к товару).
+                # Распределяем по всем товарам с Ozon costs за этот день пропорционально,
+                # или если items есть — маппим напрямую.
+                if op_type == "OperationMarketplaceServiceStorage" and not items:
+                    # Storage без items: распределяем сумму по ВСЕМ ключам за этот день
+                    # Если ключей ещё нет — создаём "placeholder" для первого Ozon товара
+                    storage_amount = abs(amount)
+                    day_keys = [k for k in costs_agg if k[1] == date and k[2] == ft]
+                    if day_keys:
+                        # Распределяем поровну между товарами (storage не per-item)
+                        share = storage_amount / len(day_keys)
+                        for dk in day_keys:
+                            costs_agg[dk]["storage"] += share
+                    else:
+                        # Нет ключей за этот день — сохраняем в первый Ozon товар как fallback
+                        first_barcode = next(
+                            (bc for bc in products_map if products_map[bc].get("ozon_product_id")),
+                            None,
+                        )
+                        if first_barcode:
+                            key = (first_barcode, date, ft)
+                            if key not in costs_agg:
+                                costs_agg[key] = {
+                                    "commission": 0, "logistics": 0, "storage": 0,
+                                    "promotion": 0, "penalties": 0, "acquiring": 0, "other": 0,
+                                    "settled_qty": 0,
+                                }
+                            costs_agg[key]["storage"] += storage_amount
+                    continue
+
                 for item in items:
                     sku = str(item.get("sku", ""))
                     barcode = self.ozon_sku_map.get(sku)
@@ -2058,7 +2089,7 @@ class SyncService:
                 records_count += 1
 
             # === 2. Гранулярные данные для mp_costs_details (tree-view) ===
-            details_agg = {}  # {(product_id, date, ft, category, subcategory): amount}
+            details_agg = {}  # {(product_id, date, ft, category, subcategory, order_date): {amount, ...}}
 
             for op in all_operations:
                 date = op.get("operation_date", "")[:10]
@@ -2069,6 +2100,10 @@ class SyncService:
                 posting = op.get("posting", {}) or {}
                 delivery_schema = str(posting.get("delivery_schema") or "").upper()
                 ft = self.DELIVERY_SCHEMA_MAP.get(delivery_schema, "FBO")
+
+                # order_date: дата принятия заказа в обработку (из posting.order_date)
+                # Используется в UE endpoint для фильтрации по дате заказа (не settlement)
+                order_date = str(posting.get("order_date") or "")[:10] or None
 
                 detail_records = self._classify_ozon_operation(op)
 
@@ -2110,7 +2145,7 @@ class SyncService:
                         for rec in detail_records:
                             alloc = rec.get("allocation")
                             amt = rec["amount"] * share if alloc == "order" else rec["amount"]
-                            key = (pid, date, ft, rec["category"], rec["subcategory"])
+                            key = (pid, date, ft, rec["category"], rec["subcategory"], order_date)
                             if key not in details_agg:
                                 details_agg[key] = {
                                     "amount": 0,
@@ -2142,7 +2177,7 @@ class SyncService:
                         rem = abs_cents % n
 
                         for i, pid in enumerate(ozon_product_ids):
-                            key = (pid, date, ft, rec["category"], rec["subcategory"])
+                            key = (pid, date, ft, rec["category"], rec["subcategory"], order_date)
                             if key not in details_agg:
                                 details_agg[key] = {
                                     "amount": 0,
@@ -2166,7 +2201,7 @@ class SyncService:
             delete_query.execute()
 
             # Сохраняем mp_costs_details
-            for (pid, date, ft, category, subcategory), data in details_agg.items():
+            for (pid, date, ft, category, subcategory, od), data in details_agg.items():
                 insert_row = {
                     "product_id": pid,
                     "marketplace": "ozon",
@@ -2178,6 +2213,8 @@ class SyncService:
                     "operation_id": data["operation_id"],
                     "fulfillment_type": ft,
                 }
+                if od:
+                    insert_row["order_date"] = od
                 if self.user_id:
                     insert_row["user_id"] = self.user_id
                 self.supabase.table("mp_costs_details").insert(insert_row).execute()
@@ -2888,6 +2925,177 @@ class SyncService:
             logger.error(f"Ошибка синхронизации заказов Ozon: {error_msg}")
             self._log_sync("ozon", "orders", "error", 0, error_msg, started_at)
             return {"status": "error", "message": error_msg}
+
+    # ==================== ХРАНЕНИЕ OZON (per-product) ====================
+
+    async def sync_storage_ozon(self, date_from: datetime, date_to: datetime) -> dict:
+        """
+        Синхронизация per-product storage costs из Ozon Placement Report API.
+        API: /v1/report/placement/by-products/create → /v1/report/info → download XLSX.
+        Лимит: 5 вызовов в день. Макс. период: 31 день.
+        """
+        import asyncio
+        import io
+        import httpx as _httpx
+        from openpyxl import load_workbook
+
+        started_at = datetime.now()
+        records_count = 0
+        date_from_str = date_from.strftime("%Y-%m-%d")
+        date_to_str = date_to.strftime("%Y-%m-%d")
+
+        try:
+            # 1. Создаём отчёт
+            logger.info(f"Ozon storage: creating placement report {date_from_str} - {date_to_str}")
+            code = await self.ozon_client.create_placement_report(date_from_str, date_to_str)
+            if not code:
+                raise RuntimeError("Ozon placement report: empty code returned")
+
+            # 2. Поллим статус (каждые 5 сек, макс 2 мин = 24 попытки)
+            file_url = None
+            for attempt in range(24):
+                await asyncio.sleep(5)
+                info = await self.ozon_client.get_report_info(code)
+                status = info.get("status", "")
+                logger.info(f"Ozon storage report status: {status} (attempt {attempt + 1})")
+
+                if status == "success":
+                    file_url = info.get("file", "")
+                    break
+                elif status == "failed":
+                    error_msg = info.get("error", "unknown error")
+                    raise RuntimeError(f"Ozon placement report failed: {error_msg}")
+                # waiting / processing — continue polling
+
+            if not file_url:
+                raise RuntimeError("Ozon placement report: timeout (2 min), report not ready")
+
+            # 3. Скачиваем XLSX
+            logger.info(f"Ozon storage: downloading XLSX from {file_url[:80]}...")
+            async with _httpx.AsyncClient(timeout=60.0, follow_redirects=True) as http_client:
+                response = await http_client.get(file_url)
+                response.raise_for_status()
+                xlsx_bytes = response.content
+
+            # 4. Парсим XLSX
+            wb = load_workbook(filename=io.BytesIO(xlsx_bytes), read_only=True)
+            ws = wb.active
+            rows_data = list(ws.iter_rows(values_only=True))
+            wb.close()
+
+            if len(rows_data) < 3:
+                logger.warning("Ozon storage: XLSX has less than 3 rows (no data)")
+                self._log_sync("ozon", "storage", "success", 0, started_at=started_at)
+                return {"status": "success", "records": 0}
+
+            # XLSX structure (from Ozon Placement Report API):
+            # Row 0 = headers: Дата | SKU | Артикул | Категория | Тип | Склад | Признак |
+            #   Суммарный объем(мл) | Кол-во экз | Платный объем(мл) | Кол-во платных | Начисленная стоимость
+            # Row 1+ = data (daily, per-warehouse → aggregate by SKU)
+            # Col[1] = SKU (int), Col[2] = Артикул (barcode), Col[8] = qty, Col[7] = volume(ml), Col[11] = cost(RUB)
+            ozon_sku_map = self.ozon_sku_map  # {str(sku): barcode}
+            products_map = self._get_products_map()  # {barcode: {id, ...}}
+
+            # Aggregate per SKU: sum cost, max qty, max volume
+            sku_agg: dict[str, dict] = {}  # {sku_str: {cost, qty, volume_ml}}
+            for row in rows_data[1:]:  # skip header row
+                if not row or len(row) < 12:
+                    continue
+
+                sku_val = row[1]
+                if not sku_val:
+                    continue
+                sku_str = str(int(sku_val)) if isinstance(sku_val, (float, int)) else str(sku_val).strip()
+
+                # Parse storage cost (col 11)
+                cost_val = row[11]
+                if cost_val is None:
+                    continue
+                try:
+                    cost = float(cost_val) if isinstance(cost_val, (int, float)) else float(str(cost_val).replace(",", ".").replace("\xa0", "").strip())
+                except (ValueError, TypeError):
+                    continue
+
+                # Parse quantity (col 8) and volume (col 7)
+                qty = 0
+                vol_ml = 0.0
+                try:
+                    if row[8] is not None:
+                        qty = int(float(row[8])) if isinstance(row[8], (int, float)) else int(float(str(row[8]).strip()))
+                except (ValueError, TypeError):
+                    pass
+                try:
+                    if row[7] is not None:
+                        vol_ml = float(row[7]) if isinstance(row[7], (int, float)) else float(str(row[7]).strip())
+                except (ValueError, TypeError):
+                    pass
+
+                if sku_str not in sku_agg:
+                    sku_agg[sku_str] = {"cost": 0.0, "qty": 0, "volume_ml": 0.0, "barcode": str(row[2] or "")}
+                sku_agg[sku_str]["cost"] += cost
+                sku_agg[sku_str]["qty"] = max(sku_agg[sku_str]["qty"], qty)
+                sku_agg[sku_str]["volume_ml"] = max(sku_agg[sku_str]["volume_ml"], vol_ml)
+
+            logger.info(f"Ozon storage: aggregated {len(sku_agg)} SKUs from {len(rows_data)-1} rows")
+
+            insert_rows = []
+            for sku_str, agg in sku_agg.items():
+                storage_cost = agg["cost"]
+                if storage_cost <= 0:
+                    continue
+
+                # Map SKU → product_id (try ozon_sku_map first, then barcode direct)
+                barcode = ozon_sku_map.get(sku_str) or agg["barcode"]
+                product = products_map.get(barcode)
+                if not product:
+                    logger.debug(f"Ozon storage: SKU {sku_str} / barcode {barcode} not in products_map, skipping")
+                    continue
+
+                product_id = product["id"]
+                volume_liters = round(agg["volume_ml"] / 1000, 2)
+
+                insert_row = {
+                    "marketplace": "ozon",
+                    "product_id": product_id,
+                    "date_from": date_from_str,
+                    "date_to": date_to_str,
+                    "storage_cost": round(storage_cost, 2),
+                    "quantity": agg["qty"],
+                    "volume_liters": volume_liters,
+                }
+                if self.user_id:
+                    insert_row["user_id"] = self.user_id
+
+                insert_rows.append(insert_row)
+                logger.info(f"Ozon storage: {barcode} (SKU {sku_str}) = {storage_cost:.2f} RUB, qty={agg['qty']}")
+
+            # 5. UPSERT (delete + insert for the period to avoid duplicates)
+            if insert_rows:
+                # Delete existing records for this period
+                del_query = self.supabase.table("mp_storage_costs") \
+                    .delete() \
+                    .eq("marketplace", "ozon") \
+                    .eq("date_from", date_from_str) \
+                    .eq("date_to", date_to_str)
+                if self.user_id:
+                    del_query = del_query.eq("user_id", self.user_id)
+                del_query.execute()
+
+                # Insert new
+                self.supabase.table("mp_storage_costs").insert(insert_rows).execute()
+                records_count = len(insert_rows)
+
+            logger.info(f"Ozon storage sync: {records_count} products saved for {date_from_str} - {date_to_str}")
+            self._log_sync("ozon", "storage", "success", records_count, started_at=started_at)
+            return {"status": "success", "records": records_count}
+
+        except Exception as e:
+            import traceback
+            error_msg = str(e) or repr(e)
+            tb = traceback.format_exc()
+            logger.error(f"Ошибка синхронизации storage Ozon: {error_msg}\n{tb}")
+            self._log_sync("ozon", "storage", "error", 0, error_msg, started_at)
+            return {"status": "error", "message": error_msg, "traceback": tb}
 
     # ==================== ПОЛНАЯ СИНХРОНИЗАЦИЯ ====================
 

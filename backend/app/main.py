@@ -1,8 +1,10 @@
 """
 FastAPI приложение для аналитики маркетплейсов WB и Ozon
 """
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.responses import Response
 from contextlib import asynccontextmanager
 
 from .config import get_settings
@@ -28,6 +30,17 @@ app = FastAPI(
     lifespan=lifespan,
     debug=settings.debug
 )
+
+# No-cache middleware — prevent browser from caching API responses with stale data
+class NoCacheMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        response: Response = await call_next(request)
+        if request.url.path.startswith("/api/"):
+            response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+            response.headers["Pragma"] = "no-cache"
+        return response
+
+app.add_middleware(NoCacheMiddleware)
 
 # CORS middleware
 app.add_middleware(
