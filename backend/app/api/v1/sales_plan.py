@@ -102,11 +102,13 @@ async def get_sales_plan(
         .eq("user_id", current_user.id) \
         .eq("month", month_date) \
         .eq("marketplace", marketplace) \
+        .limit(500) \
         .execute()
 
     products_result = supabase.table("mp_products") \
         .select("id, name, barcode") \
         .eq("user_id", current_user.id) \
+        .limit(500) \
         .execute()
 
     plans_map = {p["product_id"]: p["plan_revenue"] for p in plans_result.data}
@@ -431,7 +433,7 @@ async def get_sales_plan_completion(
     if mp_filter:
         sales_query = sales_query.eq("marketplace", mp_filter)
 
-    sales_result = sales_query.execute()
+    sales_result = sales_query.limit(50000).execute()
 
     actual_by_product: dict[str, float] = {}
     for s in sales_result.data:
@@ -507,7 +509,7 @@ async def _get_total_actual(supabase, user_id: str, date_from: str, date_to: str
         .lte("date", date_to)
     if marketplace:
         query = query.eq("marketplace", marketplace)
-    result = query.execute()
+    result = query.limit(50000).execute()
     return sum(float(r.get("revenue", 0)) for r in result.data)
 
 

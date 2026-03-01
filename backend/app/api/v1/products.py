@@ -54,6 +54,7 @@ async def get_products(
             .eq("user_id", current_user.id)
             .neq("barcode", "WB_ACCOUNT")
             .order("sort_order")
+            .limit(500)
         )
 
         if marketplace == "wb":

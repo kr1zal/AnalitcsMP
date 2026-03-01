@@ -237,7 +237,7 @@ async def get_unit_economics(
 
     try:
         # 1. Продукты пользователя
-        products_result = supabase.table("mp_products").select("*").eq("user_id", current_user.id).execute()
+        products_result = supabase.table("mp_products").select("*").eq("user_id", current_user.id).limit(500).execute()
         products = {p["id"]: p for p in products_result.data}
 
         # 2. Продажи (mp_sales — аналитика, все заказы)
@@ -246,7 +246,7 @@ async def get_unit_economics(
             sales_query = sales_query.eq("marketplace", marketplace)
         if fulfillment_type:
             sales_query = sales_query.eq("fulfillment_type", fulfillment_type)
-        sales_result = sales_query.execute()
+        sales_result = sales_query.limit(50000).execute()
 
         # 3. Удержания МП (mp_costs) — для отображения в таблице
         costs_query = supabase.table("mp_costs").select("*").eq("user_id", current_user.id).gte("date", date_from).lte("date", date_to)
@@ -254,13 +254,13 @@ async def get_unit_economics(
             costs_query = costs_query.eq("marketplace", marketplace)
         if fulfillment_type:
             costs_query = costs_query.eq("fulfillment_type", fulfillment_type)
-        costs_result = costs_query.execute()
+        costs_result = costs_query.limit(50000).execute()
 
         # 4. Рекламные расходы по товарам (mp_ad_costs) — NOT filtered by fulfillment_type (account-level)
         ad_query = supabase.table("mp_ad_costs").select("product_id, cost").eq("user_id", current_user.id).gte("date", date_from).lte("date", date_to)
         if marketplace and marketplace != "all":
             ad_query = ad_query.eq("marketplace", marketplace)
-        ad_result = ad_query.execute()
+        ad_result = ad_query.limit(10000).execute()
 
         # Агрегация рекламы по product_id
         ad_by_product: dict[str, float] = {}
@@ -282,7 +282,7 @@ async def get_unit_economics(
             if marketplace and marketplace != "all":
                 total_sales_query = total_sales_query.eq("marketplace", marketplace)
             # NO fulfillment_type filter — total revenue across FBO+FBS
-            total_sales_result = total_sales_query.execute()
+            total_sales_result = total_sales_query.limit(50000).execute()
             for sale in total_sales_result.data:
                 pid = sale["product_id"]
                 total_revenue_by_product[pid] = total_revenue_by_product.get(pid, 0) + float(sale.get("revenue", 0))
@@ -500,7 +500,7 @@ async def get_unit_economics(
                     )
                     if fulfillment_type:
                         od_query = od_query.eq("fulfillment_type", fulfillment_type)
-                    od_result = od_query.execute()
+                    od_result = od_query.limit(50000).execute()
 
                     for row in od_result.data:
                         pid = row["product_id"]
@@ -543,6 +543,7 @@ async def get_unit_economics(
                             .eq("marketplace", "ozon")
                             .lte("date_from", date_to)
                             .gte("date_to", date_from)
+                            .limit(1000)
                         )
                         legacy_result = legacy_q.execute()
                         if legacy_result.data:
@@ -581,7 +582,7 @@ async def get_unit_economics(
                 )
                 if fulfillment_type:
                     null_od_query = null_od_query.eq("fulfillment_type", fulfillment_type)
-                null_od_result = null_od_query.execute()
+                null_od_result = null_od_query.limit(10000).execute()
 
                 for row in null_od_result.data:
                     pid = row["product_id"]
@@ -928,7 +929,7 @@ async def get_sales_chart(
         if fulfillment_type:
             query = query.eq("fulfillment_type", fulfillment_type)
 
-        result = query.execute()
+        result = query.limit(50000).execute()
 
         chart_data = {}
         for sale in result.data:
@@ -987,14 +988,14 @@ async def get_ad_costs(
         ads_query = supabase.table("mp_ad_costs").select("*").eq("user_id", current_user.id).gte("date", date_from).lte("date", date_to)
         if marketplace and marketplace != "all":
             ads_query = ads_query.eq("marketplace", marketplace)
-        ads_result = ads_query.execute()
+        ads_result = ads_query.limit(10000).execute()
 
         sales_query = supabase.table("mp_sales").select("*").eq("user_id", current_user.id).gte("date", date_from).lte("date", date_to)
         if marketplace and marketplace != "all":
             sales_query = sales_query.eq("marketplace", marketplace)
         if fulfillment_type:
             sales_query = sales_query.eq("fulfillment_type", fulfillment_type)
-        sales_result = sales_query.execute()
+        sales_result = sales_query.limit(50000).execute()
 
         revenue_by_date = {}
         for sale in sales_result.data:
@@ -1074,14 +1075,14 @@ async def get_ad_costs(
             prev_ads_query = supabase.table("mp_ad_costs").select("cost,impressions,clicks,orders_count").eq("user_id", current_user.id).gte("date", prev_from).lte("date", prev_to)
             if marketplace and marketplace != "all":
                 prev_ads_query = prev_ads_query.eq("marketplace", marketplace)
-            prev_ads_result = prev_ads_query.execute()
+            prev_ads_result = prev_ads_query.limit(10000).execute()
 
             prev_sales_query = supabase.table("mp_sales").select("revenue").eq("user_id", current_user.id).gte("date", prev_from).lte("date", prev_to)
             if marketplace and marketplace != "all":
                 prev_sales_query = prev_sales_query.eq("marketplace", marketplace)
             if fulfillment_type:
                 prev_sales_query = prev_sales_query.eq("fulfillment_type", fulfillment_type)
-            prev_sales_result = prev_sales_query.execute()
+            prev_sales_result = prev_sales_query.limit(50000).execute()
 
             prev_ad_cost = sum(float(ad.get("cost", 0)) for ad in prev_ads_result.data)
             prev_impressions = sum(ad.get("impressions", 0) for ad in prev_ads_result.data)
@@ -1129,13 +1130,13 @@ async def get_ad_campaigns(
         ads_query = supabase.table("mp_ad_costs").select("*").eq("user_id", current_user.id).gte("date", date_from).lte("date", date_to)
         if marketplace and marketplace != "all":
             ads_query = ads_query.eq("marketplace", marketplace)
-        ads_result = ads_query.execute()
+        ads_result = ads_query.limit(10000).execute()
 
         # Получаем общую выручку для расчёта ДРР
         sales_query = supabase.table("mp_sales").select("revenue").eq("user_id", current_user.id).gte("date", date_from).lte("date", date_to)
         if marketplace and marketplace != "all":
             sales_query = sales_query.eq("marketplace", marketplace)
-        sales_result = sales_query.execute()
+        sales_result = sales_query.limit(50000).execute()
         total_revenue = sum(float(s.get("revenue", 0)) for s in sales_result.data)
 
         # Агрегация по campaign_id + marketplace + campaign_name
@@ -1311,7 +1312,7 @@ async def get_stocks(
         if fulfillment_type:
             query = query.eq("fulfillment_type", fulfillment_type)
 
-        result = query.execute()
+        result = query.limit(5000).execute()
 
         # Средние дневные продажи за 30 дней (для прогноза остатков)
         date_30d_ago = (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d")
@@ -1321,7 +1322,7 @@ async def get_stocks(
             sales_query = sales_query.eq("marketplace", marketplace)
         if fulfillment_type:
             sales_query = sales_query.eq("fulfillment_type", fulfillment_type)
-        sales_result = sales_query.execute()
+        sales_result = sales_query.limit(50000).execute()
 
         sales_by_product: dict[str, int] = {}
         for sale in sales_result.data:
@@ -1417,6 +1418,7 @@ async def get_stock_history(
             .gte("date", date_from)
             .lte("date", date_to)
             .order("date", desc=False)
+            .limit(50000)
         )
 
         if marketplace and marketplace != "all":
@@ -1523,7 +1525,7 @@ async def get_order_funnel(
 
     try:
         # 1. Продукты пользователя
-        products_result = supabase.table("mp_products").select("*").eq("user_id", current_user.id).execute()
+        products_result = supabase.table("mp_products").select("*").eq("user_id", current_user.id).limit(500).execute()
         products = {p["id"]: p for p in products_result.data}
 
         # 2. Продажи за период
@@ -1532,7 +1534,7 @@ async def get_order_funnel(
             sales_query = sales_query.eq("marketplace", marketplace)
         if fulfillment_type:
             sales_query = sales_query.eq("fulfillment_type", fulfillment_type)
-        sales_result = sales_query.execute()
+        sales_result = sales_query.limit(50000).execute()
 
         # 3. Агрегация по дням и по товарам
         daily_map: dict[str, dict] = {}
@@ -1754,7 +1756,7 @@ async def get_orders_list(
             summary_query = summary_query.eq("marketplace", marketplace)
         if fulfillment_type:
             summary_query = summary_query.eq("fulfillment_type", fulfillment_type)
-        summary_result = summary_query.execute()
+        summary_result = summary_query.limit(100000).execute()
 
         total_orders = len(summary_result.data)
         total_settled = sum(1 for r in summary_result.data if r.get("settled"))
@@ -1934,7 +1936,7 @@ async def get_order_summary(
         if marketplace and marketplace != "all":
             ads_query = ads_query.eq("marketplace", marketplace)
 
-        ads_result = ads_query.execute()
+        ads_result = ads_query.limit(10000).execute()
         ads_rows = ads_result.data or []
 
         total_ads = 0.0

@@ -31,6 +31,7 @@ async def get_my_subscription(
         .select("id")
         .eq("user_id", sub.user_id)
         .neq("barcode", "WB_ACCOUNT")
+        .limit(500)
         .execute()
     )
     sku_count = len(products.data) if products.data else 0

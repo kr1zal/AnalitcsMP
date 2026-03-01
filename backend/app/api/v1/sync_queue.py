@@ -284,6 +284,7 @@ async def process_sync_queue(request: Request):
         .select("user_id, updated_at")
         .eq("status", "processing")
         .lte("updated_at", stale_cutoff)
+        .limit(100)
         .execute()
     )
     for entry in (stuck.data or []):
@@ -302,6 +303,7 @@ async def process_sync_queue(request: Request):
         .lte("next_sync_at", now.isoformat())
         .order("priority", desc=False)
         .order("next_sync_at", desc=False)
+        .limit(100)
         .execute()
     )
 
