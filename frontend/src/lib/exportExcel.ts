@@ -375,22 +375,18 @@ function createCostsSheet(
 function createUnitEconomicsSheet(unitEconomics: UnitEconomicsItem[]): XLSX.WorkSheet {
   // Compute ABC classification (by profit — default)
   const abcMap = classifyABC(unitEconomics, 'profit');
+  const hasStorage = unitEconomics.some(p => (p.metrics.storage_cost ?? 0) > 0);
 
-  const headers = [
+  const headers: string[] = [
     'ABC',
     'Товар',
     'Штрихкод',
     'Продажи шт.',
     'Выручка',
     'Удержания МП',
-    'Хранение',
-    'Закупка',
-    'Реклама',
-    'Прибыль',
-    'На единицу',
-    'Рентаб. %',
-    'ДРР %',
   ];
+  if (hasStorage) headers.push('Хранение');
+  headers.push('Закупка', 'Реклама', 'Прибыль', 'На единицу', 'Рентаб. %', 'ДРР %');
 
   const rows: (string | number)[][] = [headers];
 
@@ -402,21 +398,24 @@ function createUnitEconomicsSheet(unitEconomics: UnitEconomicsItem[]): XLSX.Work
     const drr = item.metrics.drr ?? 0;
     const abc = abcMap.get(item.product.id) ?? 'C';
 
-    rows.push([
+    const row: (string | number)[] = [
       abc,
       item.product.name,
       item.product.barcode,
       item.metrics.sales_count,
       item.metrics.revenue,
       item.metrics.mp_costs,
-      item.metrics.storage_cost ?? 0,
+    ];
+    if (hasStorage) row.push(item.metrics.storage_cost ?? 0);
+    row.push(
       item.metrics.purchase_costs,
       item.metrics.ad_cost,
       item.metrics.net_profit,
       item.metrics.unit_profit,
       `${margin.toFixed(1)}%`,
       `${drr.toFixed(1)}%`,
-    ]);
+    );
+    rows.push(row);
   }
 
   // Итоги
@@ -442,39 +441,45 @@ function createUnitEconomicsSheet(unitEconomics: UnitEconomicsItem[]): XLSX.Work
       totals.revenue > 0 ? (totals.ad_cost / totals.revenue) * 100 : 0;
 
     rows.push([]);
-    rows.push([
+    const totalsRow: (string | number)[] = [
       '',
       'ИТОГО',
       '',
       totals.sales_count,
       totals.revenue,
       totals.mp_costs,
-      totals.storage_cost,
+    ];
+    if (hasStorage) totalsRow.push(totals.storage_cost);
+    totalsRow.push(
       totals.purchase_costs,
       totals.ad_cost,
       totals.net_profit,
       Math.round(avgUnitProfit * 100) / 100,
       `${totalMargin.toFixed(1)}%`,
       `${totalDrr.toFixed(1)}%`,
-    ]);
+    );
+    rows.push(totalsRow);
   }
 
   const ws = XLSX.utils.aoa_to_sheet(rows);
-  ws['!cols'] = [
+  const cols: XLSX.ColInfo[] = [
     { wch: 5 },   // ABC
     { wch: 25 },  // Товар
     { wch: 15 },  // Штрихкод
     { wch: 12 },  // Продажи
     { wch: 12 },  // Выручка
     { wch: 14 },  // Удержания МП
-    { wch: 12 },  // Хранение
+  ];
+  if (hasStorage) cols.push({ wch: 12 }); // Хранение
+  cols.push(
     { wch: 12 },  // Закупка
     { wch: 12 },  // Реклама
     { wch: 12 },  // Прибыль
     { wch: 12 },  // На единицу
     { wch: 10 },  // Рентаб.
     { wch: 10 },  // ДРР
-  ];
+  );
+  ws['!cols'] = cols;
 
   return ws;
 }

@@ -30,6 +30,7 @@ export const COLORS = {
   amber: '#f59e0b',
   purple: '#8b5cf6',
   orange: '#f97316',
+  orange600: '#ea580c',
 
   // MP
   ozon: '#005BFF',

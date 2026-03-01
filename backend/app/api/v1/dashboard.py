@@ -196,7 +196,8 @@ async def get_summary(
         return result.data
 
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.exception("Endpoint error: %s", e)
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.get("/dashboard/unit-economics")
@@ -509,6 +510,7 @@ async def get_unit_economics(
                         .eq("marketplace", "ozon")
                         .gte("date", date_from)
                         .lte("date", date_to)
+                        .limit(10000)
                     )
                     daily_storage_result = daily_storage_q.execute()
                     if daily_storage_result.data:
@@ -650,6 +652,7 @@ async def get_unit_economics(
                 .eq("user_id", current_user.id)
                 .gte("date", date_from)
                 .lte("date", date_to)
+                .limit(10000)
             )
             # If marketplace filter is set, only show storage for that MP
             if marketplace and marketplace != "all":
@@ -823,7 +826,8 @@ async def get_unit_economics(
         }
 
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.exception("Endpoint error: %s", e)
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.get("/dashboard/sales-chart")
@@ -886,7 +890,8 @@ async def get_sales_chart(
         }
 
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.exception("Endpoint error: %s", e)
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.get("/dashboard/ad-costs")
@@ -1028,7 +1033,8 @@ async def get_ad_costs(
         return response
 
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.exception("Endpoint error: %s", e)
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.get("/dashboard/ad-campaigns")
@@ -1132,7 +1138,8 @@ async def get_ad_campaigns(
         }
 
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.exception("Endpoint error: %s", e)
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.get("/dashboard/costs-tree")
@@ -1169,7 +1176,8 @@ async def get_costs_tree(
         return result
 
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.exception("Endpoint error: %s", e)
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.get("/dashboard/costs-tree-combined")
@@ -1211,7 +1219,8 @@ async def get_costs_tree_combined(
         }
 
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.exception("Endpoint error: %s", e)
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.get("/dashboard/stocks")
@@ -1306,7 +1315,8 @@ async def get_stocks(
         }
 
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.exception("Endpoint error: %s", e)
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.get("/dashboard/stock-history")
@@ -1418,7 +1428,8 @@ async def get_stock_history(
         }
 
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.exception("Endpoint error: %s", e)
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.get("/dashboard/order-funnel")
@@ -1565,7 +1576,8 @@ async def get_order_funnel(
         }
 
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.exception("Endpoint error: %s", e)
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.get("/dashboard/orders")
@@ -1710,7 +1722,8 @@ async def get_orders_list(
         }
 
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.exception("Endpoint error: %s", e)
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.get("/dashboard/orders/{order_id}")
@@ -1775,7 +1788,8 @@ async def get_order_detail(
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.exception("Endpoint error: %s", e)
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 # ─── Order-Based Summary (mp_orders aggregation) ────────────────────────────
@@ -1964,7 +1978,8 @@ async def get_order_summary(
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.exception("Endpoint error: %s", e)
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.get("/dashboard/fulfillment-info")
@@ -1995,4 +2010,5 @@ async def get_fulfillment_info(
         }
 
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.exception("Endpoint error: %s", e)
+        raise HTTPException(status_code=500, detail="Internal server error")

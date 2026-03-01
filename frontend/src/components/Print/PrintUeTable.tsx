@@ -22,6 +22,8 @@ const ABC_BADGE_STYLES: Record<AbcGrade, { bg: string; color: string }> = {
 
 export function PrintUeTable({ products, abcMap, showTotals, allProducts }: PrintUeTableProps) {
   const hasAds = products.some((p) => (p.metrics.ad_cost ?? 0) > 0);
+  const sourceProducts = allProducts ?? products;
+  const hasStorage = sourceProducts.some((p) => (p.metrics.storage_cost ?? 0) > 0);
 
   return (
     <div className="space-y-3">
@@ -34,7 +36,7 @@ export function PrintUeTable({ products, abcMap, showTotals, allProducts }: Prin
               <Th align="right">Выкупы</Th>
               <Th align="right">Выручка</Th>
               <Th align="right">Удержания</Th>
-              <Th align="right">Хранение</Th>
+              {hasStorage && <Th align="right">Хранение</Th>}
               <Th align="right">Закупка</Th>
               {hasAds && <Th align="right">Реклама</Th>}
               {hasAds && <Th align="right">ДРР</Th>}
@@ -73,9 +75,11 @@ export function PrintUeTable({ products, abcMap, showTotals, allProducts }: Prin
                   <td className="px-2 py-2 text-right text-gray-700 tabular-nums">
                     {formatCurrency(item.metrics.mp_costs)}
                   </td>
-                  <td className="px-2 py-2 text-right tabular-nums" style={{ color: (item.metrics.storage_cost ?? 0) > 0 ? '#ea580c' : '#9ca3af' }}>
-                    {(item.metrics.storage_cost ?? 0) > 0 ? formatCurrency(item.metrics.storage_cost) : '\u2014'}
-                  </td>
+                  {hasStorage && (
+                    <td className="px-2 py-2 text-right tabular-nums" style={{ color: (item.metrics.storage_cost ?? 0) > 0 ? COLORS.orange600 : COLORS.gray400 }}>
+                      {(item.metrics.storage_cost ?? 0) > 0 ? formatCurrency(item.metrics.storage_cost) : '\u2014'}
+                    </td>
+                  )}
                   <td className="px-2 py-2 text-right text-gray-700 tabular-nums">
                     {formatCurrency(item.metrics.purchase_costs)}
                   </td>
@@ -106,7 +110,7 @@ export function PrintUeTable({ products, abcMap, showTotals, allProducts }: Prin
           {/* Totals row on last page */}
           {showTotals && allProducts && (
             <tfoot>
-              <TotalsRow products={allProducts} hasAds={hasAds} />
+              <TotalsRow products={allProducts} hasAds={hasAds} hasStorage={hasStorage} />
             </tfoot>
           )}
         </table>
@@ -123,7 +127,7 @@ function Th({ children, align, width }: { children: React.ReactNode; align: 'lef
   );
 }
 
-function TotalsRow({ products, hasAds }: { products: UnitEconomicsItem[]; hasAds: boolean }) {
+function TotalsRow({ products, hasAds, hasStorage }: { products: UnitEconomicsItem[]; hasAds: boolean; hasStorage: boolean }) {
   const totals = computeTotals(products);
   const margin = totals.revenue > 0 ? (totals.profit / totals.revenue) * 100 : 0;
   const drr = totals.revenue > 0 ? (totals.adCost / totals.revenue) * 100 : 0;
@@ -136,9 +140,11 @@ function TotalsRow({ products, hasAds }: { products: UnitEconomicsItem[]; hasAds
       <td className="px-2 py-2.5 text-right text-gray-900 tabular-nums">{formatNumber(totals.sales)}</td>
       <td className="px-2 py-2.5 text-right text-gray-900 tabular-nums">{formatCurrency(totals.revenue)}</td>
       <td className="px-2 py-2.5 text-right text-gray-900 tabular-nums">{formatCurrency(totals.mpCosts)}</td>
-      <td className="px-2 py-2.5 text-right tabular-nums" style={{ color: totals.storage > 0 ? '#ea580c' : '#9ca3af' }}>
-        {totals.storage > 0 ? formatCurrency(totals.storage) : '\u2014'}
-      </td>
+      {hasStorage && (
+        <td className="px-2 py-2.5 text-right tabular-nums" style={{ color: totals.storage > 0 ? COLORS.orange600 : COLORS.gray400 }}>
+          {totals.storage > 0 ? formatCurrency(totals.storage) : '\u2014'}
+        </td>
+      )}
       <td className="px-2 py-2.5 text-right text-gray-900 tabular-nums">{formatCurrency(totals.purchase)}</td>
       {hasAds && <td className="px-2 py-2.5 text-right text-gray-900 tabular-nums">{formatCurrency(totals.adCost)}</td>}
       {hasAds && <td className="px-2 py-2.5 text-right text-gray-900 tabular-nums">{formatPercent(drr)}</td>}
