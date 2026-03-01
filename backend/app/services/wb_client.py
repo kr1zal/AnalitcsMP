@@ -2,6 +2,7 @@
 Wildberries API Client
 Документация: https://openapi.wildberries.ru/
 """
+import asyncio
 import httpx
 from typing import Optional
 from datetime import datetime, timedelta
@@ -212,8 +213,6 @@ class WildberriesClient:
             Каждая строка содержит: nmId, barcode, warehousePrice, barcodesCount,
             volume, warehouse, calcType, date и т.д.
         """
-        import asyncio
-
         # Split into 8-day chunks (API limit)
         from_dt = datetime.strptime(date_from, "%Y-%m-%d")
         to_dt = datetime.strptime(date_to, "%Y-%m-%d")
@@ -238,8 +237,6 @@ class WildberriesClient:
         Один запрос paid_storage (макс 8 дней).
         3-step: create task → poll status → download.
         """
-        import asyncio
-
         base_url = self.ANALYTICS_URL
 
         # Step 1: Create task

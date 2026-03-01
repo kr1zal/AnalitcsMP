@@ -19,7 +19,7 @@ const rows = (p: MiniWaterfallProps) => {
     { label: 'Удерж.', value: p.mpDeductions, pct: pctOf(p.mpDeductions, p.revenue), bar: 'bg-red-300', text: 'text-red-600', negative: true },
   ];
   if (p.storage > 0) {
-    list.push({ label: 'Хранение', value: p.storage, pct: pctOf(p.storage, p.revenue), bar: 'bg-orange-300', text: 'text-orange-700', negative: true });
+    list.push({ label: 'Хранение', value: p.storage, pct: pctOf(p.storage, p.revenue), bar: 'bg-orange-400', text: 'text-orange-600', negative: true });
   }
   list.push(
     { label: 'Закупка', value: p.purchase, pct: pctOf(p.purchase, p.revenue), bar: 'bg-amber-300', text: 'text-amber-700', negative: true },

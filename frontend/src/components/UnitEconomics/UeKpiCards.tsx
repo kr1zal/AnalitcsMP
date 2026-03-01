@@ -159,8 +159,14 @@ export function UeKpiCards({ totals, productCount, profitableCount, hasAds, hasR
     />,
   );
 
-  // Сколько cols для 2го ряда
-  const row2Cols = row2Cards.length >= 4 ? 'sm:grid-cols-4' : row2Cards.length === 3 ? 'sm:grid-cols-3' : 'sm:grid-cols-2';
+  // Сколько cols для 2го ряда (adaptive for 2-6 cards)
+  const row2Cols = row2Cards.length >= 5
+    ? 'sm:grid-cols-3 lg:grid-cols-5'
+    : row2Cards.length === 4
+      ? 'sm:grid-cols-4'
+      : row2Cards.length === 3
+        ? 'sm:grid-cols-3'
+        : 'sm:grid-cols-2';
 
   return (
     <div className="space-y-2 sm:space-y-3">
