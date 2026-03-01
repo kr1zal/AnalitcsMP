@@ -110,7 +110,7 @@ class SyncService:
 
     def _get_product_id_by_barcode(self, barcode: str) -> Optional[str]:
         """Получить UUID товара по штрихкоду"""
-        query = self.supabase.table("mp_products").select("id").eq("barcode", barcode)
+        query = self.supabase.table("mp_products").select("id").eq("barcode", barcode).limit(1)
         if self.user_id:
             query = query.eq("user_id", self.user_id)
         result = query.execute()
@@ -120,7 +120,7 @@ class SyncService:
 
     def _get_products_map(self) -> dict:
         """Получить словарь товаров {barcode: {id, wb_nm_id, ozon_product_id}}"""
-        query = self.supabase.table("mp_products").select("*")
+        query = self.supabase.table("mp_products").select("*").limit(500)
         if self.user_id:
             query = query.eq("user_id", self.user_id)
         result = query.execute()
@@ -133,7 +133,7 @@ class SyncService:
 
         Важно: purchase_price в схеме NOT NULL → ставим 0.
         """
-        query = self.supabase.table("mp_products").select("id").eq("barcode", barcode)
+        query = self.supabase.table("mp_products").select("id").eq("barcode", barcode).limit(1)
         if self.user_id:
             query = query.eq("user_id", self.user_id)
         existing = query.execute()
@@ -154,7 +154,7 @@ class SyncService:
             return inserted.data[0]["id"]
 
         # Fallback: try re-select (in case insert returned empty but succeeded)
-        query = self.supabase.table("mp_products").select("id").eq("barcode", barcode)
+        query = self.supabase.table("mp_products").select("id").eq("barcode", barcode).limit(1)
         if self.user_id:
             query = query.eq("user_id", self.user_id)
         existing = query.execute()
@@ -914,6 +914,7 @@ class SyncService:
                 .select("product_id, quantity, fulfillment_type") \
                 .eq("user_id", self.user_id) \
                 .eq("marketplace", marketplace) \
+                .limit(5000) \
                 .execute()
 
             # Aggregate by (product_id, fulfillment_type) — sum across warehouses
@@ -1021,6 +1022,7 @@ class SyncService:
             self.supabase.table("mp_stocks")
             .select("product_id, warehouse, quantity, updated_at, mp_products(name, barcode)")
             .eq("marketplace", "wb")
+            .limit(5000)
         )
         if self.user_id:
             db_query = db_query.eq("user_id", self.user_id)
