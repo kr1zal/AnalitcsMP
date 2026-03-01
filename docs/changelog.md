@@ -11,6 +11,23 @@
 
 ---
 
+## 2026-03-01
+
+### UE Storage — Per-Product Storage Display (WB + Ozon)
+- **WB Paid Storage API:** `wb_client.get_paid_storage()` — 3-step async (create task → poll status → download), auto 8-day chunking, 429 retry (3 attempts, 10s/20s backoff)
+- **WB Storage Sync:** `sync_storage_wb()` — maps nmId → product_id, aggregates calcType rows (base + discount), writes to `mp_storage_costs_daily` (marketplace='wb'). Added to sync queue (24h throttle)
+- **UE Backend:** storage query from `mp_storage_costs_daily` for both MPs, storage-only products (0 sales, >0 storage → negative profit), `mp_costs_display = mp_costs - storage` (avoid double-counting)
+- **Dual-MP products:** Per-MP sales tracking during aggregation. `is_dual_mp` detection → separate Ozon (order_date path) + WB (proportional) calculation, then combine. Fixes "all" filter losing WB data
+- **UE Frontend — collapsed view:** storage column (orange-600) between Удерж. and Реклама, `hasStorage` conditional (like hasAds pattern), WCAG contrast fix (text-gray-500)
+- **UE Frontend — expanded view:** MpCard grid `grid-cols-2 sm:grid-cols-4` for 375px mobile, storage in waterfall step (bg-orange-400)
+- **UeCostStructure:** "Хранение" segment (bg-orange-400) in stacked bar, conditional on `totals.storage > 0`
+- **UeKpiCards:** storage KPI card with warehouse icon, % of revenue, responsive grid `sm:grid-cols-3 lg:grid-cols-5`
+- **Export:** storage column in Excel (exportExcel.ts) and PDF (PrintUeTable.tsx), both hasStorage conditional
+- **Scale:** `.limit(10000)` on all storage queries, SEC-001 (no error detail leak in 500s)
+- **Затронуто:** 13+ файлов — wb_client.py, sync_service.py, dashboard.py, sync_queue.py, UeTable, UeCostStructure, UeKpiCards, UeMiniWaterfall, UeExpandedRow, exportExcel, PrintUeTable, ueHelpers, types/index.ts
+
+---
+
 ## 2026-02-25
 
 ### Telegram Bot v3 — Human-Level Communication (P1-P7)
