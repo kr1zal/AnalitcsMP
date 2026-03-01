@@ -789,6 +789,15 @@ async def get_unit_economics(
             # Storage cost (display-only): from mp_storage_costs_daily
             product_storage_cost = round(all_mp_storage.get(product_id, 0), 2)
 
+            # Subtract storage from mp_costs for display to avoid double-counting:
+            # mp_costs already includes storage (payout = revenue - ALL deductions incl. storage).
+            # displayed mp_costs = pure deductions (commission + logistics + other) WITHOUT storage.
+            mp_costs_display = max(0, round(mp_costs_consistent - product_storage_cost, 2))
+
+            # For storage-only products (0 sales): profit should reflect storage cost as loss
+            if sales_count == 0 and product_storage_cost > 0 and net_profit == 0:
+                net_profit = -product_storage_cost
+
             item: dict = {
                 "product": {
                     "id": product_id,
@@ -800,7 +809,7 @@ async def get_unit_economics(
                     "sales_count": sales_count,
                     "returns_count": metrics["returns"],
                     "revenue": round(displayed_revenue, 2),
-                    "mp_costs": round(mp_costs_consistent, 2),
+                    "mp_costs": mp_costs_display,
                     "storage_cost": product_storage_cost,
                     "purchase_costs": round(raw_purchase, 2),
                     "ad_cost": round(ad_cost, 2),
