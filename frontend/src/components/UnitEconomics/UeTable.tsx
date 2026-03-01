@@ -237,7 +237,7 @@ export function UeTable({
   }, []);
 
   // Column count (for colSpan)
-  const colCount = 7 + (hasAds ? 2 : 0) + (hasPlan ? 1 : 0) + 2; // +2 for Contribution + Alerts
+  const colCount = 8 + (hasAds ? 2 : 0) + (hasPlan ? 1 : 0) + 2; // 8 base (incl. storage) +2 for Contribution + Alerts
 
   const avgMargin = allTotals.revenue > 0 ? (allTotals.profit / allTotals.revenue) * 100 : 0;
 
@@ -364,6 +364,7 @@ export function UeTable({
               <SortableHeader field="revenue" label="Выручка" current={sortField} dir={sortDir} onSort={handleSort} />
               <SortableHeader field="purchase_costs" label="Закупка" current={sortField} dir={sortDir} onSort={handleSort} />
               <SortableHeader field="mp_costs" label="Удерж." current={sortField} dir={sortDir} onSort={handleSort} />
+              <SortableHeader field="storage_cost" label="Хранение" current={sortField} dir={sortDir} onSort={handleSort} />
               {hasAds && <SortableHeader field="ad_cost" label="Реклама" current={sortField} dir={sortDir} onSort={handleSort} />}
               <SortableHeader field="net_profit" label="Прибыль" current={sortField} dir={sortDir} onSort={handleSort} />
               <SortableHeader field="margin" label="Рентаб." current={sortField} dir={sortDir} onSort={handleSort} />
@@ -420,6 +421,9 @@ export function UeTable({
                       <td className="px-2 sm:px-3 py-2.5 text-right text-sm tabular-nums font-medium">{formatCurrency(item.metrics.revenue)}</td>
                       <td className="px-2 sm:px-3 py-2.5 text-right text-sm tabular-nums text-amber-600">{formatCurrency(item.metrics.purchase_costs)}</td>
                       <td className="px-2 sm:px-3 py-2.5 text-right text-sm tabular-nums text-purple-600">{formatCurrency(item.metrics.mp_costs)}</td>
+                      <td className="px-2 sm:px-3 py-2.5 text-right text-sm tabular-nums text-orange-600">
+                        {(item.metrics.storage_cost ?? 0) > 0 ? formatCurrency(item.metrics.storage_cost) : '\u2014'}
+                      </td>
                       {hasAds && (
                         <td className="px-2 sm:px-3 py-2.5 text-right text-sm tabular-nums text-blue-600">{formatCurrency(item.metrics.ad_cost ?? 0)}</td>
                       )}
@@ -497,6 +501,9 @@ export function UeTable({
                 <td className="px-2 sm:px-3 py-2.5 text-right text-sm tabular-nums">{formatCurrency(allTotals.revenue)}</td>
                 <td className="px-2 sm:px-3 py-2.5 text-right text-sm tabular-nums text-amber-600">{formatCurrency(allTotals.purchase)}</td>
                 <td className="px-2 sm:px-3 py-2.5 text-right text-sm tabular-nums text-purple-600">{formatCurrency(allTotals.mpCosts)}</td>
+                <td className="px-2 sm:px-3 py-2.5 text-right text-sm tabular-nums text-orange-600">
+                  {allTotals.storage > 0 ? formatCurrency(allTotals.storage) : '\u2014'}
+                </td>
                 {hasAds && <td className="px-2 sm:px-3 py-2.5 text-right text-sm tabular-nums text-blue-600">{formatCurrency(allTotals.adCost)}</td>}
                 <td className="px-2 sm:px-3 py-2.5 text-right text-sm tabular-nums">
                   <span className={allTotals.profit >= 0 ? 'text-emerald-700' : 'text-red-600'}>{formatCurrency(allTotals.profit)}</span>
@@ -597,6 +604,9 @@ export function UeTable({
                     <div className="flex gap-0.5 h-1.5 rounded-full overflow-hidden bg-gray-100 mt-1.5">
                       <div className="h-full bg-amber-400" style={{ width: `${(item.metrics.purchase_costs / item.metrics.revenue) * 100}%` }} />
                       <div className="h-full bg-purple-400" style={{ width: `${(item.metrics.mp_costs / item.metrics.revenue) * 100}%` }} />
+                      {(item.metrics.storage_cost ?? 0) > 0 && (
+                        <div className="h-full bg-orange-400" style={{ width: `${((item.metrics.storage_cost ?? 0) / item.metrics.revenue) * 100}%` }} />
+                      )}
                       {(item.metrics.ad_cost ?? 0) > 0 && (
                         <div className="h-full bg-blue-400" style={{ width: `${((item.metrics.ad_cost ?? 0) / item.metrics.revenue) * 100}%` }} />
                       )}
@@ -604,6 +614,12 @@ export function UeTable({
                         className={cn('h-full', positive ? 'bg-emerald-400' : 'bg-red-400')}
                         style={{ width: `${Math.abs((item.metrics.net_profit / item.metrics.revenue) * 100)}%` }}
                       />
+                    </div>
+                  )}
+                  {/* Storage line (mobile) */}
+                  {(item.metrics.storage_cost ?? 0) > 0 && (
+                    <div className="text-[10px] text-orange-600 mt-1">
+                      Хранение: <span className="font-medium tabular-nums">{formatCurrency(item.metrics.storage_cost)}</span>
                     </div>
                   )}
                 </div>
@@ -646,6 +662,11 @@ export function UeTable({
                 </div>
               </div>
             </div>
+            {allTotals.storage > 0 && (
+              <div className="text-[10px] text-orange-600 mt-1">
+                Хранение: <span className="font-medium tabular-nums">{formatCurrency(allTotals.storage)}</span>
+              </div>
+            )}
           </div>
         )}
       </div>

@@ -165,6 +165,7 @@ function MpCard({ metrics, mp, plan }: { metrics: UnitEconomicsItem; mp: 'wb' | 
       <UeMiniWaterfall
         revenue={m.revenue}
         mpDeductions={m.mp_costs}
+        storage={m.storage_cost ?? 0}
         purchase={m.purchase_costs}
         ads={m.ad_cost ?? 0}
         profit={m.net_profit}
@@ -176,7 +177,7 @@ function MpCard({ metrics, mp, plan }: { metrics: UnitEconomicsItem; mp: 'wb' | 
       )}
 
       {/* Bottom metrics */}
-      <div className="grid grid-cols-3 gap-2 mt-3 pt-2 border-t border-gray-200/60">
+      <div className={cn('grid gap-2 mt-3 pt-2 border-t border-gray-200/60', (m.storage_cost ?? 0) > 0 ? 'grid-cols-4' : 'grid-cols-3')}>
         <div className="text-[10px] sm:text-[11px]">
           <span className="text-gray-400">На ед.</span>
           <div className={cn('font-medium tabular-nums', m.unit_profit >= 0 ? 'text-emerald-700' : 'text-red-600')}>
@@ -195,6 +196,14 @@ function MpCard({ metrics, mp, plan }: { metrics: UnitEconomicsItem; mp: 'wb' | 
             {formatCurrency(m.purchase_costs)}
           </div>
         </div>
+        {(m.storage_cost ?? 0) > 0 && (
+          <div className="text-[10px] sm:text-[11px]">
+            <span className="text-gray-400">Хранение</span>
+            <div className="font-medium tabular-nums text-orange-600">
+              {formatCurrency(m.storage_cost)}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

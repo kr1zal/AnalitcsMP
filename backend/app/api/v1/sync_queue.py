@@ -191,6 +191,16 @@ async def _run_full_sync(user_id: str, trigger: str) -> dict:
                 logger.info(f"Ozon storage sync for {user_id}: {storage_status}, "
                             f"records={storage_result.get('records', 0)}")
 
+                # Run WB storage sync (same 24h window, same table mp_storage_costs_daily)
+                try:
+                    logger.info(f"Running WB storage sync for {user_id} (trigger={trigger})")
+                    wb_storage_result = await sync_service.sync_storage_wb(storage_from, storage_to)
+                    wb_storage_status = wb_storage_result.get("status", "error")
+                    logger.info(f"WB storage sync for {user_id}: {wb_storage_status}, "
+                                f"records={wb_storage_result.get('records', 0)}")
+                except Exception as wb_e:
+                    logger.warning(f"WB storage sync error for {user_id} (non-fatal): {wb_e}")
+
                 # Update last_storage_sync_at regardless of result (throttle even on error)
                 supabase.table("mp_sync_queue").update({
                     "last_storage_sync_at": _now_utc_iso(),

@@ -14,31 +14,31 @@ export function UeCostStructure({ totals, hasAds }: UeCostStructureProps) {
 
   // Calculate all percentages directly from data to avoid artifacts with negative profit
   const purchasePct = Math.max(0, Math.min(100, (totals.purchase / totals.revenue) * 100));
-  const adsPct = hasAds ? Math.max(0, Math.min(100, (totals.adCost / totals.revenue) * 100)) : 0;
   const mpCostsPct = Math.max(0, Math.min(100, (totals.mpCosts / totals.revenue) * 100));
+  const storagePct = totals.storage > 0 ? Math.max(0, Math.min(100, (totals.storage / totals.revenue) * 100)) : 0;
+  const adsPct = hasAds ? Math.max(0, Math.min(100, (totals.adCost / totals.revenue) * 100)) : 0;
   const profitPct = (totals.profit / totals.revenue) * 100;
   const absProfitPct = Math.min(100, Math.abs(profitPct));
 
   // Normalize segments to fit 100% total for the stacked bar
-  const rawTotal = purchasePct + mpCostsPct + adsPct + absProfitPct;
+  const rawTotal = purchasePct + mpCostsPct + storagePct + adsPct + absProfitPct;
   const scale = rawTotal > 0 ? 100 / rawTotal : 1;
-  const barPurchasePct = purchasePct * scale;
-  const barMpCostsPct = mpCostsPct * scale;
-  const barAdsPct = adsPct * scale;
-  const barProfitPct = absProfitPct * scale;
 
   const segments: { label: string; shortLabel: string; pct: number; barPct: number; value: number; bar: string; dot: string }[] = [
-    { label: 'Закупка', shortLabel: 'Закуп.', pct: purchasePct, barPct: barPurchasePct, value: totals.purchase, bar: 'bg-amber-400', dot: 'bg-amber-400' },
-    { label: 'Удержания МП', shortLabel: 'Удерж.', pct: mpCostsPct, barPct: barMpCostsPct, value: totals.mpCosts, bar: 'bg-purple-400', dot: 'bg-purple-400' },
+    { label: 'Закупка', shortLabel: 'Закуп.', pct: purchasePct, barPct: purchasePct * scale, value: totals.purchase, bar: 'bg-amber-400', dot: 'bg-amber-400' },
+    { label: 'Удержания МП', shortLabel: 'Удерж.', pct: mpCostsPct, barPct: mpCostsPct * scale, value: totals.mpCosts, bar: 'bg-purple-400', dot: 'bg-purple-400' },
   ];
+  if (totals.storage > 0) {
+    segments.push({ label: 'Хранение', shortLabel: 'Хран.', pct: storagePct, barPct: storagePct * scale, value: totals.storage, bar: 'bg-orange-400', dot: 'bg-orange-400' });
+  }
   if (hasAds) {
-    segments.push({ label: 'Реклама', shortLabel: 'Рекл.', pct: adsPct, barPct: barAdsPct, value: totals.adCost, bar: 'bg-blue-400', dot: 'bg-blue-400' });
+    segments.push({ label: 'Реклама', shortLabel: 'Рекл.', pct: adsPct, barPct: adsPct * scale, value: totals.adCost, bar: 'bg-blue-400', dot: 'bg-blue-400' });
   }
   segments.push({
     label: 'Прибыль',
     shortLabel: 'Приб.',
     pct: absProfitPct,
-    barPct: barProfitPct,
+    barPct: absProfitPct * scale,
     value: totals.profit,
     bar: totals.profit >= 0 ? 'bg-emerald-400' : 'bg-red-400',
     dot: totals.profit >= 0 ? 'bg-emerald-400' : 'bg-red-400',

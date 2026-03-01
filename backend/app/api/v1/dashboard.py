@@ -401,6 +401,7 @@ async def get_unit_economics(
 
         # Delivered counts per product (from mp_orders with delivery_date)
         ozon_delivered_counts: dict[str, int] = {}  # {product_id: delivered_qty}
+        ozon_delivered_ft_counts: dict[str, dict[str, int]] = {}  # {product_id: {FBO: qty, FBS: qty}}
 
         # Subcategories excluded from UE payout (not shown in ЛК UE, stay in costs-tree)
         _UE_EXCLUDED_SUBCATEGORIES = {"Бонусы продавца"}
@@ -447,12 +448,6 @@ async def get_unit_economics(
 
                         if order_rows:
                             using_delivery_date = True
-                            for drow in order_rows:
-                                dpid = drow.get("product_id")
-                                if not dpid:
-                                    continue
-                                qty = int(drow.get("quantity") or 1)
-                                ozon_delivered_counts[dpid] = ozon_delivered_counts.get(dpid, 0) + qty
 
                             for row in cost_rows:
                                 pid = row.get("product_id")
@@ -463,11 +458,20 @@ async def get_unit_economics(
                                 subcat = row.get("subcategory", "")
                                 ft_val = row.get("fulfillment_type", "FBO") or "FBO"
                                 _accumulate_od_row(pid, amt, cat, ft_val, subcat)
+                                # Count delivered from settled finance: each delivery has
+                                # exactly one "Выручка" entry. This matches ЛК exactly
+                                # (orders with delivery_date but no finance record yet
+                                # are NOT counted — Ozon hasn't settled them).
+                                if cat == "Продажи" and subcat == "Выручка":
+                                    ozon_delivered_counts[pid] = ozon_delivered_counts.get(pid, 0) + 1
+                                    if pid not in ozon_delivered_ft_counts:
+                                        ozon_delivered_ft_counts[pid] = {}
+                                    ozon_delivered_ft_counts[pid][ft_val] = ozon_delivered_ft_counts[pid].get(ft_val, 0) + 1
 
                             logger.info(f"UE Ozon: RPC delivery_date — "
-                                        f"{len(order_rows)} delivered orders, "
+                                        f"{len(order_rows)} order rows, "
                                         f"{len(cost_rows)} cost rows, "
-                                        f"{len(ozon_delivered_counts)} products")
+                                        f"delivered counts: {dict(ozon_delivered_counts)}")
                 except Exception as e:
                     logger.debug(f"get_ozon_ue_delivered RPC failed (may not exist yet): {e}")
 
@@ -635,6 +639,30 @@ async def get_unit_economics(
             if pid in product_metrics
         )
 
+        # 8a. Per-product storage costs (ALL marketplaces) — DISPLAY ONLY field.
+        # Storage is already deducted from profit (Ozon: via payout, WB: via costs-tree proportional).
+        # This query provides the `storage_cost` field for UI breakdown visibility.
+        all_mp_storage: dict[str, float] = {}  # {product_id: total_storage_cost}
+        try:
+            all_storage_q = (
+                supabase.table("mp_storage_costs_daily")
+                .select("product_id, storage_cost")
+                .eq("user_id", current_user.id)
+                .gte("date", date_from)
+                .lte("date", date_to)
+            )
+            # If marketplace filter is set, only show storage for that MP
+            if marketplace and marketplace != "all":
+                all_storage_q = all_storage_q.eq("marketplace", marketplace)
+            all_storage_result = all_storage_q.execute()
+            if all_storage_result.data:
+                for sr in all_storage_result.data:
+                    s_pid = sr["product_id"]
+                    s_cost = float(sr.get("storage_cost", 0) or 0)
+                    all_mp_storage[s_pid] = all_mp_storage.get(s_pid, 0) + s_cost
+        except Exception as e:
+            logger.debug(f"All-MP storage query for display failed: {e}")
+
         result = []
         for product_id, metrics in product_metrics.items():
             if product_id not in products:
@@ -646,12 +674,11 @@ async def get_unit_economics(
             costs = metrics["costs"]  # из mp_costs (fallback)
             purchase_price = float(product.get("purchase_price", 0))
             is_ozon = product_id in ozon_product_ids or bool(product.get("ozon_product_id"))
-            # Purchase: order-based для всех МП (purchase_price × sales_count)
-            # Ozon with delivery_date: use delivered_count instead of sales_count for COGS
+            # Ozon with delivery_date: override sales_count with delivered_count
+            # (ЛК shows delivered, not shipped; COGS = purchase_price × delivered)
             if is_ozon and using_delivery_date and product_id in ozon_delivered_counts:
-                raw_purchase = purchase_price * ozon_delivered_counts[product_id]
-            else:
-                raw_purchase = purchase_price * sales_count
+                sales_count = ozon_delivered_counts[product_id]
+            raw_purchase = purchase_price * sales_count
             ad_cost = ad_by_product.get(product_id, 0)
 
             if is_ozon and product_id in ozon_order_date_by_product:
@@ -711,6 +738,9 @@ async def get_unit_economics(
                     s = ft_data.get(ft_key, {"sales": 0, "revenue": 0})
                     ft_cnt = s["sales"]
                     ft_rev = s["revenue"]
+                    # Ozon delivered: override ft_cnt with delivered count per FT
+                    if is_ozon and using_delivery_date and product_id in ozon_delivered_ft_counts:
+                        ft_cnt = ozon_delivered_ft_counts[product_id].get(ft_key, 0)
                     if ft_cnt <= 0 and ft_rev <= 0:
                         continue
                     c = ft_costs.get(product_id, {}).get(ft_key, 0)
@@ -747,6 +777,9 @@ async def get_unit_economics(
                         "unit_profit": ft_unit_profit,
                     }
 
+            # Storage cost (display-only): from mp_storage_costs_daily
+            product_storage_cost = round(all_mp_storage.get(product_id, 0), 2)
+
             item: dict = {
                 "product": {
                     "id": product_id,
@@ -759,6 +792,7 @@ async def get_unit_economics(
                     "returns_count": metrics["returns"],
                     "revenue": round(displayed_revenue, 2),
                     "mp_costs": round(mp_costs_consistent, 2),
+                    "storage_cost": product_storage_cost,
                     "purchase_costs": round(raw_purchase, 2),
                     "ad_cost": round(ad_cost, 2),
                     "drr": drr,
@@ -774,6 +808,7 @@ async def get_unit_economics(
 
         total_ad_cost = sum(p["metrics"]["ad_cost"] for p in result)
         total_returns = sum(p["metrics"]["returns_count"] for p in result)
+        total_storage_cost = sum(p["metrics"]["storage_cost"] for p in result)
 
         return {
             "status": "success",
@@ -783,6 +818,7 @@ async def get_unit_economics(
             "total_ad_cost": round(total_ad_cost, 2),
             "total_payout": round(total_payout, 2),
             "total_returns": total_returns,
+            "total_storage_cost": round(total_storage_cost, 2),
             "products": result
         }
 

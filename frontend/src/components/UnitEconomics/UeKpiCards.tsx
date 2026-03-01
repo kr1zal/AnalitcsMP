@@ -11,6 +11,7 @@ import {
   Megaphone,
   RotateCcw,
   Package,
+  Warehouse,
 } from 'lucide-react';
 import { formatCurrency, formatPercent, cn } from '../../lib/utils';
 import type { UeTotals } from './ueHelpers';
@@ -92,6 +93,20 @@ export function UeKpiCards({ totals, productCount, profitableCount, hasAds, hasR
       color="muted"
     />,
   );
+
+  if (totals.storage > 0) {
+    const storagePctOfRevenue = totals.revenue > 0 ? (totals.storage / totals.revenue) * 100 : 0;
+    row2Cards.push(
+      <KpiCard
+        key="storage"
+        label="Хранение"
+        value={formatCurrency(totals.storage)}
+        sub={`${storagePctOfRevenue.toFixed(1)}% от выручки`}
+        icon={<Warehouse className="w-3.5 h-3.5" />}
+        color="muted"
+      />,
+    );
+  }
 
   if (hasAds) {
     row2Cards.push(

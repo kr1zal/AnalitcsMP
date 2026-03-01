@@ -1,6 +1,6 @@
 /**
  * UE таблица — один chunk (страница) товаров
- * 11 колонок: ABC, Товар, МП, Выкупы, Выручка, Удержания, Закупка, Реклама, Прибыль, На ед., Маржа
+ * 12 колонок: ABC, Товар, Выкупы, Выручка, Удержания, Хранение, Закупка, Реклама, Прибыль, На ед., Маржа
  */
 import { COLORS } from './print-constants';
 import { formatCurrency, formatPercent, formatNumber } from '../../lib/utils';
@@ -34,6 +34,7 @@ export function PrintUeTable({ products, abcMap, showTotals, allProducts }: Prin
               <Th align="right">Выкупы</Th>
               <Th align="right">Выручка</Th>
               <Th align="right">Удержания</Th>
+              <Th align="right">Хранение</Th>
               <Th align="right">Закупка</Th>
               {hasAds && <Th align="right">Реклама</Th>}
               {hasAds && <Th align="right">ДРР</Th>}
@@ -71,6 +72,9 @@ export function PrintUeTable({ products, abcMap, showTotals, allProducts }: Prin
                   </td>
                   <td className="px-2 py-2 text-right text-gray-700 tabular-nums">
                     {formatCurrency(item.metrics.mp_costs)}
+                  </td>
+                  <td className="px-2 py-2 text-right tabular-nums" style={{ color: (item.metrics.storage_cost ?? 0) > 0 ? '#ea580c' : '#9ca3af' }}>
+                    {(item.metrics.storage_cost ?? 0) > 0 ? formatCurrency(item.metrics.storage_cost) : '\u2014'}
                   </td>
                   <td className="px-2 py-2 text-right text-gray-700 tabular-nums">
                     {formatCurrency(item.metrics.purchase_costs)}
@@ -132,6 +136,9 @@ function TotalsRow({ products, hasAds }: { products: UnitEconomicsItem[]; hasAds
       <td className="px-2 py-2.5 text-right text-gray-900 tabular-nums">{formatNumber(totals.sales)}</td>
       <td className="px-2 py-2.5 text-right text-gray-900 tabular-nums">{formatCurrency(totals.revenue)}</td>
       <td className="px-2 py-2.5 text-right text-gray-900 tabular-nums">{formatCurrency(totals.mpCosts)}</td>
+      <td className="px-2 py-2.5 text-right tabular-nums" style={{ color: totals.storage > 0 ? '#ea580c' : '#9ca3af' }}>
+        {totals.storage > 0 ? formatCurrency(totals.storage) : '\u2014'}
+      </td>
       <td className="px-2 py-2.5 text-right text-gray-900 tabular-nums">{formatCurrency(totals.purchase)}</td>
       {hasAds && <td className="px-2 py-2.5 text-right text-gray-900 tabular-nums">{formatCurrency(totals.adCost)}</td>}
       {hasAds && <td className="px-2 py-2.5 text-right text-gray-900 tabular-nums">{formatPercent(drr)}</td>}

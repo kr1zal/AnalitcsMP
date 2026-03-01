@@ -383,6 +383,7 @@ function createUnitEconomicsSheet(unitEconomics: UnitEconomicsItem[]): XLSX.Work
     'Продажи шт.',
     'Выручка',
     'Удержания МП',
+    'Хранение',
     'Закупка',
     'Реклама',
     'Прибыль',
@@ -408,6 +409,7 @@ function createUnitEconomicsSheet(unitEconomics: UnitEconomicsItem[]): XLSX.Work
       item.metrics.sales_count,
       item.metrics.revenue,
       item.metrics.mp_costs,
+      item.metrics.storage_cost ?? 0,
       item.metrics.purchase_costs,
       item.metrics.ad_cost,
       item.metrics.net_profit,
@@ -424,11 +426,12 @@ function createUnitEconomicsSheet(unitEconomics: UnitEconomicsItem[]): XLSX.Work
         sales_count: acc.sales_count + item.metrics.sales_count,
         revenue: acc.revenue + item.metrics.revenue,
         mp_costs: acc.mp_costs + item.metrics.mp_costs,
+        storage_cost: acc.storage_cost + (item.metrics.storage_cost ?? 0),
         purchase_costs: acc.purchase_costs + item.metrics.purchase_costs,
         ad_cost: acc.ad_cost + item.metrics.ad_cost,
         net_profit: acc.net_profit + item.metrics.net_profit,
       }),
-      { sales_count: 0, revenue: 0, mp_costs: 0, purchase_costs: 0, ad_cost: 0, net_profit: 0 }
+      { sales_count: 0, revenue: 0, mp_costs: 0, storage_cost: 0, purchase_costs: 0, ad_cost: 0, net_profit: 0 }
     );
 
     const totalMargin =
@@ -446,6 +449,7 @@ function createUnitEconomicsSheet(unitEconomics: UnitEconomicsItem[]): XLSX.Work
       totals.sales_count,
       totals.revenue,
       totals.mp_costs,
+      totals.storage_cost,
       totals.purchase_costs,
       totals.ad_cost,
       totals.net_profit,
@@ -457,18 +461,19 @@ function createUnitEconomicsSheet(unitEconomics: UnitEconomicsItem[]): XLSX.Work
 
   const ws = XLSX.utils.aoa_to_sheet(rows);
   ws['!cols'] = [
-    { wch: 5 },
-    { wch: 25 },
-    { wch: 15 },
-    { wch: 12 },
-    { wch: 12 },
-    { wch: 14 },
-    { wch: 12 },
-    { wch: 12 },
-    { wch: 12 },
-    { wch: 12 },
-    { wch: 10 },
-    { wch: 10 },
+    { wch: 5 },   // ABC
+    { wch: 25 },  // Товар
+    { wch: 15 },  // Штрихкод
+    { wch: 12 },  // Продажи
+    { wch: 12 },  // Выручка
+    { wch: 14 },  // Удержания МП
+    { wch: 12 },  // Хранение
+    { wch: 12 },  // Закупка
+    { wch: 12 },  // Реклама
+    { wch: 12 },  // Прибыль
+    { wch: 12 },  // На единицу
+    { wch: 10 },  // Рентаб.
+    { wch: 10 },  // ДРР
   ];
 
   return ws;

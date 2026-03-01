@@ -3202,6 +3202,141 @@ class SyncService:
             self._log_sync("ozon", "storage", "error", 0, error_msg, started_at)
             return {"status": "error", "message": error_msg}
 
+    # ==================== WB PAID STORAGE ====================
+
+    async def sync_storage_wb(self, date_from: datetime, date_to: datetime) -> dict:
+        """
+        Синхронизация per-product storage costs из WB Paid Storage API.
+        API: GET /api/v1/paid_storage (3-step async: create task → poll → download).
+        Макс. период: 8 дней (wb_client handles chunking).
+        Результат: UPSERT в mp_storage_costs_daily с marketplace='wb'.
+        """
+        started_at = datetime.now()
+        records_count = 0
+        date_from_str = date_from.strftime("%Y-%m-%d")
+        date_to_str = date_to.strftime("%Y-%m-%d")
+
+        try:
+            if not self.wb_client:
+                logger.info("WB storage sync skipped: no WB token configured")
+                return {"status": "success", "records": 0}
+
+            # 1. Fetch paid storage data from WB API
+            logger.info(f"WB storage: fetching paid_storage {date_from_str} - {date_to_str}")
+            raw_rows = await self.wb_client.get_paid_storage(date_from_str, date_to_str)
+
+            if not raw_rows:
+                logger.info("WB storage: no data returned from API")
+                self._log_sync("wb", "storage", "success", 0, started_at=started_at)
+                return {"status": "success", "records": 0}
+
+            logger.info(f"WB storage: received {len(raw_rows)} raw rows from API")
+
+            # 2. Build nmId → product_id map
+            products_map = self._get_products_map()  # {barcode: product_dict}
+            nm_id_to_product: dict[int, dict] = {}
+            barcode_to_product: dict[str, dict] = {}
+            for barcode, product in products_map.items():
+                if barcode and barcode != "WB_ACCOUNT":
+                    barcode_to_product[barcode] = product
+                    wb_nm_id = product.get("wb_nm_id")
+                    if wb_nm_id:
+                        nm_id_to_product[int(wb_nm_id)] = product
+
+            # 3. Aggregate: per (date, product_id) → sum warehousePrice across warehouses/calcTypes
+            # Key = (date_str, product_id)
+            daily_agg: dict[tuple[str, str], dict] = {}
+
+            for row in raw_rows:
+                row_date = row.get("date") or row.get("originalDate")
+                if not row_date:
+                    continue
+                row_date_str = str(row_date)[:10]  # "YYYY-MM-DD"
+
+                # Map to product: nmId first, barcode fallback
+                nm_id = row.get("nmId")
+                barcode = row.get("barcode", "")
+                product = None
+                if nm_id:
+                    product = nm_id_to_product.get(int(nm_id))
+                if not product and barcode:
+                    product = barcode_to_product.get(barcode)
+
+                if not product:
+                    continue  # Unknown product, skip
+
+                product_id = product["id"]
+                warehouse_price = float(row.get("warehousePrice", 0) or 0)
+                barcodes_count = int(row.get("barcodesCount", 0) or 0)
+                volume = float(row.get("volume", 0) or 0)
+
+                key = (row_date_str, product_id)
+                if key not in daily_agg:
+                    daily_agg[key] = {"cost": 0.0, "qty": 0, "volume": 0.0}
+
+                # warehousePrice can be negative (discounts like "скидка на остаток склада")
+                # We SUM all calcTypes: base charge + discounts = net cost per product per day
+                daily_agg[key]["cost"] += warehouse_price
+                daily_agg[key]["qty"] = max(daily_agg[key]["qty"], barcodes_count)
+                daily_agg[key]["volume"] = max(daily_agg[key]["volume"], volume)
+
+            unique_products = len(set(k[1] for k in daily_agg))
+            unique_dates = len(set(k[0] for k in daily_agg))
+            logger.info(f"WB storage: aggregated {len(daily_agg)} (date,product) pairs "
+                        f"({unique_products} products, {unique_dates} dates) from {len(raw_rows)} rows")
+
+            # 4. Build insert rows
+            insert_rows = []
+            for (row_date, product_id), agg in daily_agg.items():
+                storage_cost = agg["cost"]
+                # Skip zero/negative net storage (fully discounted products)
+                if storage_cost <= 0:
+                    continue
+
+                insert_row = {
+                    "marketplace": "wb",
+                    "product_id": product_id,
+                    "date": row_date,
+                    "storage_cost": round(storage_cost, 2),
+                    "quantity": agg["qty"],
+                    "volume_liters": round(agg["volume"], 2),
+                }
+                if self.user_id:
+                    insert_row["user_id"] = self.user_id
+                insert_rows.append(insert_row)
+
+            # 5. UPSERT: delete period + insert
+            if insert_rows:
+                logger.info(f"WB storage: inserting {len(insert_rows)} daily rows "
+                            f"for {date_from_str} - {date_to_str}")
+                del_query = self.supabase.table("mp_storage_costs_daily") \
+                    .delete() \
+                    .eq("marketplace", "wb") \
+                    .gte("date", date_from_str) \
+                    .lte("date", date_to_str)
+                if self.user_id:
+                    del_query = del_query.eq("user_id", self.user_id)
+                del_query.execute()
+
+                # Insert in batches
+                batch_size = 500
+                for i in range(0, len(insert_rows), batch_size):
+                    batch = insert_rows[i:i + batch_size]
+                    self.supabase.table("mp_storage_costs_daily").insert(batch).execute()
+                records_count = len(insert_rows)
+
+            logger.info(f"WB storage sync: {records_count} rows saved for {date_from_str} - {date_to_str}")
+            self._log_sync("wb", "storage", "success", records_count, started_at=started_at)
+            return {"status": "success", "records": records_count}
+
+        except Exception as e:
+            import traceback
+            error_msg = str(e) or repr(e)
+            tb = traceback.format_exc()
+            logger.error(f"Ошибка синхронизации storage WB: {error_msg}\n{tb}")
+            self._log_sync("wb", "storage", "error", 0, error_msg, started_at)
+            return {"status": "error", "message": error_msg}
+
     # ==================== DELIVERY DATES OZON ====================
 
     async def sync_delivery_dates_ozon(self, date_from: datetime, date_to: datetime) -> dict:
