@@ -612,7 +612,8 @@ class SyncService:
                         qty = 1
                     sales_agg[key]["returns"] += abs(qty)
 
-            # Сохраняем в БД
+            # Сохраняем в БД (batch upsert по 500)
+            sales_batch = []
             for (nm_id, date, ft), data in sales_agg.items():
                 # Находим товар по nm_id
                 product_id = None
@@ -629,7 +630,6 @@ class SyncService:
                 orders_count = int(data["sales"] + data["returns"])
                 buyout_percent = round(data["sales"] / orders_count * 100, 2) if orders_count > 0 else None
 
-                # Upsert в mp_sales
                 row = {
                     "product_id": product_id,
                     "marketplace": "wb",
@@ -643,10 +643,14 @@ class SyncService:
                 }
                 if self.user_id:
                     row["user_id"] = self.user_id
+                sales_batch.append(row)
+
+            for i in range(0, len(sales_batch), 500):
+                chunk = sales_batch[i:i+500]
                 self.supabase.table("mp_sales").upsert(
-                    row, on_conflict="user_id,product_id,marketplace,date,fulfillment_type"
+                    chunk, on_conflict="user_id,product_id,marketplace,date,fulfillment_type"
                 ).execute()
-                records_count += 1
+            records_count = len(sales_batch)
 
             # Получаем воронку (cart_adds) если есть nm_ids
             nm_ids = [p.get("wb_nm_id") for p in products_map.values() if p.get("wb_nm_id")]
@@ -714,6 +718,7 @@ class SyncService:
                     logger.warning(f"sync_sales_ozon: достигнут лимит пагинации offset={offset}")
                     break
 
+            sales_batch = []
             for row in all_rows:
                 dimensions = row.get("dimensions", [])
                 metrics = row.get("metrics", [])
@@ -765,7 +770,6 @@ class SyncService:
                 else:
                     buyout = None
 
-                # Upsert с реальной датой
                 upsert_row = {
                     "product_id": product_id,
                     "marketplace": "ozon",
@@ -781,10 +785,14 @@ class SyncService:
                 }
                 if self.user_id:
                     upsert_row["user_id"] = self.user_id
+                sales_batch.append(upsert_row)
+
+            for i in range(0, len(sales_batch), 500):
+                chunk = sales_batch[i:i+500]
                 self.supabase.table("mp_sales").upsert(
-                    upsert_row, on_conflict="user_id,product_id,marketplace,date,fulfillment_type"
+                    chunk, on_conflict="user_id,product_id,marketplace,date,fulfillment_type"
                 ).execute()
-                records_count += 1
+            records_count = len(sales_batch)
 
             self._log_sync("ozon", "sales", "success", records_count, started_at=started_at)
             return {"status": "success", "records": records_count}
@@ -876,6 +884,7 @@ class SyncService:
                 agg[key] = agg.get(key, 0) + qty
 
             now_iso = datetime.now().isoformat()
+            stocks_batch = []
             for (pid, wh), qty in agg.items():
                 upsert_row = {
                     "product_id": pid,
@@ -887,11 +896,15 @@ class SyncService:
                 }
                 if self.user_id:
                     upsert_row["user_id"] = self.user_id
+                stocks_batch.append(upsert_row)
+
+            for i in range(0, len(stocks_batch), 500):
+                chunk = stocks_batch[i:i+500]
                 self.supabase.table("mp_stocks").upsert(
-                    upsert_row,
+                    chunk,
                     on_conflict="user_id,product_id,marketplace,warehouse,fulfillment_type",
                 ).execute()
-                records_count += 1
+            records_count = len(stocks_batch)
 
             self._log_sync("wb", "stocks", "success", records_count, started_at=started_at)
             self._save_stock_snapshot("wb")
@@ -926,21 +939,26 @@ class SyncService:
                     key = (pid, ft)
                     totals[key] = totals.get(key, 0) + (row.get("quantity") or 0)
 
-            # Upsert daily snapshots
+            # Upsert daily snapshots (batch по 500)
+            snapshot_batch = []
             for (pid, ft), qty in totals.items():
+                snapshot_batch.append({
+                    "user_id": self.user_id,
+                    "product_id": pid,
+                    "marketplace": marketplace,
+                    "date": today,
+                    "total_quantity": qty,
+                    "fulfillment_type": ft,
+                })
+
+            for i in range(0, len(snapshot_batch), 500):
+                chunk = snapshot_batch[i:i+500]
                 self.supabase.table("mp_stock_snapshots").upsert(
-                    {
-                        "user_id": self.user_id,
-                        "product_id": pid,
-                        "marketplace": marketplace,
-                        "date": today,
-                        "total_quantity": qty,
-                        "fulfillment_type": ft,
-                    },
+                    chunk,
                     on_conflict="user_id,product_id,marketplace,date,fulfillment_type",
                 ).execute()
 
-            logger.info(f"Stock snapshot saved: {marketplace}, {len(totals)} product×ft combos")
+            logger.info(f"Stock snapshot saved: {marketplace}, {len(snapshot_batch)} product×ft combos")
         except Exception as e:
             # Don't fail the sync if snapshot fails
             logger.warning(f"Failed to save stock snapshot ({marketplace}): {e}")
@@ -1178,6 +1196,8 @@ class SyncService:
                         if oid and p.get("id"):
                             offer_to_pid[oid] = p["id"]
 
+                    now_iso = datetime.now().isoformat()
+                    stocks_batch: list[dict] = []
                     for row in rows:
                         item_code = str(row.get("item_code") or "").strip()
                         sku = row.get("sku")
@@ -1208,16 +1228,20 @@ class SyncService:
                             "marketplace": "ozon",
                             "warehouse": warehouse,
                             "quantity": qty,
-                            "updated_at": datetime.now().isoformat(),
+                            "updated_at": now_iso,
                             "fulfillment_type": "FBO",
                         }
                         if self.user_id:
                             upsert_row["user_id"] = self.user_id
+                        stocks_batch.append(upsert_row)
+
+                    for i in range(0, len(stocks_batch), 500):
+                        chunk = stocks_batch[i:i+500]
                         self.supabase.table("mp_stocks").upsert(
-                            upsert_row,
+                            chunk,
                             on_conflict="user_id,product_id,marketplace,warehouse,fulfillment_type",
                         ).execute()
-                        records_count += 1
+                    records_count = len(stocks_batch)
 
                     self._log_sync("ozon", "stocks", "success", records_count, started_at=started_at)
                     self._save_stock_snapshot("ozon")
@@ -1225,6 +1249,8 @@ class SyncService:
                 except Exception as e:
                     logger.warning(f"Ozon analytics stock_on_warehouses failed: {e}")
 
+            now_iso = datetime.now().isoformat()
+            stocks_batch: list[dict] = []
             for stock in stocks:
                 product_id_ozon = stock.get("product_id")
                 offer_id = stock.get("offer_id")
@@ -1260,16 +1286,20 @@ class SyncService:
                         "marketplace": "ozon",
                         "warehouse": warehouse,
                         "quantity": quantity,
-                        "updated_at": datetime.now().isoformat(),
+                        "updated_at": now_iso,
                         "fulfillment_type": ft,
                     }
                     if self.user_id:
                         upsert_row["user_id"] = self.user_id
-                    self.supabase.table("mp_stocks").upsert(
-                        upsert_row,
-                        on_conflict="user_id,product_id,marketplace,warehouse,fulfillment_type",
-                    ).execute()
-                    records_count += 1
+                    stocks_batch.append(upsert_row)
+
+            for i in range(0, len(stocks_batch), 500):
+                chunk = stocks_batch[i:i+500]
+                self.supabase.table("mp_stocks").upsert(
+                    chunk,
+                    on_conflict="user_id,product_id,marketplace,warehouse,fulfillment_type",
+                ).execute()
+            records_count = len(stocks_batch)
 
             # Если по Ozon пусто — логируем как success с 0, но добавляем диагностическое сообщение
             # в стандартный error_message нельзя (это поле для error), поэтому пишем в лог сервера.
@@ -1405,7 +1435,8 @@ class SyncService:
                         details_agg[dkey] = {"amount": 0.0, "operation_type": "WB_RESIDUAL", "operation_id": ""}
                     details_agg[dkey]["amount"] += diff
 
-            # Сохраняем mp_costs
+            # Сохраняем mp_costs (batch upsert по 500)
+            costs_batch = []
             for (pid, date, ft), costs in costs_agg.items():
                 upsert_row = {
                     "product_id": pid,
@@ -1422,10 +1453,14 @@ class SyncService:
                 }
                 if self.user_id:
                     upsert_row["user_id"] = self.user_id
+                costs_batch.append(upsert_row)
+
+            for i in range(0, len(costs_batch), 500):
+                chunk = costs_batch[i:i+500]
                 self.supabase.table("mp_costs").upsert(
-                    upsert_row, on_conflict="user_id,product_id,marketplace,date,fulfillment_type"
+                    chunk, on_conflict="user_id,product_id,marketplace,date,fulfillment_type"
                 ).execute()
-                records_count += 1
+            records_count = len(costs_batch)
 
             # Удаляем старые записи деталей WB за период и вставляем новые
             # Удаляем все fulfillment_type (FBO+FBS), т.к. re-sync полностью пересоздаёт данные
@@ -1440,7 +1475,7 @@ class SyncService:
                 delete_query = delete_query.eq("user_id", self.user_id)
             delete_query.execute()
 
-            details_count = 0
+            details_batch = []
             for (pid, date, ft, category, subcategory), data in details_agg.items():
                 insert_row = {
                     "product_id": pid,
@@ -1455,8 +1490,12 @@ class SyncService:
                 }
                 if self.user_id:
                     insert_row["user_id"] = self.user_id
-                self.supabase.table("mp_costs_details").insert(insert_row).execute()
-                details_count += 1
+                details_batch.append(insert_row)
+
+            for i in range(0, len(details_batch), 500):
+                chunk = details_batch[i:i+500]
+                self.supabase.table("mp_costs_details").insert(chunk).execute()
+            details_count = len(details_batch)
 
             self._log_sync("wb", "costs", "success", records_count, started_at=started_at)
             return {"status": "success", "records": records_count, "details": details_count}
@@ -2063,7 +2102,8 @@ class SyncService:
                     else:
                         costs_agg[key]["other"] += abs(amount)
 
-            # Сохраняем mp_costs
+            # Сохраняем mp_costs (batch upsert по 500)
+            costs_batch = []
             for (barcode, date, ft), costs in costs_agg.items():
                 product_id = products_map.get(barcode, {}).get("id")
                 if not product_id:
@@ -2085,10 +2125,14 @@ class SyncService:
                 }
                 if self.user_id:
                     upsert_row["user_id"] = self.user_id
+                costs_batch.append(upsert_row)
+
+            for i in range(0, len(costs_batch), 500):
+                chunk = costs_batch[i:i+500]
                 self.supabase.table("mp_costs").upsert(
-                    upsert_row, on_conflict="user_id,product_id,marketplace,date,fulfillment_type"
+                    chunk, on_conflict="user_id,product_id,marketplace,date,fulfillment_type"
                 ).execute()
-                records_count += 1
+            records_count = len(costs_batch)
 
             # === 2. Гранулярные данные для mp_costs_details (tree-view) ===
             details_agg = {}  # {(product_id, date, ft, category, subcategory, order_date): {amount, ...}}
@@ -2213,7 +2257,8 @@ class SyncService:
                 delete_query = delete_query.eq("user_id", self.user_id)
             delete_query.execute()
 
-            # Сохраняем mp_costs_details
+            # Сохраняем mp_costs_details (batch insert по 500)
+            details_batch = []
             for (pid, date, ft, category, subcategory, od, pn), data in details_agg.items():
                 insert_row = {
                     "product_id": pid,
@@ -2232,8 +2277,12 @@ class SyncService:
                     insert_row["posting_number"] = pn
                 if self.user_id:
                     insert_row["user_id"] = self.user_id
-                self.supabase.table("mp_costs_details").insert(insert_row).execute()
-                details_count += 1
+                details_batch.append(insert_row)
+
+            for i in range(0, len(details_batch), 500):
+                chunk = details_batch[i:i+500]
+                self.supabase.table("mp_costs_details").insert(chunk).execute()
+            details_count = len(details_batch)
 
             logger.info(f"Ozon costs: {records_count} mp_costs records, {details_count} mp_costs_details records")
             self._log_sync("ozon", "costs", "success", records_count, started_at=started_at)
@@ -2280,6 +2329,7 @@ class SyncService:
                     logger.warning(f"WB Ads: не удалось получить статистику кампании {cid}: {e}")
                 await asyncio.sleep(5)  # Rate limit: WB Ads API ограничивает частоту
 
+            ads_batch = []
             for campaign_stat in stats:
                 campaign_id = campaign_stat.get("advertId")
 
@@ -2344,10 +2394,15 @@ class SyncService:
                         }
                         if self.user_id:
                             upsert_row["user_id"] = self.user_id
-                        self.supabase.table("mp_ad_costs").upsert(
-                            upsert_row, on_conflict="user_id,product_id,marketplace,date,campaign_id"
-                        ).execute()
-                        records_count += 1
+                        ads_batch.append(upsert_row)
+
+            # Batch upsert по 500 (паттерн из sync_costs_wb)
+            for i in range(0, len(ads_batch), 500):
+                chunk = ads_batch[i:i+500]
+                self.supabase.table("mp_ad_costs").upsert(
+                    chunk, on_conflict="user_id,product_id,marketplace,date,campaign_id"
+                ).execute()
+            records_count = len(ads_batch)
 
             self._log_sync("wb", "ads", "success", records_count, started_at=started_at)
             return {"status": "success", "records": records_count}
@@ -2394,6 +2449,7 @@ class SyncService:
             delete_query.execute()
 
             # Обрабатываем по одной кампании (ограничение API: 1 запрос одновременно)
+            ads_batch = []
             for campaign in sku_campaigns:
                 campaign_id = str(campaign["id"])
                 try:
@@ -2435,14 +2491,19 @@ class SyncService:
                         }
                         if self.user_id:
                             insert_row["user_id"] = self.user_id
-                        self.supabase.table("mp_ad_costs").insert(insert_row).execute()
-                        records_count += 1
+                        ads_batch.append(insert_row)
 
                 except Exception as e:
                     logger.warning(f"Ozon Ads: не удалось получить статистику кампании {campaign_id}: {e}")
 
                 # Ждём между кампаниями (ограничение: 1 активный отчёт)
                 await asyncio.sleep(5)
+
+            # Batch INSERT по 500 (паттерн из sync_ads_wb)
+            for i in range(0, len(ads_batch), 500):
+                chunk = ads_batch[i:i+500]
+                self.supabase.table("mp_ad_costs").insert(chunk).execute()
+            records_count = len(ads_batch)
 
             self._log_sync("ozon", "ads", "success", records_count, started_at=started_at)
             return {"status": "success", "records": records_count}
