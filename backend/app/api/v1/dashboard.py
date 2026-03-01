@@ -666,6 +666,12 @@ async def get_unit_economics(
         except Exception as e:
             logger.debug(f"All-MP storage query for display failed: {e}")
 
+        # 8b. Add storage-only products (0 sales but have storage costs)
+        # These products exist in mp_storage_costs_daily but not in mp_sales
+        for s_pid in all_mp_storage:
+            if s_pid not in product_metrics and s_pid in products:
+                product_metrics[s_pid] = {"sales": 0, "revenue": 0, "costs": 0, "returns": 0}
+
         result = []
         for product_id, metrics in product_metrics.items():
             if product_id not in products:

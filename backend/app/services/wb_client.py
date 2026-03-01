@@ -265,11 +265,18 @@ class WildberriesClient:
         else:
             return []  # timeout
 
-        # Step 3: Download
+        # Step 3: Download (with retry on 429)
         download_url = f"{base_url}/api/v1/paid_storage/tasks/{task_id}/download"
-        data = await self._request("GET", download_url)
-        if isinstance(data, list):
-            return data
-        if isinstance(data, dict) and "data" in data:
-            return data["data"] if isinstance(data["data"], list) else []
-        return []
+        for attempt in range(3):
+            try:
+                data = await self._request("GET", download_url)
+                if isinstance(data, list):
+                    return data
+                if isinstance(data, dict) and "data" in data:
+                    return data["data"] if isinstance(data["data"], list) else []
+                return []
+            except Exception as e:
+                if "429" in str(e) and attempt < 2:
+                    await asyncio.sleep(10 * (attempt + 1))
+                    continue
+                raise
