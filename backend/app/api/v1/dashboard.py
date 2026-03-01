@@ -296,6 +296,9 @@ async def get_unit_economics(
 
         ozon_product_ids: set[str] = set()  # product_id's с Ozon costs
 
+        # Per-MP revenue/sales tracking (for dual-MP products in "all" filter)
+        per_mp_sales: dict[str, dict[str, dict]] = {}  # {product_id: {ozon: {sales, revenue}, wb: {...}}}
+
         for sale in sales_result.data:
             product_id = sale["product_id"]
             if product_id not in product_metrics:
@@ -303,6 +306,15 @@ async def get_unit_economics(
             product_metrics[product_id]["sales"] += sale.get("sales_count", 0)
             product_metrics[product_id]["revenue"] += float(sale.get("revenue", 0))
             product_metrics[product_id]["returns"] += sale.get("returns_count", 0) or 0
+
+            # Track per-MP (needed when filter="all" and product on both MPs)
+            sale_mp = sale.get("marketplace", "wb")
+            if product_id not in per_mp_sales:
+                per_mp_sales[product_id] = {}
+            if sale_mp not in per_mp_sales[product_id]:
+                per_mp_sales[product_id][sale_mp] = {"sales": 0, "revenue": 0.0}
+            per_mp_sales[product_id][sale_mp]["sales"] += sale.get("sales_count", 0)
+            per_mp_sales[product_id][sale_mp]["revenue"] += float(sale.get("revenue", 0))
 
             # Track per fulfillment_type (only for Pro+ with fbs_analytics)
             if include_ft_breakdown and not fulfillment_type:
@@ -690,7 +702,49 @@ async def get_unit_economics(
             raw_purchase = purchase_price * sales_count
             ad_cost = ad_by_product.get(product_id, 0)
 
-            if is_ozon and product_id in ozon_order_date_by_product:
+            # Check if product has sales on BOTH MPs (dual-MP, filter="all")
+            product_mp_data = per_mp_sales.get(product_id, {})
+            has_ozon_sales = "ozon" in product_mp_data
+            has_wb_sales = "wb" in product_mp_data
+            is_dual_mp = has_ozon_sales and has_wb_sales and (not marketplace or marketplace == "all")
+
+            if is_dual_mp and product_id in ozon_order_date_by_product:
+                # DUAL-MP: product on both Ozon + WB with filter="all"
+                # Calculate each MP separately and combine
+                od_data = ozon_order_date_by_product[product_id]
+                ozon_order_payout = od_data["payout"]
+                ozon_order_revenue = od_data["revenue"]
+
+                # Ozon part
+                ozon_sales_count = product_mp_data["ozon"]["sales"]
+                if using_delivery_date and product_id in ozon_delivered_counts:
+                    ozon_sales_count = ozon_delivered_counts[product_id]
+                ozon_purchase = purchase_price * ozon_sales_count
+                ozon_profit = ozon_order_payout - ozon_purchase
+                ozon_mp_costs = max(0, ozon_order_revenue - ozon_order_payout)
+
+                # WB part (proportional)
+                wb_product_rev = product_mp_data["wb"]["revenue"]
+                wb_sales_count = product_mp_data["wb"]["sales"]
+                wb_purchase = purchase_price * wb_sales_count
+                if wb_total_mp_sales_revenue > 0 and wb_tree_revenue > 0:
+                    wb_share = wb_product_rev / wb_total_mp_sales_revenue
+                    wb_displayed_rev = wb_tree_revenue * wb_share
+                    wb_payout_share = wb_payout * wb_share
+                else:
+                    wb_displayed_rev = wb_product_rev
+                    wb_payout_share = wb_product_rev  # fallback
+                wb_mp_costs = max(0, wb_displayed_rev - wb_payout_share)
+                wb_profit = wb_payout_share - wb_purchase - ad_cost
+
+                # Combined
+                displayed_revenue = ozon_order_revenue + wb_displayed_rev
+                mp_costs_consistent = ozon_mp_costs + wb_mp_costs
+                net_profit = ozon_profit + wb_profit
+                sales_count = ozon_sales_count + wb_sales_count
+                raw_purchase = ozon_purchase + wb_purchase
+
+            elif is_ozon and product_id in ozon_order_date_by_product:
                 # Ozon PRIMARY: delivery_date or order_date-based exact matching.
                 # payout = SUM(all mp_costs_details amounts WHERE order_date matches delivered orders).
                 # Finance payout already includes ALL deductions (commission, logistics, ads).
