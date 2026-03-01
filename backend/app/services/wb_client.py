@@ -192,3 +192,87 @@ class WildberriesClient:
             for campaign_id in campaign_ids
         ]
         return await self._request("POST", url, json=payload)
+
+    # ==================== ХРАНЕНИЕ (PAID STORAGE) ====================
+
+    async def get_paid_storage(self, date_from: str, date_to: str) -> list[dict]:
+        """
+        Получить данные по платному хранению (3-step async).
+
+        API: GET /api/v1/paid_storage → taskId → poll status → download.
+        Максимальный период: 8 дней. Если period > 8 дней — разбивает на чанки.
+        Задержка данных: ~1-2 дня.
+
+        Args:
+            date_from: "YYYY-MM-DD"
+            date_to: "YYYY-MM-DD"
+
+        Returns:
+            List of storage rows (per-product, per-day, per-warehouse).
+            Каждая строка содержит: nmId, barcode, warehousePrice, barcodesCount,
+            volume, warehouse, calcType, date и т.д.
+        """
+        import asyncio
+
+        # Split into 8-day chunks (API limit)
+        from_dt = datetime.strptime(date_from, "%Y-%m-%d")
+        to_dt = datetime.strptime(date_to, "%Y-%m-%d")
+        all_rows: list[dict] = []
+
+        chunk_start = from_dt
+        while chunk_start <= to_dt:
+            chunk_end = min(chunk_start + timedelta(days=7), to_dt)  # 8 days max (inclusive)
+            chunk_from_str = chunk_start.strftime("%Y-%m-%d")
+            chunk_to_str = chunk_end.strftime("%Y-%m-%d")
+
+            chunk_data = await self._get_paid_storage_chunk(chunk_from_str, chunk_to_str)
+            if chunk_data:
+                all_rows.extend(chunk_data)
+
+            chunk_start = chunk_end + timedelta(days=1)
+
+        return all_rows
+
+    async def _get_paid_storage_chunk(self, date_from: str, date_to: str) -> list[dict]:
+        """
+        Один запрос paid_storage (макс 8 дней).
+        3-step: create task → poll status → download.
+        """
+        import asyncio
+
+        base_url = self.ANALYTICS_URL
+
+        # Step 1: Create task
+        url = f"{base_url}/api/v1/paid_storage"
+        params = {"dateFrom": date_from, "dateTo": date_to}
+        result = await self._request("GET", url, params=params)
+        if not result or "data" not in result:
+            return []
+
+        task_id = result["data"].get("taskId")
+        if not task_id:
+            return []
+
+        # Step 2: Poll status (every 3 sec, max 2 min = 40 attempts)
+        status_url = f"{base_url}/api/v1/paid_storage/tasks/{task_id}/status"
+        for _ in range(40):
+            await asyncio.sleep(3)
+            status_result = await self._request("GET", status_url)
+            if not status_result or "data" not in status_result:
+                continue
+            status = status_result["data"].get("status", "")
+            if status == "done":
+                break
+            if status in ("purged", "canceled"):
+                return []
+        else:
+            return []  # timeout
+
+        # Step 3: Download
+        download_url = f"{base_url}/api/v1/paid_storage/tasks/{task_id}/download"
+        data = await self._request("GET", download_url)
+        if isinstance(data, list):
+            return data
+        if isinstance(data, dict) and "data" in data:
+            return data["data"] if isinstance(data["data"], list) else []
+        return []

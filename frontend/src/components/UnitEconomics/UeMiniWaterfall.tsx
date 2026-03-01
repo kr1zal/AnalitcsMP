@@ -7,6 +7,7 @@ import { formatCurrency, cn } from '../../lib/utils';
 interface MiniWaterfallProps {
   revenue: number;
   mpDeductions: number;
+  storage: number;
   purchase: number;
   ads: number;
   profit: number;
@@ -16,8 +17,13 @@ const rows = (p: MiniWaterfallProps) => {
   const list: { label: string; value: number; pct: number; bar: string; text: string; negative?: boolean }[] = [
     { label: 'Выручка', value: p.revenue, pct: 100, bar: 'bg-emerald-400', text: 'text-gray-900' },
     { label: 'Удерж.', value: p.mpDeductions, pct: pctOf(p.mpDeductions, p.revenue), bar: 'bg-red-300', text: 'text-red-600', negative: true },
-    { label: 'Закупка', value: p.purchase, pct: pctOf(p.purchase, p.revenue), bar: 'bg-amber-300', text: 'text-amber-700', negative: true },
   ];
+  if (p.storage > 0) {
+    list.push({ label: 'Хранение', value: p.storage, pct: pctOf(p.storage, p.revenue), bar: 'bg-orange-300', text: 'text-orange-700', negative: true });
+  }
+  list.push(
+    { label: 'Закупка', value: p.purchase, pct: pctOf(p.purchase, p.revenue), bar: 'bg-amber-300', text: 'text-amber-700', negative: true },
+  );
   if (p.ads > 0) {
     list.push({ label: 'Реклама', value: p.ads, pct: pctOf(p.ads, p.revenue), bar: 'bg-blue-300', text: 'text-blue-700', negative: true });
   }

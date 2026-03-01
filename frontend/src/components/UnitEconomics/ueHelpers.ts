@@ -10,7 +10,7 @@ export type AbcGrade = 'A' | 'B' | 'C';
 export type AbcMetric = 'profit' | 'revenue';
 export type SortField =
   | 'name' | 'sales_count' | 'revenue' | 'purchase_costs'
-  | 'mp_costs' | 'ad_cost' | 'drr' | 'net_profit'
+  | 'mp_costs' | 'storage_cost' | 'ad_cost' | 'drr' | 'net_profit'
   | 'unit_profit' | 'margin' | 'contribution' | 'plan_completion';
 export type SortDirection = 'asc' | 'desc';
 
@@ -45,6 +45,7 @@ export const SORT_OPTIONS: { value: SortField; label: string }[] = [
   { value: 'margin', label: 'Рентаб.' },
   { value: 'sales_count', label: 'Продажи' },
   { value: 'unit_profit', label: 'На ед.' },
+  { value: 'storage_cost', label: 'Хранение' },
   { value: 'name', label: 'Название' },
   { value: 'drr', label: 'ДРР' },
   { value: 'contribution', label: 'Доля' },
@@ -206,6 +207,7 @@ const METRIC_SORT_FIELDS: Record<string, keyof ProductMetrics> = {
   revenue: 'revenue',
   purchase_costs: 'purchase_costs',
   mp_costs: 'mp_costs',
+  storage_cost: 'storage_cost',
   ad_cost: 'ad_cost',
   drr: 'drr',
   net_profit: 'net_profit',
@@ -252,6 +254,7 @@ export interface UeTotals {
   revenue: number;
   purchase: number;
   mpCosts: number;
+  storage: number;
   adCost: number;
   profit: number;
   sales: number;
@@ -259,11 +262,12 @@ export interface UeTotals {
 }
 
 export function computeTotals(products: UnitEconomicsItem[]): UeTotals {
-  const t: UeTotals = { revenue: 0, purchase: 0, mpCosts: 0, adCost: 0, profit: 0, sales: 0, returns: 0 };
+  const t: UeTotals = { revenue: 0, purchase: 0, mpCosts: 0, storage: 0, adCost: 0, profit: 0, sales: 0, returns: 0 };
   for (const p of products) {
     t.revenue += p.metrics.revenue;
     t.purchase += p.metrics.purchase_costs;
     t.mpCosts += p.metrics.mp_costs;
+    t.storage += p.metrics.storage_cost ?? 0;
     t.adCost += p.metrics.ad_cost ?? 0;
     t.profit += p.metrics.net_profit;
     t.sales += p.metrics.sales_count;

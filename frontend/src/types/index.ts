@@ -181,6 +181,7 @@ export interface ProductMetrics {
   returns_count: number;
   revenue: number;
   mp_costs: number;
+  storage_cost: number;
   purchase_costs: number;
   ad_cost: number;
   drr: number;
@@ -222,6 +223,7 @@ export interface UnitEconomicsResponse {
   total_ad_cost: number;
   total_payout: number;
   total_returns: number;
+  total_storage_cost: number;
   products: UnitEconomicsItem[];
 }
 
