@@ -1,0 +1,33 @@
+/**
+ * Landing page TypeScript types.
+ */
+import type { LucideIcon } from 'lucide-react';
+
+export interface ShowcaseSlideData {
+  id: string;
+  tab: string;
+  icon: LucideIcon;
+  title: string;
+  description: string;
+  highlights: string[];
+  desktop: string;
+  mobile: string;
+}
+
+export interface Testimonial {
+  quote: string;
+  author: string;
+  role: string;
+  niche: string;
+  marketplace: 'WB' | 'Ozon' | 'WB + Ozon';
+  metric: string;
+  metricLabel: string;
+  initials: string;
+  avatarColor: string;
+}
+
+export interface PricingFeature {
+  name: string;
+  free: boolean | string;
+  pro: boolean | string;
+}
