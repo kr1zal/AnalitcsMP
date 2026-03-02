@@ -14,7 +14,7 @@ import { PrintPage } from './pages/PrintPage';
 import { LoginPage } from './pages/LoginPage';
 import { ResetPasswordPage } from './pages/ResetPasswordPage';
 import { SettingsPage } from './pages/SettingsPage';
-import { LandingPage } from './pages/LandingPage';
+import { LandingPage } from './pages/landing/LandingPage';
 import { LegalPage, PolicyPage, PrivacyPage } from './pages/LegalPages';
 import OrderMonitorPage from './pages/OrderMonitorPage';
 import { useAuth } from './hooks/useAuth';
