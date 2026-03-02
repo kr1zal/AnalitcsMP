@@ -56,3 +56,18 @@ export interface Feature {
   visual: 'chart' | 'waterfall' | null;
   badge?: string;
 }
+
+export interface TrustBadge {
+  icon: LucideIcon;
+  label: string;
+  sublabel: string;
+}
+
+export interface StepItem {
+  number: number;
+  title: string;
+  description: string;
+  detail: string;
+  icon: LucideIcon;
+  color: 'emerald' | 'indigo' | 'violet';
+}

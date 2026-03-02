@@ -8,8 +8,15 @@ import {
   PieChart,
   RefreshCw,
   Megaphone,
+  Lock,
+  Eye,
+  ShieldCheck,
+  Zap,
+  Database,
+  UserPlus,
+  Key,
 } from 'lucide-react';
-import type { ShowcaseSlideData, Testimonial, PricingFeature, StatItem, ProblemCard, Feature } from '../types';
+import type { ShowcaseSlideData, Testimonial, PricingFeature, StatItem, ProblemCard, Feature, TrustBadge, StepItem } from '../types';
 
 /* ──────────────────────────────────────────────
    Navigation
@@ -78,6 +85,16 @@ export const PROBLEMS: ProblemCard[] = [
     accentColor: 'border-orange-500',
     bgColor: 'bg-orange-50',
   },
+];
+
+/* ──────────────────────────────────────────────
+   How It Works Steps
+   ────────────────────────────────────────────── */
+
+export const STEPS: StepItem[] = [
+  { number: 1, title: 'Зарегистрируйтесь', description: '30 секунд, без привязки карты', detail: 'Email + пароль', icon: UserPlus, color: 'emerald' },
+  { number: 2, title: 'Подключите API-токены', description: 'WB и Ozon через ключи из ЛК', detail: 'Только чтение', icon: Key, color: 'indigo' },
+  { number: 3, title: 'Получите аналитику', description: 'Дашборд готов через 2-3 минуты', detail: 'Автоматически', icon: BarChart3, color: 'violet' },
 ];
 
 /* ──────────────────────────────────────────────
@@ -300,6 +317,18 @@ export const PRICING_FEATURES: PricingFeature[] = [
   { name: 'Реклама и ДРР', free: false, pro: true },
   { name: 'PDF экспорт', free: false, pro: true },
   { name: 'Сравнение периодов', free: false, pro: true },
+];
+
+/* ──────────────────────────────────────────────
+   Trust Badges (Security)
+   ────────────────────────────────────────────── */
+
+export const TRUST_BADGES: TrustBadge[] = [
+  { icon: Lock, label: 'Шифрование', sublabel: 'AES-256 + Fernet' },
+  { icon: Eye, label: 'Только чтение', sublabel: 'Read-only API' },
+  { icon: ShieldCheck, label: 'Изоляция данных', sublabel: 'Row Level Security' },
+  { icon: Zap, label: 'SSL/TLS', sublabel: 'Шифрованный канал' },
+  { icon: Database, label: 'Supabase', sublabel: 'PostgreSQL 15' },
 ];
 
 /* ──────────────────────────────────────────────

@@ -38,7 +38,7 @@ export function LandingPage() {
       {/* DataFlow has dark bg - no divider needed */}
       <DataFlowSectionV4 />
       <HowItWorksSection />
-      <SectionDivider />
+      {/* SecuritySection has dark bg - no divider needed */}
       <SecuritySection />
       <SectionDivider />
       <PricingSection />
