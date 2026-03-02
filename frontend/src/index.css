@@ -202,6 +202,10 @@ body {
   to { stroke-dashoffset: -16; }
 }
 
+.animate-flow-dash {
+  animation: flow-dash 1s linear infinite;
+}
+
 /* ========================================
    Testimonials Marquee — infinite scroll
    ======================================== */
@@ -309,6 +313,9 @@ body {
     transition: none;
   }
   /* (V1/V2 flow animations removed in V4) */
+  .animate-flow-dash {
+    animation: none;
+  }
   .trust-marquee-track {
     animation: none;
   }
