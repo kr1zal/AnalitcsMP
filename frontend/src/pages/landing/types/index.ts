@@ -46,3 +46,13 @@ export interface ProblemCard {
   accentColor: string;
   bgColor: string;
 }
+
+export interface Feature {
+  icon: LucideIcon;
+  title: string;
+  description: string;
+  gradient: string;
+  size: 'hero' | 'standard';
+  visual: 'chart' | 'waterfall' | null;
+  badge?: string;
+}

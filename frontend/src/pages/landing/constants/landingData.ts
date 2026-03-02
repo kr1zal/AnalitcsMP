@@ -5,8 +5,11 @@ import {
   BarChart3,
   TrendingUp,
   ClipboardList,
+  PieChart,
+  RefreshCw,
+  Megaphone,
 } from 'lucide-react';
-import type { ShowcaseSlideData, Testimonial, PricingFeature, StatItem, ProblemCard } from '../types';
+import type { ShowcaseSlideData, Testimonial, PricingFeature, StatItem, ProblemCard, Feature } from '../types';
 
 /* ──────────────────────────────────────────────
    Navigation
@@ -74,6 +77,68 @@ export const PROBLEMS: ProblemCard[] = [
     description: 'WB ЛК, Ozon ЛК, Excel, рекламные кабинеты \u2014 вместо развития бизнеса',
     accentColor: 'border-orange-500',
     bgColor: 'bg-orange-50',
+  },
+];
+
+/* ──────────────────────────────────────────────
+   Features Bento Grid
+   ────────────────────────────────────────────── */
+
+export const FEATURES: Feature[] = [
+  {
+    icon: BarChart3,
+    title: 'Дашборд',
+    description:
+      '8 ключевых метрик: выручка, прибыль, удержания, реклама, ДРР, остатки, себестоимость, рентабельность',
+    gradient: 'from-indigo-500 to-indigo-600',
+    size: 'hero',
+    visual: 'chart',
+  },
+  {
+    icon: TrendingUp,
+    title: 'Реальная прибыль',
+    description:
+      'Автоматический расчёт с учётом ВСЕХ удержаний маркетплейсов. Расхождение с ЛК\u00A0<\u00A00.1%',
+    gradient: 'from-emerald-500 to-emerald-600',
+    size: 'hero',
+    visual: 'waterfall',
+  },
+  {
+    icon: PieChart,
+    title: 'Дерево удержаний',
+    description:
+      'Детализация расходов: комиссии, логистика, хранение, штрафы\u00A0\u2014 как в ЛК, но нагляднее',
+    gradient: 'from-violet-500 to-violet-600',
+    size: 'standard',
+    visual: null,
+  },
+  {
+    icon: ClipboardList,
+    title: 'Монитор заказов',
+    description:
+      'Позаказная детализация с реальными ценами после скидок и полной разбивкой издержек',
+    gradient: 'from-blue-500 to-blue-600',
+    size: 'standard',
+    visual: null,
+  },
+  {
+    icon: RefreshCw,
+    title: 'Авто-синхронизация',
+    description:
+      'Данные обновляются автоматически до 4 раз в день. Без ручных выгрузок',
+    gradient: 'from-cyan-500 to-cyan-600',
+    size: 'standard',
+    visual: null,
+  },
+  {
+    icon: Megaphone,
+    title: 'Рекламная аналитика',
+    description:
+      'Расходы на рекламу, ДРР по дням, ROI кампаний\u00A0\u2014 WB и Ozon в одном месте',
+    gradient: 'from-amber-500 to-amber-600',
+    size: 'standard',
+    visual: null,
+    badge: 'Pro',
   },
 ];
 
