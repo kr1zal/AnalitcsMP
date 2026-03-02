@@ -6,7 +6,7 @@ import {
   TrendingUp,
   ClipboardList,
 } from 'lucide-react';
-import type { ShowcaseSlideData, Testimonial, PricingFeature } from '../types';
+import type { ShowcaseSlideData, Testimonial, PricingFeature, StatItem, ProblemCard } from '../types';
 
 /* ──────────────────────────────────────────────
    Navigation
@@ -18,6 +18,64 @@ export const NAV_ITEMS = [
   { label: 'Безопасность', id: 'security' },
   { label: 'FAQ', id: 'faq' },
 ] as const;
+
+/* ──────────────────────────────────────────────
+   Stats Bar
+   ────────────────────────────────────────────── */
+
+export const STATS: StatItem[] = [
+  {
+    value: '<0.1%',
+    label: 'Расхождение с ЛК',
+    detail: 'Проверено аудитом WB и Ozon',
+  },
+  {
+    value: '15+',
+    label: 'Типов отчётов',
+    detail: 'Продажи, остатки, реклама, UE...',
+  },
+  {
+    value: '4',
+    label: 'Синхронизации в день',
+    detail: 'Данные всегда актуальны',
+  },
+  {
+    value: '5 мин',
+    label: 'Настройка и готово',
+    detail: 'API-ключ и полная аналитика',
+  },
+];
+
+/* ──────────────────────────────────────────────
+   Problem Section
+   ────────────────────────────────────────────── */
+
+export const PROBLEMS: ProblemCard[] = [
+  {
+    number: '3+',
+    unit: 'часа',
+    subtitle: 'Ежедневно на ручную сверку',
+    description: 'Данные из WB ЛК, Ozon ЛК, рекламных кабинетов \u2014 формулы ломаются, данные теряются',
+    accentColor: 'border-red-500',
+    bgColor: 'bg-red-50',
+  },
+  {
+    number: '15\u201330%',
+    unit: 'выручки',
+    subtitle: 'Скрытые удержания не видны в ЛК',
+    description: 'Логистика, хранение, штрафы, возвраты \u2014 реальную маржу посчитать невозможно',
+    accentColor: 'border-amber-500',
+    bgColor: 'bg-amber-50',
+  },
+  {
+    number: '7+',
+    unit: 'отчётов',
+    subtitle: 'Вместо одного дашборда',
+    description: 'WB ЛК, Ozon ЛК, Excel, рекламные кабинеты \u2014 вместо развития бизнеса',
+    accentColor: 'border-orange-500',
+    bgColor: 'bg-orange-50',
+  },
+];
 
 /* ──────────────────────────────────────────────
    Product Showcase

@@ -31,3 +31,18 @@ export interface PricingFeature {
   free: boolean | string;
   pro: boolean | string;
 }
+
+export interface StatItem {
+  value: string;
+  label: string;
+  detail: string;
+}
+
+export interface ProblemCard {
+  number: string;
+  unit: string;
+  subtitle: string;
+  description: string;
+  accentColor: string;
+  bgColor: string;
+}
