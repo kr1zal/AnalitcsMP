@@ -33,7 +33,7 @@ export function LandingPage() {
       <StatsBar />
       <SectionDivider />
       <ProblemSection />
-      <SectionDivider />
+      {/* FeaturesSection has dark bg (gray-950) — no divider needed */}
       <FeaturesSection />
       {/* DataFlow has dark bg - no divider needed */}
       <DataFlowSectionV4 />

@@ -374,6 +374,40 @@ body {
 }
 
 /* ========================================
+   Features Bento Grid — white bg, animated cards
+   ======================================== */
+
+/* Subtle dot pattern on white bg */
+.features-grid-pattern {
+  position: absolute;
+  inset: 0;
+  background-image: radial-gradient(circle, rgba(0,0,0,0.04) 1px, transparent 1px);
+  background-size: 32px 32px;
+  pointer-events: none;
+  mask-image: radial-gradient(ellipse 70% 60% at 50% 50%, black 15%, transparent 75%);
+  -webkit-mask-image: radial-gradient(ellipse 70% 60% at 50% 50%, black 15%, transparent 75%);
+}
+
+/* ── Bento hero cards: JS-controlled CSS transitions via useHoverOrScroll ── */
+
+/* Spinner rotation for sync card */
+@keyframes bento-spin {
+  to { transform: rotate(360deg); }
+}
+
+/* Running dot along timeline vertical line */
+@keyframes timeline-pulse {
+  0% { top: 0%; opacity: 0; }
+  5% { opacity: 1; }
+  95% { opacity: 1; }
+  100% { top: 100%; opacity: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * { --bento-no-motion: 1; }
+}
+
+/* ========================================
    DateRangePicker - react-day-picker v9
    Compact version (rdp-compact)
    ======================================== */

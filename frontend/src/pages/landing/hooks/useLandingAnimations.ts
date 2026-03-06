@@ -129,3 +129,49 @@ export function useSpotlight() {
   }, []);
   return onMouseMove;
 }
+
+/* ──────────────────────────────────────────────
+   useHoverOrScroll — hover on desktop, IntersectionObserver on touch
+   Clerk-style: pointerEnter/Leave toggles active (desktop),
+   one-shot scroll trigger (mobile/touch).
+   ────────────────────────────────────────────── */
+
+export function useHoverOrScroll(threshold = 0.3) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [active, setActive] = useState(false);
+  const canHover = useRef(
+    typeof window !== 'undefined' && window.matchMedia('(hover: hover)').matches,
+  );
+  const reducedMotion = useRef(
+    typeof window !== 'undefined' &&
+      window.matchMedia('(prefers-reduced-motion: reduce)').matches,
+  );
+
+  // Reduced motion → always visible
+  useEffect(() => {
+    if (reducedMotion.current) setActive(true);
+  }, []);
+
+  // Touch devices → IntersectionObserver (toggle on enter/leave viewport)
+  useEffect(() => {
+    if (canHover.current || reducedMotion.current) return;
+    const el = ref.current;
+    if (!el) return;
+    const observer = new IntersectionObserver(
+      ([entry]) => setActive(entry.isIntersecting),
+      { threshold },
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [threshold]);
+
+  const pointerHandlers =
+    canHover.current && !reducedMotion.current
+      ? {
+          onPointerEnter: () => setActive(true),
+          onPointerLeave: () => setActive(false),
+        }
+      : {};
+
+  return { ref, active, pointerHandlers };
+}
