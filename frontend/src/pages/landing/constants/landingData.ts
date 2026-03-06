@@ -105,56 +105,38 @@ export const FEATURES: Feature[] = [
   {
     icon: BarChart3,
     title: 'Дашборд',
-    description:
-      '8 ключевых метрик: выручка, прибыль, удержания, реклама, ДРР, остатки, себестоимость, рентабельность',
+    description: '8 метрик в одном экране: выручка, прибыль, удержания, реклама, ДРР, остатки',
     gradient: 'from-indigo-500 to-indigo-600',
-    size: 'hero',
-    visual: 'chart',
   },
   {
     icon: TrendingUp,
     title: 'Реальная прибыль',
-    description:
-      'Автоматический расчёт с учётом ВСЕХ удержаний маркетплейсов. Расхождение с ЛК\u00A0<\u00A00.1%',
+    description: 'Расчёт с учётом ВСЕХ удержаний. Расхождение с\u00A0ЛК\u00A0<\u00A00.1%',
     gradient: 'from-emerald-500 to-emerald-600',
-    size: 'hero',
-    visual: 'waterfall',
   },
   {
     icon: PieChart,
     title: 'Дерево удержаний',
-    description:
-      'Детализация расходов: комиссии, логистика, хранение, штрафы\u00A0\u2014 как в ЛК, но нагляднее',
+    description: 'Комиссии, логистика, хранение, штрафы\u00A0\u2014 детализация как в\u00A0ЛК',
     gradient: 'from-violet-500 to-violet-600',
-    size: 'standard',
-    visual: null,
   },
   {
     icon: ClipboardList,
     title: 'Монитор заказов',
-    description:
-      'Позаказная детализация с реальными ценами после скидок и полной разбивкой издержек',
+    description: 'Позаказная детализация с ценами после скидок и разбивкой издержек',
     gradient: 'from-blue-500 to-blue-600',
-    size: 'standard',
-    visual: null,
   },
   {
     icon: RefreshCw,
     title: 'Авто-синхронизация',
-    description:
-      'Данные обновляются автоматически до 4 раз в день. Без ручных выгрузок',
+    description: 'Данные обновляются автоматически в\u00A0течение дня, без ручных выгрузок',
     gradient: 'from-cyan-500 to-cyan-600',
-    size: 'standard',
-    visual: null,
   },
   {
     icon: Megaphone,
     title: 'Рекламная аналитика',
-    description:
-      'Расходы на рекламу, ДРР по дням, ROI кампаний\u00A0\u2014 WB и Ozon в одном месте',
+    description: 'Расходы, ДРР по дням, ROI кампаний\u00A0\u2014 WB и\u00A0Ozon в одном месте',
     gradient: 'from-amber-500 to-amber-600',
-    size: 'standard',
-    visual: null,
     badge: 'Pro',
   },
 ];
@@ -324,11 +306,11 @@ export const PRICING_FEATURES: PricingFeature[] = [
    ────────────────────────────────────────────── */
 
 export const TRUST_BADGES: TrustBadge[] = [
-  { icon: Lock, label: 'Шифрование', sublabel: 'AES-256 + Fernet' },
-  { icon: Eye, label: 'Только чтение', sublabel: 'Read-only API' },
-  { icon: ShieldCheck, label: 'Изоляция данных', sublabel: 'Row Level Security' },
-  { icon: Zap, label: 'SSL/TLS', sublabel: 'Шифрованный канал' },
-  { icon: Database, label: 'Supabase', sublabel: 'PostgreSQL 15' },
+  { icon: Lock, label: 'Шифрование', sublabel: 'Банковский уровень', color: 'emerald' },
+  { icon: Eye, label: 'Только чтение', sublabel: 'Без записи данных', color: 'sky' },
+  { icon: ShieldCheck, label: 'Изоляция данных', sublabel: 'Изоляция аккаунтов', color: 'violet' },
+  { icon: Zap, label: 'SSL/TLS', sublabel: 'Шифрованный канал', color: 'indigo' },
+  { icon: Database, label: 'Облачная БД', sublabel: 'Дата-центры ЕС', color: 'amber' },
 ];
 
 /* ──────────────────────────────────────────────

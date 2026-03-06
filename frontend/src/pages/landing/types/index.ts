@@ -52,8 +52,6 @@ export interface Feature {
   title: string;
   description: string;
   gradient: string;
-  size: 'hero' | 'standard';
-  visual: 'chart' | 'waterfall' | null;
   badge?: string;
 }
 
@@ -61,6 +59,7 @@ export interface TrustBadge {
   icon: LucideIcon;
   label: string;
   sublabel: string;
+  color: 'emerald' | 'sky' | 'violet' | 'indigo' | 'amber';
 }
 
 export interface StepItem {
