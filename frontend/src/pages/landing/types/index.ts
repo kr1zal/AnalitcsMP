@@ -53,6 +53,8 @@ export interface Feature {
   description: string;
   gradient: string;
   badge?: string;
+  /** Hero cards get animated content in bento grid */
+  heroType?: 'sync-timeline' | 'profit-reveal';
 }
 
 export interface TrustBadge {

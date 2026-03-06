@@ -5,8 +5,6 @@ import {
   BarChart3,
   TrendingUp,
   ClipboardList,
-  PieChart,
-  RefreshCw,
   Megaphone,
   Lock,
   Eye,
@@ -109,28 +107,10 @@ export const FEATURES: Feature[] = [
     gradient: 'from-indigo-500 to-indigo-600',
   },
   {
-    icon: TrendingUp,
-    title: 'Реальная прибыль',
-    description: 'Расчёт с учётом ВСЕХ удержаний. Расхождение с\u00A0ЛК\u00A0<\u00A00.1%',
-    gradient: 'from-emerald-500 to-emerald-600',
-  },
-  {
-    icon: PieChart,
-    title: 'Дерево удержаний',
-    description: 'Комиссии, логистика, хранение, штрафы\u00A0\u2014 детализация как в\u00A0ЛК',
-    gradient: 'from-violet-500 to-violet-600',
-  },
-  {
     icon: ClipboardList,
     title: 'Монитор заказов',
     description: 'Позаказная детализация с ценами после скидок и разбивкой издержек',
     gradient: 'from-blue-500 to-blue-600',
-  },
-  {
-    icon: RefreshCw,
-    title: 'Авто-синхронизация',
-    description: 'Данные обновляются автоматически в\u00A0течение дня, без ручных выгрузок',
-    gradient: 'from-cyan-500 to-cyan-600',
   },
   {
     icon: Megaphone,
