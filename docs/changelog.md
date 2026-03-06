@@ -11,7 +11,28 @@
 
 ---
 
+## 2026-03-06
+
+### Landing Enterprise Refactor — Phase E+F
+- **FeaturesSection compact 3x2 grid:** Removed hero/standard distinction, all 6 cards uniform. `grid-cols-2 lg:grid-cols-3`. Removed MiniChart/MiniWaterfall decorative components. Pro badge flex layout (no mobile overlap). Removed CTA button (avoids fatigue). Descriptions shortened
+- **ProductShowcase CLS fix:** Grid stacking `[grid-area:1/1]` for title+description+highlights — zero layout shift on tab switch. Device toggle extracted from stack. Removed CTA link (demo block)
+- **SecuritySection enterprise:** Per-badge unique colors (5 color schemes), glassmorphism cards, shield-pulse animation, WCAG text-gray-400 on dark bg, mobile orphan fix, strict TypeScript Record types
+- **HowItWorksSection animated timeline:** Horizontal SVG dashed line (desktop), vertical bar (mobile), circle pop-in animation, CTA as text-link
+- **Dead code cleanup:** Deleted MiniChart.tsx, MiniWaterfall.tsx, removed bar-grow-width/height/feature-dot-pattern CSS
+- **CSS animations:** shield-pulse, circle-pop-in, security-grid-pattern, showcase-tab-progress + prefers-reduced-motion coverage
+- **Затронуто:** FeaturesSection.tsx, ProductShowcase.tsx, SecuritySection.tsx, HowItWorksSection.tsx, landingData.ts, types/index.ts, index.css
+
+---
+
 ## 2026-03-01
+
+### Scale Phase 0 — Infrastructure Scalability
+- **Phase 0.1 — .limit() on all queries:** Added explicit `.limit()` to all 35 Supabase queries across 6 backend files. Prevents PostgREST 1000-row silent truncation that caused incorrect UE calculations at scale
+- **Phase 0.2 — Composite indexes:** Migration 037 — 7 composite indexes `(user_id, marketplace, date)` with user_id as leading column. Enables efficient index scan for multi-tenant SaaS queries instead of sequential scan
+- **Phase 0.3 — Batch upserts:** Converted all 11 N+1 sync methods to batch operations (chunk size 500). HTTP calls per sync: ~70,500 → ~150. Sync time: 42+ min → 8-10 min. Pattern: collect rows → chunk by 500 → single upsert/insert. No migrations needed (PostgREST native batch support)
+- **Methods batched:** sync_costs_wb/ozon (mp_costs + mp_costs_details), sync_sales_wb/ozon (mp_sales), sync_ads_wb/ozon (mp_ad_costs), sync_stocks_wb/ozon (mp_stocks + mp_stock_snapshots)
+- **Verified:** costs-tree WB and OZON data identical before/after batch refactoring
+- **Затронуто:** sync_service.py (+107/-46 lines), migration 037_composite_indexes.sql, dashboard.py, sales_plan.py, products.py, subscription.py, sync_queue.py
 
 ### UE Storage — Per-Product Storage Display (WB + Ozon)
 - **WB Paid Storage API:** `wb_client.get_paid_storage()` — 3-step async (create task → poll status → download), auto 8-day chunking, 429 retry (3 attempts, 10s/20s backoff)

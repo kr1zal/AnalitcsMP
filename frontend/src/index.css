@@ -364,47 +364,9 @@ body {
   animation: circle-pop-in 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) both;
 }
 
-/* ========================================
-   MiniChart — bar width grow animation
-   ======================================== */
-
-@keyframes bar-grow-width {
-  from { transform: scaleX(0); }
-  to { transform: scaleX(1); }
-}
-
-.animate-bar-width {
-  animation: bar-grow-width 0.8s ease-out both;
-}
-
-/* ========================================
-   MiniWaterfall — bar height grow animation
-   ======================================== */
-
-@keyframes bar-grow-height {
-  from { transform: scaleY(0); }
-  to { transform: scaleY(1); }
-}
-
-.animate-bar-height {
-  animation: bar-grow-height 0.6s ease-out both;
-}
-
-/* ========================================
-   Feature card decorative dot pattern
-   ======================================== */
-
-.feature-dot-pattern {
-  background-image: radial-gradient(circle, currentColor 1px, transparent 1px);
-  background-size: 12px 12px;
-  opacity: 0.08;
-}
-
 @media (prefers-reduced-motion: reduce) {
   .animate-shield-pulse,
-  .animate-circle-pop,
-  .animate-bar-width,
-  .animate-bar-height {
+  .animate-circle-pop {
     animation: none;
     opacity: 1;
     transform: none;
