@@ -3,8 +3,7 @@
  * Rule #47: pill badge, gradient title, tab progress bar, BrowserFrame, PhoneMockup.
  */
 import { useState, useEffect, useCallback, type ReactNode } from 'react';
-import { Link } from 'react-router-dom';
-import { CheckCircle, ArrowRight, Lock, Monitor, Smartphone } from 'lucide-react';
+import { CheckCircle, Lock, Monitor, Smartphone } from 'lucide-react';
 import { RevealSection } from '../hooks/useLandingAnimations';
 import { SHOWCASE_SLIDES, SHOWCASE_AUTOPLAY_MS } from '../constants/landingData';
 
@@ -216,16 +215,26 @@ export function ProductShowcase() {
           )}
         </div>
 
-        {/* Feature details + device toggle + CTA */}
+        {/* Feature details — grid stacking prevents CLS (all slides in same cell, tallest wins) */}
         <div className="mt-10 sm:mt-12 max-w-4xl mx-auto">
+          {/* Title + description row: grid-stacked for zero CLS */}
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-5">
-            {/* Left: slide info */}
-            <div className="text-center sm:text-left min-w-0 flex-1">
-              <h3 className="text-lg sm:text-xl font-bold text-gray-900 leading-snug">{slide.title}</h3>
-              <p className="mt-1.5 text-sm sm:text-[15px] text-gray-500 leading-relaxed">{slide.description}</p>
+            <div className="text-center sm:text-left min-w-0 flex-1 grid">
+              {SHOWCASE_SLIDES.map((s, i) => (
+                <div
+                  key={s.id}
+                  className={`[grid-area:1/1] transition-opacity duration-300 ${
+                    i === activeIndex ? 'opacity-100' : 'opacity-0 pointer-events-none'
+                  }`}
+                  aria-hidden={i !== activeIndex}
+                >
+                  <h3 className="text-lg sm:text-xl font-bold text-gray-900 leading-snug">{s.title}</h3>
+                  <p className="mt-1.5 text-sm sm:text-[15px] text-gray-500 leading-relaxed">{s.description}</p>
+                </div>
+              ))}
             </div>
 
-            {/* Right: device toggle */}
+            {/* Device toggle — always visible */}
             <div className="flex items-center gap-3 shrink-0 self-center sm:self-auto">
               <div className="flex items-center bg-gray-100/80 rounded-lg p-0.5" role="group" aria-label="Устройство просмотра">
                 <button
@@ -254,26 +263,27 @@ export function ProductShowcase() {
             </div>
           </div>
 
-          {/* Highlights + CTA row */}
-          <div className="mt-4 flex flex-col sm:flex-row items-center sm:items-center justify-between gap-4">
-            <div className="flex flex-wrap gap-2 justify-center sm:justify-start">
-              {slide.highlights.map(h => (
-                <span
-                  key={h}
-                  className="inline-flex items-center gap-1.5 text-xs font-medium text-gray-600 bg-gray-50/80 px-3 py-1.5 rounded-full ring-1 ring-gray-900/[0.06]"
-                >
-                  <CheckCircle className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
-                  {h}
-                </span>
-              ))}
-            </div>
-            <Link
-              to="/login?signup=1"
-              className="inline-flex items-center gap-1.5 text-sm font-semibold text-indigo-600 hover:text-indigo-700 transition-colors shrink-0 group focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 rounded-md"
-            >
-              Попробовать бесплатно
-              <ArrowRight className="w-4 h-4 transition-transform group-hover:translate-x-0.5" />
-            </Link>
+          {/* Highlights row: grid-stacked for zero CLS */}
+          <div className="mt-4 grid">
+            {SHOWCASE_SLIDES.map((s, i) => (
+              <div
+                key={s.id}
+                className={`[grid-area:1/1] flex flex-wrap gap-2 justify-center sm:justify-start transition-opacity duration-300 ${
+                  i === activeIndex ? 'opacity-100' : 'opacity-0 pointer-events-none'
+                }`}
+                aria-hidden={i !== activeIndex}
+              >
+                {s.highlights.map(h => (
+                  <span
+                    key={h}
+                    className="inline-flex items-center gap-1.5 text-xs font-medium text-gray-600 bg-gray-50/80 px-3 py-1.5 rounded-full ring-1 ring-gray-900/[0.06]"
+                  >
+                    <CheckCircle className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                    {h}
+                  </span>
+                ))}
+              </div>
+            ))}
           </div>
         </div>
       </div>
