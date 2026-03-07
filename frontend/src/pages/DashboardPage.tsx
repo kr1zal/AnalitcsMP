@@ -533,7 +533,7 @@ export const DashboardPage = () => {
   // Change badges (period comparison integrated into cards)
   const prevRevenue = previousPeriod?.revenue ?? 0;
   const prevOrders = previousPeriod?.orders ?? 0;
-  const canShowChange = showPeriodComparison && subscription?.features?.period_comparison;
+  const canShowChange = showPeriodComparison;
   const revenueChangePct = canShowChange && prevRevenue > 0
     ? Math.round(((revenueForTile - prevRevenue) / prevRevenue) * 1000) / 10
     : undefined;

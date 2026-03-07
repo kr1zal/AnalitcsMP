@@ -51,7 +51,7 @@ export function PricingSection() {
                 Начать бесплатно
               </Link>
               <ul className="mt-4 sm:mt-6 space-y-2 sm:space-y-3">
-                {['Дашборд с ключевыми метриками', 'Wildberries', 'До 3 SKU', 'Синхронизация 2 раза/день'].map(
+                {['Дашборд с ключевыми метриками', 'WB + Ozon', 'До 15 SKU', 'Полная детализация удержаний', 'Сравнение периодов', 'Telegram сводка 1\u00D7/день', '1 ручная синхронизация/день'].map(
                   (f) => (
                     <li key={f} className="flex items-start gap-1.5 sm:gap-2.5 text-xs sm:text-sm text-gray-600">
                       <CheckCircle className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-emerald-500 mt-0.5 shrink-0" />
@@ -72,7 +72,7 @@ export function PricingSection() {
               <h3 className="text-base sm:text-lg font-bold text-gray-900">Pro</h3>
               <p className="text-xs sm:text-sm text-gray-500 mt-0.5 sm:mt-1">Для растущего бизнеса</p>
               <div className="mt-3 sm:mt-5">
-                <span className="text-2xl sm:text-4xl font-extrabold text-gray-900">990 ₽</span>
+                <span className="text-2xl sm:text-4xl font-extrabold text-gray-900">1 490 ₽</span>
                 <span className="text-xs sm:text-sm text-gray-500 ml-1">/мес</span>
               </div>
               <Link
@@ -83,15 +83,14 @@ export function PricingSection() {
               </Link>
               <ul className="mt-4 sm:mt-6 space-y-2 sm:space-y-3">
                 {[
-                  { text: 'Всё из Free, плюс:', highlight: true },
-                  { text: 'WB + Ozon', highlight: false },
-                  { text: 'До 20 SKU', highlight: false },
-                  { text: 'Синхронизация каждые 6 часов', highlight: false },
-                  { text: 'Детализация удержаний', highlight: false },
-                  { text: 'Unit-экономика', highlight: false },
+                  { text: 'Все из Free, плюс:', highlight: true },
+                  { text: 'До 50 SKU', highlight: false },
+                  { text: '3 ручных синхронизации/день', highlight: false },
+                  { text: 'Unit-экономика + FBO/FBS', highlight: false },
                   { text: 'Реклама и ДРР', highlight: false },
+                  { text: 'План продаж с прогнозом', highlight: false },
                   { text: 'PDF экспорт', highlight: false },
-                  { text: 'Сравнение периодов', highlight: false },
+                  { text: 'Telegram: алерты + AI', highlight: false },
                 ].map((f) => (
                   <li
                     key={f.text}
