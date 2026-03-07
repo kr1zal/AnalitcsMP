@@ -66,6 +66,9 @@ export const PROBLEMS: ProblemCard[] = [
     description: 'Данные из WB ЛК, Ozon ЛК, рекламных кабинетов \u2014 формулы ломаются, данные теряются',
     accentColor: 'border-red-500',
     bgColor: 'bg-red-50',
+    gradientFrom: 'from-red-400',
+    gradientTo: 'to-rose-600',
+    numberGradient: 'from-red-500 to-rose-600',
   },
   {
     number: '15\u201330%',
@@ -74,6 +77,9 @@ export const PROBLEMS: ProblemCard[] = [
     description: 'Логистика, хранение, штрафы, возвраты \u2014 реальную маржу посчитать невозможно',
     accentColor: 'border-amber-500',
     bgColor: 'bg-amber-50',
+    gradientFrom: 'from-amber-400',
+    gradientTo: 'to-orange-600',
+    numberGradient: 'from-amber-500 to-orange-600',
   },
   {
     number: '7+',
@@ -82,6 +88,9 @@ export const PROBLEMS: ProblemCard[] = [
     description: 'WB ЛК, Ozon ЛК, Excel, рекламные кабинеты \u2014 вместо развития бизнеса',
     accentColor: 'border-orange-500',
     bgColor: 'bg-orange-50',
+    gradientFrom: 'from-orange-400',
+    gradientTo: 'to-red-500',
+    numberGradient: 'from-orange-500 to-red-500',
   },
 ];
 

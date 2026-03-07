@@ -60,7 +60,7 @@ export function SyncTimelineCard() {
     <div
       ref={ref}
       {...pointerHandlers}
-      className="relative bg-white rounded-2xl border border-gray-200 shadow-sm p-5 sm:p-6 overflow-hidden cursor-default"
+      className="relative bg-white rounded-2xl ring-1 ring-gray-900/[0.06] shadow-[0_1px_3px_rgba(0,0,0,0.04),0_8px_32px_rgba(0,0,0,0.06)] p-5 sm:p-6 overflow-hidden cursor-default"
     >
       {/* Header */}
       <div className="flex items-center gap-3 mb-5">
@@ -76,7 +76,7 @@ export function SyncTimelineCard() {
       </div>
 
       {/* Notification bar */}
-      <div className="bg-gray-50 rounded-lg px-3.5 py-2.5 flex items-center gap-2.5 mb-5 border border-gray-100">
+      <div className="bg-gradient-to-r from-gray-50 to-gray-50/60 rounded-lg px-3.5 py-2.5 flex items-center gap-2.5 mb-5 ring-1 ring-gray-900/[0.04]">
         <svg
           viewBox="0 0 16 16"
           fill="none"
@@ -196,7 +196,7 @@ export function SyncTimelineCard() {
       {/* Metric pills */}
       <div className="mt-5 pt-4 border-t border-gray-100 flex flex-wrap gap-2">
         {METRICS.map((m) => (
-          <span key={m} className="text-[11px] text-gray-500 px-2.5 py-1 rounded-full bg-gray-50 border border-gray-100">
+          <span key={m} className="text-xs text-gray-600 font-medium px-2.5 py-1 rounded-full bg-gray-50/80 ring-1 ring-gray-900/[0.04]">
             {m}
           </span>
         ))}

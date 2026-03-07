@@ -45,6 +45,12 @@ export interface ProblemCard {
   description: string;
   accentColor: string;
   bgColor: string;
+  /** Gradient start for top accent bar, e.g. 'from-red-400' */
+  gradientFrom?: string;
+  /** Gradient end for top accent bar, e.g. 'to-red-600' */
+  gradientTo?: string;
+  /** Gradient classes for number text, e.g. 'from-red-500 to-red-600' */
+  numberGradient?: string;
 }
 
 export interface Feature {
