@@ -11,6 +11,21 @@
 
 ---
 
+## 2026-03-07
+
+### Pricing Tier Overhaul -- Free/Pro rebalance
+- **Free tier expanded:** max_sku 3->15, marketplaces WB-only->WB+Ozon, manual_sync 0->1/day, costs_tree_details unlocked, period_comparison unlocked, Telegram summary 1x/day
+- **Pro tier repriced:** 990->1 490 rub/month (990 rub/month annual), max_sku 20->50, manual_sync 1->3/day
+- **Business tier:** manual_sync aligned to 3/day (was 2)
+- **FeatureGate cleanup:** removed `costs_tree_details` and `period_comparison` from MIN_PLAN_MAP (available to all)
+- **DashboardPage:** removed subscription check for ChangeBadge period comparison (now available to all)
+- **Landing PricingSection:** updated feature lists, pricing table (PRICING_FEATURES 12 rows), FAQ (3 questions updated)
+- **Telegram bot knowledge:** updated ai_support.py knowledge base + support.py FAQ with new tier info
+- **Docs:** auth-security.md tier matrices updated
+- **Files changed:** plans.py, FeatureGate.tsx, PricingSection.tsx, landingData.ts, DashboardPage.tsx, SubscriptionCard.tsx, ai_support.py, support.py, auth-security.md
+
+---
+
 ## 2026-03-06
 
 ### Landing Enterprise Refactor — Phase E+F

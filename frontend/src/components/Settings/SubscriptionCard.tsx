@@ -231,7 +231,7 @@ export function SubscriptionCard() {
           ) : (
             <>
               <CreditCard className="w-4 h-4" />
-              Подключить Pro — 990 ₽/мес
+              Подключить Pro — 1 490 ₽/мес
             </>
           )}
         </button>

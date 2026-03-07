@@ -8,21 +8,21 @@ PLANS = {
     "free": {
         "name": "Free",
         "price_rub": 0,
-        "max_sku": 3,
-        "marketplaces": ["wb"],
+        "max_sku": 15,
+        "marketplaces": ["wb", "ozon"],
         "auto_sync": False,
         "sync_interval_hours": None,
-        "manual_sync_limit": 0,
+        "manual_sync_limit": 1,
         "sync_schedule_utc": [5, 17],  # MSK 08:00, 20:00
         "sync_priority": 2,
         "features": {
             "dashboard": True,
             "costs_tree_basic": True,
-            "costs_tree_details": False,
+            "costs_tree_details": True,
             "unit_economics": False,
             "ads_page": False,
             "pdf_export": False,
-            "period_comparison": False,
+            "period_comparison": True,
             "order_monitor": False,
             "api_access": False,
             "fbs_analytics": False,
@@ -30,12 +30,12 @@ PLANS = {
     },
     "pro": {
         "name": "Pro",
-        "price_rub": 990,
-        "max_sku": 20,
+        "price_rub": 1490,
+        "max_sku": 50,
         "marketplaces": ["wb", "ozon"],
         "auto_sync": True,
         "sync_interval_hours": 6,
-        "manual_sync_limit": 1,
+        "manual_sync_limit": 3,
         "sync_schedule_utc": [4, 10, 16, 22],  # MSK 07:00, 13:00, 19:00, 01:00
         "sync_priority": 1,
         "features": {
@@ -59,7 +59,7 @@ PLANS = {
         "marketplaces": ["wb", "ozon"],
         "auto_sync": True,
         "sync_interval_hours": 2,
-        "manual_sync_limit": 2,
+        "manual_sync_limit": 3,
         "sync_schedule_utc": [3, 9, 15, 21],  # MSK 06:00, 12:00, 18:00, 00:00
         "sync_priority": 0,
         "features": {

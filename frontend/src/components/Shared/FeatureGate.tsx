@@ -10,11 +10,9 @@ interface FeatureGateProps {
 }
 
 const MIN_PLAN_MAP: Partial<Record<keyof SubscriptionFeatures, string>> = {
-  costs_tree_details: 'Pro',
   unit_economics: 'Pro',
   ads_page: 'Pro',
   pdf_export: 'Pro',
-  period_comparison: 'Pro',
   order_monitor: 'Business',
   api_access: 'Business',
 };
