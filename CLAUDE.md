@@ -30,6 +30,8 @@ Multi-seller SaaS (10-20+ селлеров, 50-200+ SKU каждый). **Тес�
 - Sales Plan Enterprise v2: PlanCompletionCard v2 (темп/прогноз/дни), Stock Alert, Copy Plan
 - FBS Sync: определение FBO/FBS при синхронизации WB + Ozon (миграция 018, RPC с p_fulfillment_type)
 - UE Storage: per-product хранение WB (paid_storage API) + Ozon (Placement Report), отдельная колонка, storage-only товары
+- Order-Based Dashboard: заказы из mp_orders (real-time), UE WB позаказная модель (миграция 038)
+- Telegram Bot Fix: распаковка summary из RPC ответа
 
 ## Активные задачи
 - [x] Hide Business tier, SEO index.html, admin ID→config — CLOSED
@@ -37,6 +39,7 @@ Multi-seller SaaS (10-20+ селлеров, 50-200+ SKU каждый). **Тес�
 - [x] Enterprise Settings: объединение Синхронизация + Настройки + Аккаунт — DONE (18.02.2026)
 - [x] FBS Sync pipeline: WB isSupply + Ozon delivery_schema — DONE (20.02.2026)
 - [x] UE Storage: per-product хранение WB + Ozon — DONE (01.03.2026)
+- [x] Order-Based Dashboard + UE WB + Telegram fix — DONE (07.03.2026)
 - [ ] UE с разбивкой FBO/FBS
 - [ ] Улучшить PDF экспорт
 
@@ -91,6 +94,9 @@ Multi-seller SaaS (10-20+ селлеров, 50-200+ SKU каждый). **Тес�
 48. **Landing mobile overflow:** Root wrapper LandingPage ОБЯЗАН иметь `overflow-x-hidden`. Showcase container — `overflow-hidden`. Blur orbs: `w-full max-w-[Npx]` (НИКОГДА fixed `w-[600px]`). Negative inset на мобилке: `-inset-4` (НЕ `-inset-10`), desktop `sm:-inset-12`
 49. **Scale target (КРИТИЧНО):** Проект рассчитан на 10-20+ селлеров по 50-200+ SKU каждый. Текущие 5 SKU (витамины/БАДы) — ТОЛЬКО для тестирования. ЗАПРЕЩЕНО: оставлять N+1 queries, IN() с длинными списками, отсутствие batch/pagination, JOIN по неточным ключам (order_date вместо posting_number) с пометкой "для 5 SKU допустимо". ВСЕ запросы должны работать на масштабе 200 SKU × 100 orders/day × 60 дней = 1.2M строк. Решения: batch UPDATE через RPC, пагинация, JOIN по точным ключам (posting_number), `.limit()` на всех Supabase queries
 50. **UE Storage (01.03.2026):** Хранение — отдельная колонка в UeTable (orange-600), отдельный сегмент в CostStructure bar (orange-400). `storage_cost` = display-only из `mp_storage_costs_daily`. `mp_costs_display = mp_costs - storage_cost` (хранение ВЫЧИТАЕТСЯ из удержаний чтобы избежать двойного подсчёта). Storage-only товары (0 продаж, >0 хранение) → `profit = -storage_cost`. Dual-MP продукты при filter="all" → Ozon profit + WB profit считаются раздельно. WB sync: `wb_client.get_paid_storage()` 3-step async (8-day chunking, retry 429). `hasStorage` условная колонка (как hasAds). Цвет: orange (НЕ amber=закупка, НЕ purple=удержания)
+51. **Order-Based Dashboard (07.03.2026):** Dashboard cards "Заказы" = `COUNT(DISTINCT mp_orders.order_id WHERE status != 'cancelled')` (real-time из Statistics API). `orders_sum` = `SUM(mp_orders.price)`. Выкупы (`sales`) ОСТАЮТСЯ из `mp_sales` (settlement). MarketplaceBreakdown (costs-tree) НЕ ТРОГАТЬ. Миграция 038.
+52. **UE WB Order-Based (07.03.2026):** WB UE перешла на позаказную модель из `mp_orders`. PRIMARY: `settled=True, status='sold'` → exact payout, commission, logistics, storage_fee. FALLBACK: proportional payout из costs-tree (если нет settled orders). Формула: `profit = Σ(settled_payout) - purchase - ads`. FBO/FBS breakdown тоже из mp_orders. Ozon UE (delivery-based) НЕ затронута.
+53. **Telegram Bot Summary Fix (07.03.2026):** `build_summary_message()` и `check_anomalies()` в notifications.py распаковывают вложенный `summary` из RPC ответа: `today = today.get("summary", {})`. RPC возвращает `{status, period, marketplace, summary: {...}}`.
 
 ## Формулы (КРИТИЧНО)
 ```
@@ -98,8 +104,10 @@ profit = total_payout - purchase - ads  (БЕЗ costsTreeRatio — удалён 
 COGS (RPC/Dashboard) = purchase_price × sales_count (order-based, из mp_sales — ВСЕ МП, миграция 020)
 COGS (UE/Python)     = purchase_price × sales_count (order-based, все МП)
 displayed_revenue = costs_tree_sales + credits (СПП, возмещения)
-UE (WB): profit_i = total_payout × (revenue_i / Σrevenue) - purchase_i - ad_i
+UE (WB): profit_i = SUM(mp_orders.payout WHERE settled AND sold) - purchase_i - ad_i (fallback: proportional payout)
 UE (Ozon): profit_i = SUM(costs_details.amount for delivered_settled) - daily_storage_i - purchase_price × delivered_settled_count (ads inside payout, NOT subtracted separately)
+Dashboard orders = COUNT(DISTINCT mp_orders.order_id WHERE status != 'cancelled') (real-time)
+Dashboard orders_sum = SUM(mp_orders.price WHERE status != 'cancelled')
 DRR = ad_cost / revenue × 100%
 Stock forecast: days_remaining = quantity / avg_daily_sales(30d)
 Per-MP profit: profit_mp = payout_mp - purchase×share - ad×share (share=pureSales_mp/totalPureSales)

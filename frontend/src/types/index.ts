@@ -83,6 +83,11 @@ export interface CostsBreakdown {
 
 export interface SalesSummary {
   orders: number;
+  /**
+   * Сумма всех заказов за период из mp_orders (price).
+   * Заказы с status != 'cancelled'. Миграция 038.
+   */
+  orders_sum: number;
   sales: number;
   returns: number;
   revenue: number;
@@ -128,6 +133,8 @@ export interface PreviousPeriod {
   revenue: number;
   sales: number;
   orders: number;
+  /** Сумма заказов за предыдущий период (mp_orders, migration 038) */
+  orders_sum?: number;
   revenue_change_percent: number;
   /** Settlement-based profit for prev period (migration 029) */
   settled_profit?: number;
