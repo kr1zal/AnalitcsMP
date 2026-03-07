@@ -374,6 +374,20 @@ body {
 }
 
 /* ========================================
+   Problem Section — enterprise gradient bg
+   ======================================== */
+
+.problems-dot-pattern {
+  position: absolute;
+  inset: 0;
+  background-image: radial-gradient(circle, rgba(0,0,0,0.03) 1px, transparent 1px);
+  background-size: 24px 24px;
+  pointer-events: none;
+  mask-image: radial-gradient(ellipse 80% 50% at 50% 30%, black 20%, transparent 80%);
+  -webkit-mask-image: radial-gradient(ellipse 80% 50% at 50% 30%, black 20%, transparent 80%);
+}
+
+/* ========================================
    Features Bento Grid — white bg, animated cards
    ======================================== */
 

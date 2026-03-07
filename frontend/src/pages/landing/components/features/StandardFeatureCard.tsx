@@ -35,14 +35,13 @@ export function StandardFeatureCard({ feature }: Props) {
     <div
       ref={ref}
       {...pointerHandlers}
-      className="relative bg-white rounded-2xl border border-gray-200 shadow-sm p-5 sm:p-6 h-full overflow-hidden cursor-default"
+      className="relative bg-white rounded-2xl ring-1 ring-gray-900/[0.05] shadow-[0_1px_2px_rgba(0,0,0,0.03),0_4px_16px_rgba(0,0,0,0.03)] p-5 sm:p-6 h-full overflow-hidden cursor-default"
       style={{
-        borderColor: active ? '#d1d5db' : undefined,
         boxShadow: active
-          ? '0 4px 6px -1px rgba(0,0,0,0.1), 0 2px 4px -2px rgba(0,0,0,0.1)'
+          ? '0 1px 3px rgba(0,0,0,0.06), 0 8px 32px rgba(0,0,0,0.08), 0 0 0 1px rgba(99,102,241,0.1)'
           : undefined,
         transform: active ? 'translateY(-2px)' : 'translateY(0)',
-        transition: 'border-color 0.3s ease, box-shadow 0.3s ease, transform 0.3s ease',
+        transition: 'box-shadow 0.3s ease, transform 0.3s ease',
       }}
     >
       <div className="flex items-start justify-between gap-2">
@@ -81,7 +80,7 @@ export function StandardFeatureCard({ feature }: Props) {
         </div>
         {/* Real description */}
         <p
-          className="absolute inset-0 text-xs sm:text-sm text-gray-500 leading-relaxed"
+          className="absolute inset-0 text-sm text-gray-500 leading-relaxed"
           style={descStyle(active)}
         >
           {feature.description}
