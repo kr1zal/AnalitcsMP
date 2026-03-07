@@ -524,7 +524,7 @@ export const DashboardPage = () => {
 
   // ── Данные для новых карточек ──
   const ordersCountForTile = summary?.orders ?? 0;
-  const ordersRevenueForTile = summary?.revenue ?? 0; // mp_sales revenue (все заказы)
+  const ordersRevenueForTile = summary?.orders_sum ?? summary?.revenue ?? 0; // mp_orders price sum (migration 038), fallback to mp_sales revenue
   const buyoutPercent = ordersCountForTile > 0 ? Math.round((salesCountForTile / ordersCountForTile) * 100) : 0;
 
   // Средняя себестоимость за единицу

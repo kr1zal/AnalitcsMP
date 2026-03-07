@@ -654,6 +654,82 @@ async def get_unit_economics(
             if pid in product_metrics
         )
 
+        # 7c. WB UE: PRIMARY = order-based from mp_orders (settled orders)
+        #   For each WB product: exact payout, commission, logistics from settled mp_orders.
+        #   Fallback: proportional costs-tree (if no settled mp_orders data).
+        #
+        #   Pattern mirrors Ozon delivery-based UE:
+        #   - settled_payout = SUM(mp_orders.payout WHERE settled=True AND status='sold')
+        #   - settled_revenue = SUM(mp_orders.sale_amount WHERE settled=True AND status='sold')
+        #   - sales_count = COUNT(mp_orders WHERE settled=True AND status='sold')
+        #   - profit = settled_payout - purchase - ads
+        wb_order_by_product: dict[str, dict] = {}  # {product_id: {payout, revenue, sales_count, commission, logistics, storage_fee}}
+        wb_order_ft_by_product: dict[str, dict[str, dict]] = {}  # {product_id: {FBO: {...}, FBS: {...}}}
+
+        try:
+            if not marketplace or marketplace in ("all", "wb"):
+                wb_orders_query = (
+                    supabase.table("mp_orders")
+                    .select("product_id, payout, sale_amount, price, commission, logistics, storage_fee, other_fees, settled, status, fulfillment_type, quantity")
+                    .eq("user_id", current_user.id)
+                    .eq("marketplace", "wb")
+                    .gte("order_date", date_from)
+                    .lte("order_date", date_to)
+                    .eq("settled", True)
+                    .eq("status", "sold")
+                    .limit(50000)
+                )
+                if fulfillment_type:
+                    wb_orders_query = wb_orders_query.eq("fulfillment_type", fulfillment_type)
+
+                wb_orders_result = wb_orders_query.execute()
+
+                if wb_orders_result.data:
+                    for row in wb_orders_result.data:
+                        pid = row.get("product_id")
+                        if not pid:
+                            continue
+                        r_payout = float(row.get("payout", 0) or 0)
+                        r_sale_amount = float(row.get("sale_amount", 0) or row.get("price", 0) or 0)
+                        r_commission = float(row.get("commission", 0) or 0)
+                        r_logistics = float(row.get("logistics", 0) or 0)
+                        r_storage = float(row.get("storage_fee", 0) or 0)
+                        r_other = float(row.get("other_fees", 0) or 0)
+                        r_qty = int(row.get("quantity", 1) or 1)
+                        r_ft = row.get("fulfillment_type", "FBO") or "FBO"
+
+                        if pid not in wb_order_by_product:
+                            wb_order_by_product[pid] = {
+                                "payout": 0.0, "revenue": 0.0, "sales_count": 0,
+                                "commission": 0.0, "logistics": 0.0, "storage_fee": 0.0, "other_fees": 0.0,
+                            }
+                        d = wb_order_by_product[pid]
+                        d["payout"] += r_payout
+                        d["revenue"] += r_sale_amount
+                        d["sales_count"] += r_qty
+                        d["commission"] += r_commission
+                        d["logistics"] += r_logistics
+                        d["storage_fee"] += r_storage
+                        d["other_fees"] += r_other
+
+                        # Per FT breakdown
+                        if include_ft_breakdown and not fulfillment_type:
+                            if pid not in wb_order_ft_by_product:
+                                wb_order_ft_by_product[pid] = {}
+                            if r_ft not in wb_order_ft_by_product[pid]:
+                                wb_order_ft_by_product[pid][r_ft] = {
+                                    "payout": 0.0, "revenue": 0.0, "sales_count": 0,
+                                }
+                            ft_d = wb_order_ft_by_product[pid][r_ft]
+                            ft_d["payout"] += r_payout
+                            ft_d["revenue"] += r_sale_amount
+                            ft_d["sales_count"] += r_qty
+
+                    logger.info(f"WB UE order-based: {len(wb_order_by_product)} products from {len(wb_orders_result.data)} settled orders")
+        except Exception as e:
+            logger.warning(f"WB mp_orders query failed for UE: {e}")
+            # fallback: wb_order_by_product stays empty → proportional costs-tree will be used
+
         # 8a. Per-product storage costs (ALL marketplaces) — DISPLAY ONLY field.
         # Storage is already deducted from profit (Ozon: via payout, WB: via costs-tree proportional).
         # This query provides the `storage_cost` field for UI breakdown visibility.
@@ -724,11 +800,18 @@ async def get_unit_economics(
                 ozon_profit = ozon_order_payout - ozon_purchase
                 ozon_mp_costs = max(0, ozon_order_revenue - ozon_order_payout)
 
-                # WB part (proportional)
+                # WB part: PRIMARY = order-based from mp_orders, FALLBACK = proportional
                 wb_product_rev = product_mp_data["wb"]["revenue"]
                 wb_sales_count = product_mp_data["wb"]["sales"]
                 wb_purchase = purchase_price * wb_sales_count
-                if wb_total_mp_sales_revenue > 0 and wb_tree_revenue > 0:
+                if product_id in wb_order_by_product:
+                    # WB ORDER-BASED: exact payout from settled mp_orders
+                    wb_od = wb_order_by_product[product_id]
+                    wb_payout_share = wb_od["payout"]
+                    wb_displayed_rev = wb_od["revenue"] if wb_od["revenue"] > 0 else wb_product_rev
+                    wb_sales_count = wb_od["sales_count"] if wb_od["sales_count"] > 0 else wb_sales_count
+                    wb_purchase = purchase_price * wb_sales_count
+                elif wb_total_mp_sales_revenue > 0 and wb_tree_revenue > 0:
                     wb_share = wb_product_rev / wb_total_mp_sales_revenue
                     wb_displayed_rev = wb_tree_revenue * wb_share
                     wb_payout_share = wb_payout * wb_share
@@ -771,8 +854,23 @@ async def get_unit_economics(
                 displayed_revenue = mp_sales_revenue
                 mp_costs_consistent = costs
                 net_profit = mp_sales_revenue - costs - raw_purchase - ad_cost
+            elif product_id in wb_order_by_product:
+                # WB PRIMARY: order-based from settled mp_orders
+                # Exact payout per product (commission, logistics, storage already deducted)
+                wb_od = wb_order_by_product[product_id]
+                settled_payout = wb_od["payout"]
+                settled_revenue = wb_od["revenue"]
+                settled_sales = wb_od["sales_count"]
+                displayed_revenue = settled_revenue if settled_revenue > 0 else mp_sales_revenue
+                mp_costs_consistent = max(0, displayed_revenue - settled_payout)
+                # Override sales_count with settled count for COGS accuracy
+                if settled_sales > 0:
+                    sales_count = settled_sales
+                    raw_purchase = purchase_price * sales_count
+                net_profit = settled_payout - raw_purchase - ad_cost
             elif use_payout and total_mp_sales_revenue > 0 and costs_tree_revenue > 0:
-                # WB: proportional within WB costs-tree
+                # WB FALLBACK: proportional within WB costs-tree
+                # Used when mp_orders settled data not yet available
                 if wb_total_mp_sales_revenue > 0 and wb_tree_revenue > 0:
                     share = mp_sales_revenue / wb_total_mp_sales_revenue
                     displayed_revenue = wb_tree_revenue * share
@@ -825,8 +923,20 @@ async def get_unit_economics(
                         ft_payout_rate = ozon_payout / ozon_tree_revenue
                         ft_payout = ft_rev * ft_payout_rate
                         ft_profit = ft_payout - ft_purchase - ft_ad
+                    elif product_id in wb_order_ft_by_product and ft_key in wb_order_ft_by_product[product_id]:
+                        # WB PRIMARY: order-based per FT from settled mp_orders
+                        wb_ft_od = wb_order_ft_by_product[product_id][ft_key]
+                        ft_payout = wb_ft_od["payout"]
+                        ft_wb_rev = wb_ft_od["revenue"]
+                        ft_wb_cnt = wb_ft_od["sales_count"]
+                        if ft_wb_rev > 0:
+                            ft_rev = ft_wb_rev
+                        if ft_wb_cnt > 0:
+                            ft_cnt = ft_wb_cnt
+                            ft_purchase = purchase_price * ft_cnt
+                        ft_profit = ft_payout - ft_purchase - ft_ad
                     elif use_payout and total_mp_sales_revenue > 0:
-                        # WB: proportional payout
+                        # WB FALLBACK: proportional payout
                         ft_payout = total_payout * (ft_rev / total_mp_sales_revenue)
                         ft_profit = ft_payout - ft_purchase - ft_ad
                     else:

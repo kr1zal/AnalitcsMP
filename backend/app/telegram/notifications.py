@@ -108,6 +108,13 @@ async def build_summary_message(user_id: str, use_yesterday: bool = True) -> Opt
         if isinstance(yesterday, list):
             yesterday = yesterday[0] if yesterday else {}
 
+        # Unpack nested summary from RPC response
+        # RPC returns {status, period, marketplace, summary: {orders, sales, ...}}
+        if isinstance(today, dict) and "summary" in today:
+            today = today["summary"]
+        if isinstance(yesterday, dict) and "summary" in yesterday:
+            yesterday = yesterday["summary"]
+
         # Extract metrics
         orders = float(today.get("orders", 0))
         sales = float(today.get("sales", 0))
@@ -323,6 +330,12 @@ async def check_anomalies(user_id: str) -> list[str]:
             today = today[0] if today else {}
         if isinstance(prev, list):
             prev = prev[0] if prev else {}
+
+        # Unpack nested summary from RPC response
+        if isinstance(today, dict) and "summary" in today:
+            today = today["summary"]
+        if isinstance(prev, dict) and "summary" in prev:
+            prev = prev["summary"]
 
         return check_anomalies_from_data(
             orders_today=float(today.get("orders", 0)),
