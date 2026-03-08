@@ -23,7 +23,7 @@ async def test_sync_products():
     print("ТЕСТ: Синхронизация товаров (WB + Ozon ID)")
     print("="*50)
 
-    sync = SyncService()
+    sync = SyncService(user_id=os.getenv("TEST_USER_ID", "b990572c-acc2-4922-ad15-7ea8bfb88353"))
     result = await sync.sync_products()
 
     print(f"Статус: {result.get('status')}")
@@ -41,7 +41,7 @@ async def test_sync_stocks():
     print("ТЕСТ: Синхронизация остатков")
     print("="*50)
 
-    sync = SyncService()
+    sync = SyncService(user_id=os.getenv("TEST_USER_ID", "b990572c-acc2-4922-ad15-7ea8bfb88353"))
 
     print("\n--- Wildberries ---")
     wb_result = await sync.sync_stocks_wb()
@@ -68,7 +68,7 @@ async def test_sync_sales():
     print("ТЕСТ: Синхронизация продаж (7 дней)")
     print("="*50)
 
-    sync = SyncService()
+    sync = SyncService(user_id=os.getenv("TEST_USER_ID", "b990572c-acc2-4922-ad15-7ea8bfb88353"))
     date_from = datetime.now() - timedelta(days=7)
     date_to = datetime.now()
 
@@ -99,7 +99,7 @@ async def test_sync_costs():
     print("ТЕСТ: Синхронизация удержаний (30 дней)")
     print("="*50)
 
-    sync = SyncService()
+    sync = SyncService(user_id=os.getenv("TEST_USER_ID", "b990572c-acc2-4922-ad15-7ea8bfb88353"))
     date_from = datetime.now() - timedelta(days=30)
     date_to = datetime.now()
 

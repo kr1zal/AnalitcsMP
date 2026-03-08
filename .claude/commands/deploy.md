@@ -1,6 +1,9 @@
 Автоматический деплой. Выполнить все шаги без остановки.
 
 Steps:
+0. **Branch check**: Run `git branch --show-current`. If NOT `analitics_main_v1` — STOP and print:
+   "⛔ Деплой разрешён только из ветки analitics_main_v1. Текущая ветка: {branch}. Переключись и смержи изменения перед деплоем."
+   Do NOT proceed with any further steps.
 1. Run `cd frontend && npm run build` — if errors, STOP and fix
 2. Run `git status` and `git diff --stat` — show what changed
 3. List all modified files with brief description of changes

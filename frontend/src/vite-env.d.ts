@@ -1,5 +1,12 @@
 /// <reference types="vite/client" />
 
+// HTML inert attribute — not yet in @types/react
+declare namespace React {
+  interface HTMLAttributes<T> {
+    inert?: '' | boolean;
+  }
+}
+
 declare module 'swiper/css' {
   const content: string;
   export default content;

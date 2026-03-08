@@ -2,6 +2,8 @@
 PDF Export API
 Генерация PDF отчётов через Playwright
 """
+import logging
+
 from fastapi import APIRouter, Query, HTTPException, Depends
 from fastapi.responses import Response
 from fastapi.security import HTTPAuthorizationCredentials
@@ -12,8 +14,13 @@ from ...config import get_settings
 from ...auth import CurrentUser, get_current_user, security
 from ...subscription import UserSubscription, require_feature
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter()
 settings = get_settings()
+
+# Limit concurrent Playwright instances to prevent OOM with 4 uvicorn workers
+_pdf_semaphore = asyncio.Semaphore(1)
 
 
 @router.get("/export/pdf")
@@ -40,7 +47,15 @@ async def export_pdf(
         if fulfillment_type:
             print_url += f"&fulfillment_type={fulfillment_type}"
 
-        pdf_bytes = await generate_pdf(print_url)
+        try:
+            async with asyncio.timeout(120):
+                async with _pdf_semaphore:
+                    pdf_bytes = await generate_pdf(print_url)
+        except TimeoutError:
+            raise HTTPException(
+                status_code=503,
+                detail="Генерация PDF занята, попробуйте позже"
+            )
 
         filename = f"analytics_{date_from}_{date_to}_{marketplace}.pdf"
 
@@ -52,14 +67,20 @@ async def export_pdf(
             }
         )
 
+    except HTTPException:
+        raise
     except Exception as e:
+        error_msg = str(e)
+        if "token=" in error_msg:
+            error_msg = error_msg.split("token=")[0] + "token=[REDACTED]"
+        logger.error(f"PDF generation failed: {error_msg}")
         raise HTTPException(
             status_code=500,
-            detail=f"Ошибка генерации PDF: {str(e)}"
+            detail="Ошибка генерации PDF"
         )
 
 
-async def generate_pdf(url: str, timeout: int = 90000) -> bytes:
+async def generate_pdf(url: str, timeout: int = 60000) -> bytes:
     """
     Генерация PDF из URL через Playwright.
     """
@@ -86,9 +107,10 @@ async def generate_pdf(url: str, timeout: int = 90000) -> bytes:
             try:
                 await page.wait_for_selector(
                     '[data-pdf-ready="true"]',
-                    timeout=45000
+                    timeout=30000
                 )
             except Exception:
+                logger.warning("PDF ready selector not found, proceeding after delay")
                 await asyncio.sleep(3)
 
             pdf_bytes = await page.pdf(

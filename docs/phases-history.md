@@ -361,6 +361,33 @@ Plan completion pace/forecast: `_calc_pace_forecast()` helper. forecast = actual
 
 ---
 
+## Scale Phase 0 — DONE (01-08.03.2026)
+
+Оптимизация производительности и безопасности для масштабирования.
+
+### Phase 0.1: .limit() на все Supabase запросы (01.03.2026)
+- Добавлен `.limit()` на 35 запросов в dashboard.py, sales_plan.py, products.py, subscription.py, sync_queue.py, sync_service.py
+- Предотвращает загрузку неограниченных данных при росте числа записей
+
+### Phase 0.2: Composite indexes (08.03.2026)
+- Миграция 037: 4 composite indexes `(user_id, marketplace, date)` на mp_sales, mp_costs, mp_costs_details, mp_ad_costs
+- Удалены 10 устаревших индексов (покрыты новыми composites)
+- Оптимальный порядок: equality-equality-range для B-tree
+- Эффект: 219K rows → 9K rows, ~150-300ms → ~15-40ms per RPC
+
+### Phase 0.3: Batch upsert (01.03.2026)
+- 11 sync методов переведены на batch upsert вместо row-by-row
+- HTTP запросы: 70K → ~150 за полную синхронизацию
+- Время синхронизации: 42 мин → 8 мин
+
+### Infrastructure (08.03.2026)
+- 4 uvicorn workers (systemd) — потолок ~60 concurrent users
+- Playwright semaphore (1 per worker) — OOM prevention
+- sync_service.py: user_id mandatory, 9 DELETE/UPDATE hardened
+- export.py: JWT redaction в логах, timeout 120s
+
+---
+
 ## Исправленные баги
 - Плашки "Пред.пер." не показывают данные (commit 1aa095f)
 - `secret_key = "change-me-in-production"` в config.py (удалён)

@@ -17,6 +17,7 @@ import {
   useSalesPlanCompletion,
   useSalesPlan,
 } from '../hooks/useSalesPlan';
+import { useSubscription } from '../hooks/useSubscription';
 import { useFiltersStore } from '../store/useFiltersStore';
 import { FilterPanel } from '../components/Shared/FilterPanel';
 import { FeatureGate } from '../components/Shared/FeatureGate';
@@ -78,6 +79,8 @@ function buildMpBreakdown(
 
 export const UnitEconomicsPage = () => {
   const { datePreset, marketplace, fulfillmentType, customDateFrom, customDateTo } = useFiltersStore();
+  const { data: subscription } = useSubscription();
+  const hasAccess = subscription?.features?.unit_economics !== false;
   const dateRange = getDateRangeFromPreset(datePreset, customDateFrom, customDateTo);
   const ftParam = fulfillmentType === 'all' ? undefined : fulfillmentType;
 
@@ -90,17 +93,17 @@ export const UnitEconomicsPage = () => {
 
   // ==================== DATA FETCHING ====================
 
-  // Main UE data
-  const { data: unitData, isLoading, error } = useUnitEconomics(filters);
+  // Main UE data — disabled for Free plan (backend returns 403)
+  const { data: unitData, isLoading, error } = useUnitEconomics(filters, { enabled: hasAccess });
 
   // Per-MP data (only when marketplace=all, for expanded row breakdown)
   const { data: wbData } = useUnitEconomics(
     { ...filters, marketplace: 'wb' },
-    { enabled: marketplace === 'all' && !!unitData },
+    { enabled: hasAccess && marketplace === 'all' && !!unitData },
   );
   const { data: ozonData } = useUnitEconomics(
     { ...filters, marketplace: 'ozon' },
-    { enabled: marketplace === 'all' && !!unitData },
+    { enabled: hasAccess && marketplace === 'all' && !!unitData },
   );
 
   // Products list (for product_group_id matching)
@@ -214,6 +217,18 @@ export const UnitEconomicsPage = () => {
   }, []);
 
   // ==================== LOADING / ERROR ====================
+
+  // Free plan — показываем FeatureGate блокировку вместо данных
+  if (!hasAccess) {
+    return (
+      <div className="max-w-7xl mx-auto px-3 sm:px-6 py-4 sm:py-8">
+        <FilterPanel />
+        <FeatureGate feature="unit_economics">
+          <div className="h-[400px]" />
+        </FeatureGate>
+      </div>
+    );
+  }
 
   if (isLoading) {
     return <LoadingSpinner text="Загрузка unit-экономики..." />;

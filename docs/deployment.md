@@ -175,7 +175,7 @@ Environment=PATH=/var/www/analytics/backend/venv/bin:/usr/local/bin:/usr/bin
 ExecStart=/var/www/analytics/backend/venv/bin/uvicorn app.main:app \
     --host 127.0.0.1 \
     --port 8000 \
-    --workers 1 \
+    --workers 4 \
     --log-level info
 Restart=always
 RestartSec=5
@@ -186,7 +186,7 @@ StandardError=journal
 WantedBy=multi-user.target
 ```
 
-> **Примечание:** `--workers 1` -- VPS с 1 ядром. Для масштабирования увеличить workers.
+> **Примечание:** `--workers 4` — 4 воркера на 1 ядро (I/O-bound, CPU idle 95% времени). RAM: ~200MB. Потолок: ~60 concurrent users.
 
 ### Управление сервисом
 
@@ -512,6 +512,13 @@ backend/migrations/
 ├── 015_sales_plan_marketplace.sql   # Колонка marketplace в mp_sales_plan
 ├── 016_sales_plan_summary.sql       # mp_sales_plan_summary (total/MP level)
 ├── 017_stock_snapshots.sql          # mp_stock_snapshots (история остатков)
+├── 018_fbs_fulfillment_type.sql     # fulfillment_type (FBO/FBS) в 6 таблицах
+├── 019_settled_qty.sql              # settled_qty для Ozon UE
+├── 020_fix_rpc_purchase_axis.sql    # Fix: order-based purchase для ВСЕХ МП
+├── 021_user_dashboard_config.sql    # Dashboard widget configuration
+├── 032_storage_costs_daily.sql      # Per-product daily storage costs
+├── 036_ue_ozon_delivered_fix.sql    # RPC get_ozon_ue_delivered
+├── 037_composite_indexes.sql        # Composite indexes (user_id, marketplace, date)
 └── FULL_SCHEMA_NEW_PROJECT.sql      # Полная схема для нового проекта
 ```
 

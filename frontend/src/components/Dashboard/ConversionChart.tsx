@@ -5,19 +5,49 @@
  */
 import { useMemo } from 'react';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import type { TooltipContentProps } from 'recharts';
 import { formatDate } from '../../lib/utils';
+import type { SalesChartPlotPoint } from '../../types';
 
 interface ConversionChartProps {
-  data: Array<{
-    date: string;
-    orders?: number;
-    sales?: number;
-    ordersPlot?: number | null;
-    salesPlot?: number | null;
-    __plotNull?: boolean;
-  }>;
+  data: SalesChartPlotPoint[];
   isLoading?: boolean;
 }
+
+interface ConversionTooltipPayload {
+  date: string;
+  conversion: number | null;
+  orders: number | null;
+  sales: number | null;
+}
+
+const ConversionChartTooltip = ({ active, payload }: Partial<TooltipContentProps<number, string>>) => {
+  if (!active || !payload?.length) return null;
+  const d = payload[0]?.payload as ConversionTooltipPayload;
+  if (!d || d.conversion === null) return null;
+
+  return (
+    <div className="bg-white border border-gray-200 rounded-lg shadow-lg p-2 sm:p-3 text-xs sm:text-sm">
+      <p className="font-semibold text-gray-900 mb-1">
+        {formatDate(d.date, 'dd.MM.yyyy')}
+      </p>
+      <div className="space-y-0.5">
+        <p className="text-gray-700">
+          <span className="font-medium">Конверсия:</span> {(d.conversion ?? 0).toFixed(1)}%
+        </p>
+        <p className="text-gray-700">
+          <span className="font-medium">Заказы:</span> {d.orders ?? 0} шт
+        </p>
+        <p className="text-gray-700">
+          <span className="font-medium">Выкупы:</span> {d.sales ?? 0} шт
+        </p>
+      </div>
+      <p className="text-[10px] text-gray-400 mt-1 border-t border-gray-100 pt-1">
+        Выкупы / Заказы &times; 100%
+      </p>
+    </div>
+  );
+};
 
 export const ConversionChart = ({ data, isLoading = false }: ConversionChartProps) => {
   const chartData = useMemo(() => {
@@ -56,33 +86,7 @@ export const ConversionChart = ({ data, isLoading = false }: ConversionChartProp
     );
   }
 
-  const CustomTooltip = ({ active, payload }: any) => {
-    if (!active || !payload?.length) return null;
-    const d = payload[0]?.payload;
-    if (!d || d.conversion === null) return null;
-
-    return (
-      <div className="bg-white border border-gray-200 rounded-lg shadow-lg p-2 sm:p-3 text-xs sm:text-sm">
-        <p className="font-semibold text-gray-900 mb-1">
-          {formatDate(d.date, 'dd.MM.yyyy')}
-        </p>
-        <div className="space-y-0.5">
-          <p className="text-gray-700">
-            <span className="font-medium">Конверсия:</span> {(d.conversion ?? 0).toFixed(1)}%
-          </p>
-          <p className="text-gray-700">
-            <span className="font-medium">Заказы:</span> {d.orders ?? 0} шт
-          </p>
-          <p className="text-gray-700">
-            <span className="font-medium">Выкупы:</span> {d.sales ?? 0} шт
-          </p>
-        </div>
-        <p className="text-[10px] text-gray-400 mt-1 border-t border-gray-100 pt-1">
-          Выкупы / Заказы × 100%
-        </p>
-      </div>
-    );
-  };
+  // ConversionChartTooltip is defined outside the component (above)
 
   return (
     <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-2 sm:p-3">
@@ -105,7 +109,7 @@ export const ConversionChart = ({ data, isLoading = false }: ConversionChartProp
             axisLine={false}
             width={35}
           />
-          <Tooltip content={<CustomTooltip />} />
+          <Tooltip content={<ConversionChartTooltip />} />
           <Area
             type="monotone"
             dataKey="conversion"

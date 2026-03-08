@@ -4,6 +4,7 @@
  */
 import { useState } from 'react';
 import { useAdCosts, useAdCampaigns } from '../hooks/useDashboard';
+import { useSubscription } from '../hooks/useSubscription';
 import { useFiltersStore } from '../store/useFiltersStore';
 import { LoadingSpinner } from '../components/Shared/LoadingSpinner';
 import { DateRangePicker } from '../components/Shared/DateRangePicker';
@@ -30,6 +31,8 @@ const MP_OPTIONS = [
 
 export const AdsPage = () => {
   const { datePreset, customDateFrom, customDateTo, setDatePreset, setCustomDates } = useFiltersStore();
+  const { data: subscription } = useSubscription();
+  const hasAccess = subscription?.features?.ads_page !== false;
   const [selectedMarketplace, setSelectedMarketplace] = useState<'all' | 'wb' | 'ozon'>('all');
   const isMobile = useIsMobile();
 
@@ -47,15 +50,28 @@ export const AdsPage = () => {
     marketplace: selectedMarketplace,
   };
 
-  // Ad costs with previous period for ChangeBadge
+  // Ad costs with previous period for ChangeBadge — disabled for Free plan
   const { data: adData, isLoading: costsLoading } = useAdCosts(
-    { ...filters, include_prev_period: true }
+    { ...filters, include_prev_period: true },
+    { enabled: hasAccess },
   );
 
-  // Ad campaigns breakdown
-  const { data: campaignsData, isLoading: campaignsLoading } = useAdCampaigns(filters);
+  // Ad campaigns breakdown — disabled for Free plan
+  const { data: campaignsData, isLoading: campaignsLoading } = useAdCampaigns(filters, { enabled: hasAccess });
 
   const isLoading = costsLoading && !adData;
+
+  // Free plan — показываем FeatureGate блокировку
+  if (!hasAccess) {
+    return (
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-4 sm:py-6">
+        <h2 className="text-xl sm:text-2xl font-bold text-gray-900 mb-5">Реклама</h2>
+        <FeatureGate feature="ads_page">
+          <div className="h-[400px]" />
+        </FeatureGate>
+      </div>
+    );
+  }
 
   if (isLoading) {
     return (

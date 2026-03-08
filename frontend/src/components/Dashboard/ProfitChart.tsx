@@ -19,18 +19,55 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from 'recharts';
+import type { TooltipContentProps } from 'recharts';
 import { formatCurrency, formatDate } from '../../lib/utils';
+import type { SalesChartPlotPoint } from '../../types';
 
 interface ProfitChartProps {
-  data: Array<{
-    date: string;
-    revenue?: number;
-    revenuePlot?: number | null;
-    __plotNull?: boolean;
-  }>;
+  data: SalesChartPlotPoint[];
   profitMargin: number;
   isLoading?: boolean;
 }
+
+interface ProfitTooltipPayload {
+  date: string;
+  revenue: number | null;
+  profit: number | null;
+}
+
+const ProfitChartTooltip = ({ active, payload, profitStroke }: Partial<TooltipContentProps<number, string>> & { profitStroke: string }) => {
+  if (!active || !payload?.length) return null;
+  const d = payload[0]?.payload as ProfitTooltipPayload;
+  if (!d || d.revenue === null) return null;
+
+  const rev = d.revenue ?? 0;
+  const prof = d.profit ?? 0;
+  const pct = rev > 0 ? ((prof / rev) * 100).toFixed(1) : '0.0';
+
+  return (
+    <div className="bg-white border border-gray-200 rounded-lg shadow-lg p-2 sm:p-3 text-xs sm:text-sm">
+      <p className="font-semibold text-gray-900 mb-1.5">
+        {formatDate(d.date, 'dd.MM.yyyy')}
+      </p>
+      <div className="space-y-0.5">
+        <p className="text-gray-700 flex items-center gap-1.5">
+          <span className="w-2 h-2 rounded-full bg-emerald-400 flex-shrink-0" />
+          Выручка: {formatCurrency(rev)}
+        </p>
+        <p className="text-gray-700 flex items-center gap-1.5">
+          <span
+            className="w-2 h-2 rounded-full flex-shrink-0"
+            style={{ backgroundColor: profitStroke }}
+          />
+          Прибыль*: {formatCurrency(prof)} ({pct}%)
+        </p>
+      </div>
+      <p className="text-[10px] text-gray-400 mt-1.5 border-t border-gray-100 pt-1">
+        *Оценка по средней марже периода
+      </p>
+    </div>
+  );
+};
 
 export const ProfitChart = ({ data, profitMargin, isLoading = false }: ProfitChartProps) => {
   const profitIsPositive = profitMargin >= 0;
@@ -76,39 +113,7 @@ export const ProfitChart = ({ data, profitMargin, isLoading = false }: ProfitCha
     );
   }
 
-  const CustomTooltip = ({ active, payload }: any) => {
-    if (!active || !payload?.length) return null;
-    const d = payload[0]?.payload;
-    if (!d || d.revenue === null) return null;
-
-    const rev = d.revenue ?? 0;
-    const prof = d.profit ?? 0;
-    const pct = rev > 0 ? ((prof / rev) * 100).toFixed(1) : '0.0';
-
-    return (
-      <div className="bg-white border border-gray-200 rounded-lg shadow-lg p-2 sm:p-3 text-xs sm:text-sm">
-        <p className="font-semibold text-gray-900 mb-1.5">
-          {formatDate(d.date, 'dd.MM.yyyy')}
-        </p>
-        <div className="space-y-0.5">
-          <p className="text-gray-700 flex items-center gap-1.5">
-            <span className="w-2 h-2 rounded-full bg-emerald-400 flex-shrink-0" />
-            Выручка: {formatCurrency(rev)}
-          </p>
-          <p className="text-gray-700 flex items-center gap-1.5">
-            <span
-              className="w-2 h-2 rounded-full flex-shrink-0"
-              style={{ backgroundColor: profitStroke }}
-            />
-            Прибыль*: {formatCurrency(prof)} ({pct}%)
-          </p>
-        </div>
-        <p className="text-[10px] text-gray-400 mt-1.5 border-t border-gray-100 pt-1">
-          *Оценка по средней марже периода
-        </p>
-      </div>
-    );
-  };
+  // ProfitChartTooltip is defined outside the component (above)
 
   return (
     <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-2 sm:p-3">
@@ -154,7 +159,7 @@ export const ProfitChart = ({ data, profitMargin, isLoading = false }: ProfitCha
                 axisLine={false}
                 width={40}
               />
-              <Tooltip content={<CustomTooltip />} />
+              <Tooltip content={<ProfitChartTooltip profitStroke={profitStroke} />} />
               {/* Revenue area (light green, background layer) */}
               <Area
                 type="monotone"

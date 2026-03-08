@@ -3,6 +3,7 @@
  */
 import { useMemo } from 'react';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import type { TooltipContentProps } from 'recharts';
 import { formatCurrency, formatDate } from '../../lib/utils';
 import type { AdCostsChartDataPoint } from '../../types';
 
@@ -10,6 +11,35 @@ interface DrrChartProps {
   data: AdCostsChartDataPoint[];
   isLoading?: boolean;
 }
+
+interface DrrTooltipPayload {
+  date: string;
+  drr: number;
+  ad_cost: number;
+  revenue: number;
+}
+
+const DrrChartTooltip = ({ active, payload }: Partial<TooltipContentProps<number, string>>) => {
+  if (!active || !payload || !payload.length) return null;
+  const d = payload[0].payload as DrrTooltipPayload;
+  return (
+    <div className="bg-white border border-gray-200 rounded-lg shadow-lg p-3">
+      <p className="text-sm font-semibold text-gray-900 mb-1">
+        {formatDate(d.date, 'dd.MM.yyyy')}
+      </p>
+      <p className="text-sm text-gray-700">
+        <span className="font-medium">ДРР:</span> {(d.drr || 0).toFixed(1)}%
+      </p>
+      <p className="text-sm text-gray-700">
+        <span className="font-medium">Расход:</span> {formatCurrency(d.ad_cost || 0)}
+      </p>
+      <p className="text-sm text-gray-700">
+        <span className="font-medium">Выручка:</span> {formatCurrency(d.revenue || 0)}
+      </p>
+      <p className="text-[10px] text-gray-400 mt-1">от всех заказов (вкл. непроведённые)</p>
+    </div>
+  );
+};
 
 export const DrrChart = ({ data, isLoading = false }: DrrChartProps) => {
   const chartData = useMemo(() => {
@@ -52,27 +82,7 @@ export const DrrChart = ({ data, isLoading = false }: DrrChartProps) => {
     );
   }
 
-  const CustomTooltip = ({ active, payload }: any) => {
-    if (!active || !payload || !payload.length) return null;
-    const d = payload[0].payload;
-    return (
-      <div className="bg-white border border-gray-200 rounded-lg shadow-lg p-3">
-        <p className="text-sm font-semibold text-gray-900 mb-1">
-          {formatDate(d.date, 'dd.MM.yyyy')}
-        </p>
-        <p className="text-sm text-gray-700">
-          <span className="font-medium">ДРР:</span> {(d.drr || 0).toFixed(1)}%
-        </p>
-        <p className="text-sm text-gray-700">
-          <span className="font-medium">Расход:</span> {formatCurrency(d.ad_cost || 0)}
-        </p>
-        <p className="text-sm text-gray-700">
-          <span className="font-medium">Выручка:</span> {formatCurrency(d.revenue || 0)}
-        </p>
-        <p className="text-[10px] text-gray-400 mt-1">от всех заказов (вкл. непроведённые)</p>
-      </div>
-    );
-  };
+  // DrrChartTooltip is defined outside the component (above)
 
   return (
     <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-2 sm:p-3">
@@ -95,7 +105,7 @@ export const DrrChart = ({ data, isLoading = false }: DrrChartProps) => {
             axisLine={false}
             width={35}
           />
-          <Tooltip content={<CustomTooltip />} />
+          <Tooltip content={<DrrChartTooltip />} />
           <Area
             type="monotone"
             dataKey="drr"

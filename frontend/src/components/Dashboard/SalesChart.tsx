@@ -3,13 +3,14 @@
  */
 import { useMemo, useState } from 'react';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import type { TooltipContentProps } from 'recharts';
 import { formatCurrency, formatDate, cn } from '../../lib/utils';
-import type { SalesChartDataPoint } from '../../types';
+import type { SalesChartPlotPoint } from '../../types';
 
 type ChartTab = 'orders' | 'sales' | 'revenue';
 
 interface SalesChartProps {
-  data: SalesChartDataPoint[];
+  data: SalesChartPlotPoint[];
   isLoading?: boolean;
 }
 
@@ -19,11 +20,41 @@ const TABS: { value: ChartTab; label: string }[] = [
   { value: 'revenue', label: 'Выручка' },
 ];
 
+interface SalesChartTooltipPayload {
+  date: string;
+  orders: number;
+  sales: number;
+  revenue: number;
+}
+
+const SalesChartTooltip = ({ active, payload }: Partial<TooltipContentProps<number, string>>) => {
+  if (!active || !payload || !payload.length) return null;
+  const d = payload[0].payload as SalesChartTooltipPayload;
+  return (
+    <div className="bg-white border border-gray-200 rounded-lg shadow-lg p-2 sm:p-3 text-xs sm:text-sm">
+      <p className="font-semibold text-gray-900 mb-1.5 sm:mb-2">
+        {formatDate(d.date, 'dd.MM.yyyy')}
+      </p>
+      <div className="space-y-0.5 sm:space-y-1">
+        <p className="text-gray-700">
+          <span className="font-medium">Заказы:</span> {d.orders} шт
+        </p>
+        <p className="text-gray-700">
+          <span className="font-medium">Выкупы:</span> {d.sales} шт
+        </p>
+        <p className="text-gray-700">
+          <span className="font-medium">Выручка:</span> {formatCurrency(d.revenue)}
+        </p>
+      </div>
+    </div>
+  );
+};
+
 export const SalesChart = ({ data, isLoading = false }: SalesChartProps) => {
   const [activeTab, setActiveTab] = useState<ChartTab>('orders');
 
   const chartData = useMemo(() => {
-    return (data ?? []).map((item: any) => ({
+    return (data ?? []).map((item) => ({
       ...item,
       dateFormatted: formatDate(item.date, 'dd.MM'),
       orders: item.orders ?? 0,
@@ -99,28 +130,7 @@ export const SalesChart = ({ data, isLoading = false }: SalesChartProps) => {
     );
   }
 
-  const CustomTooltip = ({ active, payload }: any) => {
-    if (!active || !payload || !payload.length) return null;
-    const d = payload[0].payload;
-    return (
-      <div className="bg-white border border-gray-200 rounded-lg shadow-lg p-2 sm:p-3 text-xs sm:text-sm">
-        <p className="font-semibold text-gray-900 mb-1.5 sm:mb-2">
-          {formatDate(d.date, 'dd.MM.yyyy')}
-        </p>
-        <div className="space-y-0.5 sm:space-y-1">
-          <p className="text-gray-700">
-            <span className="font-medium">Заказы:</span> {d.orders} шт
-          </p>
-          <p className="text-gray-700">
-            <span className="font-medium">Выкупы:</span> {d.sales} шт
-          </p>
-          <p className="text-gray-700">
-            <span className="font-medium">Выручка:</span> {formatCurrency(d.revenue)}
-          </p>
-        </div>
-      </div>
-    );
-  };
+  // CustomTooltip is defined outside as SalesChartTooltip (above)
 
   return (
     <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-2 sm:p-3">
@@ -169,7 +179,7 @@ export const SalesChart = ({ data, isLoading = false }: SalesChartProps) => {
                 axisLine={false}
                 width={45}
               />
-              <Tooltip content={<CustomTooltip />} />
+              <Tooltip content={<SalesChartTooltip />} />
               <Area
                 type="monotone"
                 dataKey={config.dataKey}

@@ -244,6 +244,19 @@ export interface SalesChartDataPoint {
   avg_check: number;
 }
 
+/** Extended sales chart data with plot-null markers for gap rendering */
+export interface SalesChartPlotPoint extends SalesChartDataPoint {
+  __plotNull: boolean;
+  ordersPlot: number | null;
+  salesPlot: number | null;
+  revenuePlot: number | null;
+}
+
+/** Extended ad costs data with plot fields */
+export interface AdCostsPlotPoint extends AdCostsChartDataPoint {
+  // no additional fields needed beyond AdCostsChartDataPoint
+}
+
 export interface SalesChartResponse {
   status: 'success';
   period: {
@@ -494,6 +507,15 @@ export interface SubscriptionFeatures {
   order_monitor: boolean;
   api_access: boolean;
   fbs_analytics: boolean;
+  profit_chart: boolean;
+  drr_chart: boolean;
+  conversion_chart: boolean;
+  profit_waterfall: boolean;
+  top_products: boolean;
+  costs_donut: boolean;
+  mp_breakdown: boolean;
+  stock_forecast: boolean;
+  stock_history: boolean;
 }
 
 export interface SubscriptionLimits {

@@ -191,9 +191,10 @@ export const DashboardPage = () => {
 
   // Закупка: считаем по unit-economics (purchase_costs = purchase_price * qty).
   // ОПТИМИЗАЦИЯ: purchase_costs_total теперь приходит из RPC get_dashboard_summary
+  const hasUeAccess = subscription?.features?.unit_economics !== false;
   const { data: unitEconomicsData, isLoading: ueLoading } = useUnitEconomics(filters, {
-    // Всегда загружаем: нужен для TopProductsChart + purchase fallback
-    enabled: Boolean(summaryData),
+    // Загружаем только если есть доступ (Pro+) — для Free план бэкенд вернёт 403
+    enabled: Boolean(summaryData) && hasUeAccess,
   });
 
   // Графики и остатки загружаются сразу (RPC оптимизированы)
@@ -204,8 +205,10 @@ export const DashboardPage = () => {
     enabled: chartsEnabled,
   });
 
+  const hasAdsAccess = subscription?.features?.ads_page !== false;
   const { data: adCostsData, isLoading: adCostsLoading } = useAdCosts(chartFilters, {
-    enabled: chartsEnabled,
+    // Загружаем только если есть доступ (Pro+) — для Free план бэкенд вернёт 403
+    enabled: chartsEnabled && hasAdsAccess,
   });
 
   // Остатки ВСЕГДА показывают все МП — StocksTable имеет встроенные фильтры (Все/OOS WB/OOS Ozon)
@@ -836,14 +839,16 @@ export const DashboardPage = () => {
       </FeatureGate>
 
       {/* 3. MarketplaceBreakdown (OZON / WB) */}
-      <MarketplaceBreakdown
-        ozonCostsTree={ozonCostsTreeData}
-        ozonCostsTreeLoading={ozonCostsTreeLoading}
-        wbCostsTree={wbCostsTreeData}
-        wbCostsTreeLoading={wbCostsTreeLoading}
-        ozonProfit={ozonProfitData}
-        wbProfit={wbProfitData}
-      />
+      <FeatureGate feature="mp_breakdown">
+        <MarketplaceBreakdown
+          ozonCostsTree={ozonCostsTreeData}
+          ozonCostsTreeLoading={ozonCostsTreeLoading}
+          wbCostsTree={wbCostsTreeData}
+          wbCostsTreeLoading={wbCostsTreeLoading}
+          ozonProfit={ozonProfitData}
+          wbProfit={wbProfitData}
+        />
+      </FeatureGate>
 
       {/* 4. Графики с боковыми фильтрами */}
       <div className="flex flex-row gap-2 sm:gap-3 mb-4 sm:mb-5 lg:mb-6">
@@ -899,14 +904,20 @@ export const DashboardPage = () => {
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-2 sm:gap-3">
               {/* Ряд 1: Заказы + Прибыль */}
               <SalesChart data={salesChartSeries as any} isLoading={!chartsEnabled || chartLoading} />
-              <ProfitChart
-                data={salesChartSeries as any}
-                profitMargin={profitMargin}
-                isLoading={!chartsEnabled || chartLoading}
-              />
+              <FeatureGate feature="profit_chart">
+                <ProfitChart
+                  data={salesChartSeries as any}
+                  profitMargin={profitMargin}
+                  isLoading={!chartsEnabled || chartLoading}
+                />
+              </FeatureGate>
               {/* Ряд 2: ДРР + Конверсия */}
-              <DrrChart data={adCostsSeriesFull as any} isLoading={!chartsEnabled || adCostsLoading} />
-              <ConversionChart data={salesChartSeries as any} isLoading={!chartsEnabled || chartLoading} />
+              <FeatureGate feature="drr_chart">
+                <DrrChart data={adCostsSeriesFull as any} isLoading={!chartsEnabled || adCostsLoading} />
+              </FeatureGate>
+              <FeatureGate feature="conversion_chart">
+                <ConversionChart data={salesChartSeries as any} isLoading={!chartsEnabled || chartLoading} />
+              </FeatureGate>
             </div>
           </Suspense>
         </div>
@@ -914,37 +925,47 @@ export const DashboardPage = () => {
 
       {/* 4.5. Аналитика: Структура прибыли + Расходы + Топ товаров + Прогноз остатков */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-3 mb-4 sm:mb-5 lg:mb-6">
-        <ProfitWaterfall
-          revenue={revenueForTile}
-          mpDeductions={mpDeductionsForTile}
-          purchase={purchaseCostsForTile}
-          ads={adCostForTile}
-          profit={netProfitForTile}
-          loading={isSummaryLoading || isCostsTreeLoading}
-        />
-        <CostsDonutChart
-          ozonTree={ozonCostsTreeData?.tree}
-          wbTree={wbCostsTreeData?.tree}
-          marketplace={marketplace}
-          loading={isCostsTreeLoading}
-        />
-        <TopProductsChart
-          products={unitEconomicsData?.products ?? []}
-          isLoading={ueLoading}
-        />
-        <StockForecastChart
-          stocks={stocksData?.stocks ?? []}
-          isLoading={stocksLoading}
-        />
+        <FeatureGate feature="profit_waterfall">
+          <ProfitWaterfall
+            revenue={revenueForTile}
+            mpDeductions={mpDeductionsForTile}
+            purchase={purchaseCostsForTile}
+            ads={adCostForTile}
+            profit={netProfitForTile}
+            loading={isSummaryLoading || isCostsTreeLoading}
+          />
+        </FeatureGate>
+        <FeatureGate feature="costs_donut">
+          <CostsDonutChart
+            ozonTree={ozonCostsTreeData?.tree}
+            wbTree={wbCostsTreeData?.tree}
+            marketplace={marketplace}
+            loading={isCostsTreeLoading}
+          />
+        </FeatureGate>
+        <FeatureGate feature="top_products">
+          <TopProductsChart
+            products={unitEconomicsData?.products ?? []}
+            isLoading={ueLoading}
+          />
+        </FeatureGate>
+        <FeatureGate feature="stock_forecast">
+          <StockForecastChart
+            stocks={stocksData?.stocks ?? []}
+            isLoading={stocksLoading}
+          />
+        </FeatureGate>
       </div>
 
       {/* 4.6. Динамика остатков */}
       <div className="mb-4 sm:mb-5 lg:mb-6">
-        <StockHistoryChart
-          dateFrom={dateRange.from}
-          dateTo={stockHistoryDateTo}
-          enabled={stocksEnabled}
-        />
+        <FeatureGate feature="stock_history">
+          <StockHistoryChart
+            dateFrom={dateRange.from}
+            dateTo={stockHistoryDateTo}
+            enabled={stocksEnabled}
+          />
+        </FeatureGate>
       </div>
 
       {/* 5. Таблица остатков */}

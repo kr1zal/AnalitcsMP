@@ -2,7 +2,7 @@
 Роутер для работы с товарами
 """
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel, Field
@@ -10,11 +10,22 @@ from typing import Optional
 
 from ...db.supabase import get_supabase_client
 from ...auth import CurrentUser, get_current_user
+from ...subscription import _load_subscription
 
 router = APIRouter()
 
 
 # ==================== PYDANTIC MODELS ====================
+
+class CreateProductRequest(BaseModel):
+    name: str = Field(..., min_length=1, max_length=255)
+    barcode: str = Field(..., min_length=1, max_length=100)
+    purchase_price: float = Field(..., ge=0)
+    wb_nm_id: Optional[int] = None
+    wb_vendor_code: Optional[str] = None
+    ozon_product_id: Optional[int] = None
+    ozon_offer_id: Optional[str] = None
+
 
 class UpdatePurchasePriceRequest(BaseModel):
     purchase_price: float = Field(..., ge=0)
@@ -130,6 +141,90 @@ async def get_product_by_barcode(
 
 # ==================== MUTATION ENDPOINTS ====================
 
+@router.post("/products")
+async def create_product(
+    body: CreateProductRequest,
+    current_user: CurrentUser = Depends(get_current_user),
+):
+    """
+    Создать товар вручную.
+    Проверяет лимит SKU по тарифу перед созданием.
+    """
+    supabase = get_supabase_client()
+
+    # Проверка лимита SKU по тарифу
+    sub = _load_subscription(current_user.id)
+    max_sku = sub.plan_config.get("max_sku")
+
+    if max_sku is not None:
+        products = (
+            supabase.table("mp_products")
+            .select("id")
+            .eq("user_id", current_user.id)
+            .neq("barcode", "WB_ACCOUNT")
+            .execute()
+        )
+        current_count = len(products.data) if products.data else 0
+        if current_count >= max_sku:
+            raise HTTPException(
+                status_code=403,
+                detail={
+                    "error": "sku_limit_reached",
+                    "message": f"Лимит товаров ({max_sku}) достигнут. Перейдите на Pro для увеличения.",
+                    "current_plan": sub.plan,
+                    "max_sku": max_sku,
+                    "current_sku": current_count,
+                },
+            )
+
+    try:
+        # Проверить уникальность штрихкода для этого пользователя
+        existing = (
+            supabase.table("mp_products")
+            .select("id")
+            .eq("barcode", body.barcode)
+            .eq("user_id", current_user.id)
+            .execute()
+        )
+        if existing.data:
+            raise HTTPException(
+                status_code=409,
+                detail=f"Товар с штрихкодом '{body.barcode}' уже существует",
+            )
+
+        now = datetime.now(timezone.utc).isoformat()
+        row: dict = {
+            "user_id": current_user.id,
+            "barcode": body.barcode,
+            "name": body.name,
+            "purchase_price": body.purchase_price,
+            "updated_at": now,
+        }
+        if body.wb_nm_id is not None:
+            row["wb_nm_id"] = body.wb_nm_id
+        if body.wb_vendor_code is not None:
+            row["wb_vendor_code"] = body.wb_vendor_code
+        if body.ozon_product_id is not None:
+            row["ozon_product_id"] = body.ozon_product_id
+        if body.ozon_offer_id is not None:
+            row["ozon_offer_id"] = body.ozon_offer_id
+
+        result = supabase.table("mp_products").insert(row).execute()
+
+        if not result.data:
+            raise HTTPException(status_code=500, detail="Не удалось создать товар")
+
+        return {
+            "status": "success",
+            "product": result.data[0],
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.put("/products/{product_id}/purchase-price")
 async def update_purchase_price(
     product_id: str,
@@ -155,7 +250,7 @@ async def update_purchase_price(
             raise HTTPException(status_code=404, detail="Product not found")
 
         product = result.data[0]
-        now = datetime.now().isoformat()
+        now = datetime.now(timezone.utc).isoformat()
 
         # Обновить сам товар
         supabase.table("mp_products").update({
@@ -203,7 +298,7 @@ async def reorder_products(
 
     try:
         updated = 0
-        now = datetime.now().isoformat()
+        now = datetime.now(timezone.utc).isoformat()
 
         for item in body.items:
             result = (
@@ -275,7 +370,7 @@ async def link_products(
             or str(uuid.uuid4())
         )
 
-        now = datetime.now().isoformat()
+        now = datetime.now(timezone.utc).isoformat()
         update_data = {
             "product_group_id": group_id,
             "purchase_price": body.purchase_price,
@@ -310,7 +405,7 @@ async def unlink_products(
     supabase = get_supabase_client()
 
     try:
-        now = datetime.now().isoformat()
+        now = datetime.now(timezone.utc).isoformat()
 
         result = (
             supabase.table("mp_products")

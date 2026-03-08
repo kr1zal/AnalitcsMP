@@ -17,6 +17,7 @@ import { SettingsPage } from './pages/SettingsPage';
 import { LandingPage } from './pages/landing/LandingPage';
 import { LegalPage, PolicyPage, PrivacyPage } from './pages/LegalPages';
 import OrderMonitorPage from './pages/OrderMonitorPage';
+import { DashboardV3PreviewPage } from './pages/DashboardV3PreviewPage';
 import { useAuth } from './hooks/useAuth';
 import { useAuthStore } from './store/useAuthStore';
 
@@ -78,6 +79,7 @@ function AppRoutes() {
       {/* Root: Landing (unauth) / App (auth) */}
       <Route path="/" element={<RootLayout />}>
         <Route index element={<DashboardPage />} />
+        <Route path="dashboard-v3" element={<DashboardV3PreviewPage />} />
         <Route path="orders" element={<OrderMonitorPage />} />
         <Route path="unit-economics" element={<UnitEconomicsPage />} />
         <Route path="products" element={<Navigate to="/unit-economics" replace />} />

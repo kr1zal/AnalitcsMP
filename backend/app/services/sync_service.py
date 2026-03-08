@@ -22,6 +22,8 @@ class SyncService:
     def __init__(self, user_id: str | None = None):
         settings = get_settings()
         self.supabase = get_supabase_client()
+        if not user_id:
+            raise ValueError("SyncService requires user_id — multi-tenant safety")
         self.user_id = user_id
 
         # Загружаем токены: сначала из БД (per-user), fallback на .env
@@ -293,9 +295,7 @@ class SyncService:
                                         "wb_nm_id": nm_id,
                                         "wb_vendor_code": vendor_code,
                                         "updated_at": datetime.now().isoformat(),
-                                    }).eq("barcode", barcode)
-                                    if self.user_id:
-                                        query = query.eq("user_id", self.user_id)
+                                    }).eq("barcode", barcode).eq("user_id", self.user_id)
                                     query.execute()
                                     updated_count += 1
                                     logger.info(f"WB: updated product {barcode} -> nm_id={nm_id}")
@@ -349,9 +349,7 @@ class SyncService:
                                 "ozon_product_id": product_id,
                                 "ozon_offer_id": offer_id,
                                 "updated_at": datetime.now().isoformat(),
-                            }).eq("barcode", offer_id)
-                            if self.user_id:
-                                query = query.eq("user_id", self.user_id)
+                            }).eq("barcode", offer_id).eq("user_id", self.user_id)
                             query.execute()
                             updated_count += 1
                             if product_id:
@@ -400,9 +398,7 @@ class SyncService:
                                     if item_name and item_offer_id in new_ozon_offer_ids:
                                         query = self.supabase.table("mp_products").update({
                                             "name": item_name,
-                                        }).eq("barcode", item_offer_id)
-                                        if self.user_id:
-                                            query = query.eq("user_id", self.user_id)
+                                        }).eq("barcode", item_offer_id).eq("user_id", self.user_id)
                                         query.execute()
                                         logger.info(f"Ozon: updated name for {item_offer_id} -> {item_name}")
                         except Exception as e:
@@ -450,9 +446,7 @@ class SyncService:
                         if ozon_sku and item_offer_id in products_map:
                             query = self.supabase.table("mp_products").update({
                                 "ozon_sku": ozon_sku,
-                            }).eq("barcode", item_offer_id)
-                            if self.user_id:
-                                query = query.eq("user_id", self.user_id)
+                            }).eq("barcode", item_offer_id).eq("user_id", self.user_id)
                             query.execute()
                             sku_populated.add(item_offer_id)
                             logger.info(f"Ozon: updated SKU via product_info {item_offer_id} -> ozon_sku={ozon_sku}")
@@ -480,9 +474,7 @@ class SyncService:
                                 ozon_sku = str(sku)
                                 query = self.supabase.table("mp_products").update({
                                     "ozon_sku": ozon_sku,
-                                }).eq("barcode", item_code)
-                                if self.user_id:
-                                    query = query.eq("user_id", self.user_id)
+                                }).eq("barcode", item_code).eq("user_id", self.user_id)
                                 query.execute()
                                 sku_populated.add(item_code)
                                 logger.info(f"Ozon: updated SKU via warehouse fallback {item_code} -> ozon_sku={ozon_sku}")
@@ -524,9 +516,7 @@ class SyncService:
                                     if cc_value > 0:
                                         query = self.supabase.table("mp_products").update({
                                             "purchase_price": cc_value,
-                                        }).eq("barcode", offer_id)
-                                        if self.user_id:
-                                            query = query.eq("user_id", self.user_id)
+                                        }).eq("barcode", offer_id).eq("user_id", self.user_id)
                                         query.execute()
                                         cc_updated += 1
                                         logger.info(f"Ozon: set cost_price for {offer_id} -> {cc_value}")
@@ -672,9 +662,7 @@ class SyncService:
                                 cart_adds = stat.get("addToCart", 0)
                                 query = self.supabase.table("mp_sales").update({
                                     "cart_adds": cart_adds
-                                }).eq("product_id", product_id).eq("marketplace", "wb").gte("date", date_from.strftime("%Y-%m-%d"))
-                                if self.user_id:
-                                    query = query.eq("user_id", self.user_id)
+                                }).eq("product_id", product_id).eq("marketplace", "wb").gte("date", date_from.strftime("%Y-%m-%d")).eq("user_id", self.user_id)
                                 query.execute()
                 except Exception as e:
                     logger.warning(f"Не удалось получить воронку WB: {e}")
@@ -1468,11 +1456,10 @@ class SyncService:
                 self.supabase.table("mp_costs_details")
                 .delete()
                 .eq("marketplace", "wb")
+                .eq("user_id", self.user_id)
                 .gte("date", date_from.strftime("%Y-%m-%d"))
                 .lte("date", date_to.strftime("%Y-%m-%d"))
             )
-            if self.user_id:
-                delete_query = delete_query.eq("user_id", self.user_id)
             delete_query.execute()
 
             details_batch = []
@@ -2250,11 +2237,10 @@ class SyncService:
                 self.supabase.table("mp_costs_details")
                 .delete()
                 .eq("marketplace", "ozon")
+                .eq("user_id", self.user_id)
                 .gte("date", date_from.strftime("%Y-%m-%d"))
                 .lte("date", date_to.strftime("%Y-%m-%d"))
             )
-            if self.user_id:
-                delete_query = delete_query.eq("user_id", self.user_id)
             delete_query.execute()
 
             # Сохраняем mp_costs_details (batch insert по 500)
@@ -2441,11 +2427,10 @@ class SyncService:
                 self.supabase.table("mp_ad_costs")
                 .delete()
                 .eq("marketplace", "ozon")
+                .eq("user_id", self.user_id)
                 .gte("date", date_from.strftime("%Y-%m-%d"))
                 .lte("date", date_to.strftime("%Y-%m-%d"))
             )
-            if self.user_id:
-                delete_query = delete_query.eq("user_id", self.user_id)
             delete_query.execute()
 
             # Обрабатываем по одной кампании (ограничение API: 1 запрос одновременно)

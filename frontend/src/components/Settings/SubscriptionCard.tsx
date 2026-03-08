@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { CheckCircle, XCircle, Loader2, CreditCard, XOctagon, CalendarOff, RefreshCw, ChevronDown } from 'lucide-react';
+import { CheckCircle, XCircle, Loader2, CreditCard, XOctagon, CalendarOff, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
 import { useSubscription, usePlans, useUpgrade, useCancelSubscription, useEnableAutoRenew } from '../../hooks/useSubscription';
 import type { PlanDefinition, SubscriptionFeatures } from '../../types';
@@ -15,6 +15,15 @@ const FEATURE_LABELS: Record<keyof SubscriptionFeatures, string> = {
   order_monitor: 'Монитор заказов',
   api_access: 'API доступ',
   fbs_analytics: 'FBO/FBS аналитика',
+  profit_chart: 'График прибыли',
+  drr_chart: 'График ДРР',
+  conversion_chart: 'График конверсии',
+  profit_waterfall: 'Водопад прибыли',
+  top_products: 'Топ товаров',
+  costs_donut: 'Структура удержаний',
+  mp_breakdown: 'Разбивка по МП',
+  stock_forecast: 'Прогноз остатков',
+  stock_history: 'История остатков',
 };
 
 const PLAN_COLORS: Record<string, string> = {
@@ -38,7 +47,6 @@ export function SubscriptionCard() {
   const cancelMut = useCancelSubscription();
   const enableMut = useEnableAutoRenew();
   const [upgrading, setUpgrading] = useState(false);
-  const [showPlans, setShowPlans] = useState(false);
 
   if (subLoading || plansLoading) {
     return (
@@ -125,18 +133,12 @@ export function SubscriptionCard() {
         </div>
       )}
 
-      {/* Plans comparison — collapsible */}
-      <button
-        type="button"
-        onClick={() => setShowPlans(!showPlans)}
-        className="w-full flex items-center justify-between py-2 px-1 text-xs font-medium text-gray-500 hover:text-gray-700 transition-colors"
-      >
+      {/* Plans comparison — always visible */}
+      <div className="py-2 px-1 text-xs font-medium text-gray-500">
         <span>Сравнить тарифы</span>
-        <ChevronDown className={`w-4 h-4 transition-transform duration-200 ${showPlans ? 'rotate-180' : ''}`} />
-      </button>
+      </div>
 
-      {showPlans && (
-        <div className="overflow-x-auto -mx-1 animate-in slide-in-from-top-2 duration-200">
+      <div className="overflow-x-auto -mx-1">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-gray-200">
@@ -214,7 +216,6 @@ export function SubscriptionCard() {
             </tbody>
           </table>
         </div>
-      )}
 
       {/* CTA — Upgrade / Cancel */}
       {sub.plan === 'free' && (

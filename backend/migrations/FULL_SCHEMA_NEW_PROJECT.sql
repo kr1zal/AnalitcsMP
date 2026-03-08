@@ -296,32 +296,26 @@ CREATE INDEX IF NOT EXISTS idx_mp_products_user ON mp_products(user_id);
 CREATE INDEX IF NOT EXISTS idx_mp_products_group ON mp_products(product_group_id) WHERE product_group_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_mp_products_sort ON mp_products(user_id, sort_order);
 
--- mp_sales
-CREATE INDEX IF NOT EXISTS idx_mp_sales_date ON mp_sales(date);
+-- mp_sales (composite: user_id → marketplace → date for all dashboard queries)
+CREATE INDEX IF NOT EXISTS idx_mp_sales_user_mp_date ON mp_sales(user_id, marketplace, date);
 CREATE INDEX IF NOT EXISTS idx_mp_sales_product_marketplace ON mp_sales(product_id, marketplace);
-CREATE INDEX IF NOT EXISTS idx_mp_sales_user ON mp_sales(user_id);
-CREATE INDEX IF NOT EXISTS idx_mp_sales_date_mp ON mp_sales(date, marketplace);
 
 -- mp_stocks
 CREATE INDEX IF NOT EXISTS idx_mp_stocks_product ON mp_stocks(product_id);
 CREATE INDEX IF NOT EXISTS idx_mp_stocks_user ON mp_stocks(user_id);
 
--- mp_costs
-CREATE INDEX IF NOT EXISTS idx_mp_costs_date ON mp_costs(date);
+-- mp_costs (composite: user_id → marketplace → date for costs-tree queries)
+CREATE INDEX IF NOT EXISTS idx_mp_costs_user_mp_date ON mp_costs(user_id, marketplace, date);
 CREATE INDEX IF NOT EXISTS idx_mp_costs_product ON mp_costs(product_id);
-CREATE INDEX IF NOT EXISTS idx_mp_costs_user ON mp_costs(user_id);
-CREATE INDEX IF NOT EXISTS idx_mp_costs_date_mp ON mp_costs(date, marketplace);
 
--- mp_costs_details
-CREATE INDEX IF NOT EXISTS idx_mp_costs_details_user ON mp_costs_details(user_id);
-CREATE INDEX IF NOT EXISTS idx_mp_costs_details_date_mp ON mp_costs_details(date, marketplace);
+-- mp_costs_details (composite: user_id → marketplace → date for detailed costs-tree)
+CREATE INDEX IF NOT EXISTS idx_mp_costs_details_user_mp_date ON mp_costs_details(user_id, marketplace, date);
 
 -- mp_sales_geo
 CREATE INDEX IF NOT EXISTS idx_mp_sales_geo_user ON mp_sales_geo(user_id);
 
--- mp_ad_costs
-CREATE INDEX IF NOT EXISTS idx_mp_ad_costs_user ON mp_ad_costs(user_id);
-CREATE INDEX IF NOT EXISTS idx_mp_ad_costs_date_mp ON mp_ad_costs(date, marketplace);
+-- mp_ad_costs (composite: user_id → marketplace → date for ad spend queries)
+CREATE INDEX IF NOT EXISTS idx_mp_ad_costs_user_mp_date ON mp_ad_costs(user_id, marketplace, date);
 
 -- mp_sync_log
 CREATE INDEX IF NOT EXISTS idx_mp_sync_log_user ON mp_sync_log(user_id);

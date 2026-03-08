@@ -11,6 +11,22 @@
 
 ---
 
+## 2026-03-09
+
+### Feature Gates for Dashboard Charts + 403 Fix
+- **9 new feature gates** in plans.py: profit_chart, drr_chart, conversion_chart, profit_waterfall, top_products, costs_donut, mp_breakdown, stock_forecast, stock_history
+- **FeatureGate component redesign:** loading skeleton, a11y (inert, aria-label), MIN_PLAN_MAP, min-h-[44px] touch targets
+- **DashboardPage:** all Pro-only charts wrapped in FeatureGate blur overlays; SalesChart + StocksTable remain FREE
+- **403 fix:** DashboardPage, UnitEconomicsPage, AdsPage — subscription-aware `enabled` flags prevent API calls for Free users (no more red 403 errors in console)
+- **UnitEconomicsPage:** shows FeatureGate overlay instead of error page for Free users
+- **AdsPage:** shows FeatureGate overlay instead of error page for Free users
+- **SubscriptionCard:** plans comparison table always visible (removed collapsible accordion)
+- **Cleanup:** removed dead code ProLockedOverlay.tsx
+- **Types:** SubscriptionFeatures extended with 9 new boolean fields
+- **Files changed:** plans.py, products.py, export.py, DashboardPage.tsx, UnitEconomicsPage.tsx, AdsPage.tsx, FeatureGate.tsx, SubscriptionCard.tsx, types/index.ts, vite-env.d.ts, App.tsx, 4 chart components
+
+---
+
 ## 2026-03-07
 
 ### Pricing Tier Overhaul -- Free/Pro rebalance
