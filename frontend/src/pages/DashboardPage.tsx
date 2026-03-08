@@ -191,7 +191,7 @@ export const DashboardPage = () => {
 
   // Закупка: считаем по unit-economics (purchase_costs = purchase_price * qty).
   // ОПТИМИЗАЦИЯ: purchase_costs_total теперь приходит из RPC get_dashboard_summary
-  const hasUeAccess = subscription?.features?.unit_economics !== false;
+  const hasUeAccess = subscription?.features?.unit_economics === true;
   const { data: unitEconomicsData, isLoading: ueLoading } = useUnitEconomics(filters, {
     // Загружаем только если есть доступ (Pro+) — для Free план бэкенд вернёт 403
     enabled: Boolean(summaryData) && hasUeAccess,
@@ -205,7 +205,7 @@ export const DashboardPage = () => {
     enabled: chartsEnabled,
   });
 
-  const hasAdsAccess = subscription?.features?.ads_page !== false;
+  const hasAdsAccess = subscription?.features?.ads_page === true;
   const { data: adCostsData, isLoading: adCostsLoading } = useAdCosts(chartFilters, {
     // Загружаем только если есть доступ (Pro+) — для Free план бэкенд вернёт 403
     enabled: chartsEnabled && hasAdsAccess,
@@ -815,6 +815,7 @@ export const DashboardPage = () => {
       <FilterPanel
         onExportExcel={handleExportExcel}
         onExportPdf={subscription?.features?.pdf_export ? handleExportPdf : undefined}
+        pdfLocked={subscription?.features?.pdf_export === false}
         onWidgetSettings={() => setWidgetSettingsOpen(true)}
         isExporting={isExporting}
         exportType={exportType}

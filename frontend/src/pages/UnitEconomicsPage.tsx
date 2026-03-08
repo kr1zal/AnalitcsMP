@@ -80,7 +80,7 @@ function buildMpBreakdown(
 export const UnitEconomicsPage = () => {
   const { datePreset, marketplace, fulfillmentType, customDateFrom, customDateTo } = useFiltersStore();
   const { data: subscription } = useSubscription();
-  const hasAccess = subscription?.features?.unit_economics !== false;
+  const hasAccess = subscription?.features?.unit_economics === true;
   const dateRange = getDateRangeFromPreset(datePreset, customDateFrom, customDateTo);
   const ftParam = fulfillmentType === 'all' ? undefined : fulfillmentType;
 

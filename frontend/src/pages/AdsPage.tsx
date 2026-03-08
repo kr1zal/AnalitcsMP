@@ -32,7 +32,7 @@ const MP_OPTIONS = [
 export const AdsPage = () => {
   const { datePreset, customDateFrom, customDateTo, setDatePreset, setCustomDates } = useFiltersStore();
   const { data: subscription } = useSubscription();
-  const hasAccess = subscription?.features?.ads_page !== false;
+  const hasAccess = subscription?.features?.ads_page === true;
   const [selectedMarketplace, setSelectedMarketplace] = useState<'all' | 'wb' | 'ozon'>('all');
   const isMobile = useIsMobile();
 

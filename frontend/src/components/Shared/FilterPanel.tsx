@@ -21,6 +21,8 @@ interface FilterPanelProps {
   onExportExcel?: () => void;
   /** Callback для экспорта в PDF */
   onExportPdf?: () => void;
+  /** PDF заблокирован (Free план) — показать кнопку с замком */
+  pdfLocked?: boolean;
   /** Callback для открытия настроек виджетов */
   onWidgetSettings?: () => void;
   /** Идёт ли экспорт */
@@ -32,6 +34,7 @@ interface FilterPanelProps {
 export const FilterPanel = ({
   onExportExcel,
   onExportPdf,
+  pdfLocked = false,
   onWidgetSettings,
   isExporting = false,
   exportType = null,
@@ -168,22 +171,28 @@ export const FilterPanel = ({
                 )}
               </button>
             )}
-            {onExportPdf && (
+            {(onExportPdf || pdfLocked) && (
               <button
-                onClick={onExportPdf}
-                disabled={isExporting}
-                aria-label="Экспорт в PDF"
+                onClick={pdfLocked ? undefined : onExportPdf}
+                disabled={isExporting || pdfLocked}
+                aria-label={pdfLocked ? 'PDF экспорт — доступно в Pro' : 'Экспорт в PDF'}
+                title={pdfLocked ? 'Доступно в Pro' : 'Экспорт в PDF'}
                 className={cn(
-                  'flex items-center justify-center h-8 w-8 rounded-lg transition-all active:scale-95',
-                  isExporting && exportType === 'pdf'
+                  'relative flex items-center justify-center h-8 w-8 rounded-lg transition-all active:scale-95',
+                  pdfLocked
                     ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                    : 'bg-rose-100 text-rose-700 hover:bg-rose-200'
+                    : isExporting && exportType === 'pdf'
+                      ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                      : 'bg-rose-100 text-rose-700 hover:bg-rose-200'
                 )}
               >
                 {isExporting && exportType === 'pdf' ? (
                   <Loader2 className="w-3.5 h-3.5 animate-spin" />
                 ) : (
                   <FileText className="w-3.5 h-3.5" />
+                )}
+                {pdfLocked && (
+                  <Lock className="absolute -top-1 -right-1 w-3 h-3 text-indigo-500" />
                 )}
               </button>
             )}
@@ -303,7 +312,7 @@ export const FilterPanel = ({
         </div>
 
         {/* Разделитель + Кнопки экспорта */}
-        {(onExportExcel || onExportPdf) && (
+        {(onExportExcel || onExportPdf || pdfLocked) && (
           <>
             <div className="h-8 w-px bg-gray-200" />
             <div className="flex items-center gap-2">
@@ -327,16 +336,18 @@ export const FilterPanel = ({
                   <span>Excel</span>
                 </button>
               )}
-              {onExportPdf && (
+              {(onExportPdf || pdfLocked) && (
                 <button
-                  onClick={onExportPdf}
-                  disabled={isExporting}
-                  title="Экспорт в PDF"
+                  onClick={pdfLocked ? undefined : onExportPdf}
+                  disabled={isExporting || pdfLocked}
+                  title={pdfLocked ? 'Доступно в Pro' : 'Экспорт в PDF'}
                   className={cn(
-                    'flex items-center gap-1.5 h-9 px-3 text-sm font-medium rounded-lg transition-all',
-                    isExporting && exportType === 'pdf'
+                    'relative flex items-center gap-1.5 h-9 px-3 text-sm font-medium rounded-lg transition-all',
+                    pdfLocked
                       ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                      : 'bg-rose-100 text-rose-700 hover:bg-rose-200'
+                      : isExporting && exportType === 'pdf'
+                        ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                        : 'bg-rose-100 text-rose-700 hover:bg-rose-200'
                   )}
                 >
                   {isExporting && exportType === 'pdf' ? (
@@ -345,6 +356,9 @@ export const FilterPanel = ({
                     <FileText className="w-4 h-4" />
                   )}
                   <span>PDF</span>
+                  {pdfLocked && (
+                    <Lock className="w-3 h-3 text-indigo-500" />
+                  )}
                 </button>
               )}
             </div>
