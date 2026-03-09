@@ -6,17 +6,17 @@
 
 1. Логи analytics-api (последние N строк):
 ```bash
-sshpass -p '@vnDBp5VCt2+' ssh -o StrictHostKeyChecking=no root@83.222.16.15 "journalctl -u analytics-api --no-pager -n ${LINES:-50}"
+ssh -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=no -p 2222 root@83.222.16.15 "journalctl -u analytics-api --no-pager -n ${LINES:-50}"
 ```
 
 2. Статус сервиса:
 ```bash
-sshpass -p '@vnDBp5VCt2+' ssh -o StrictHostKeyChecking=no root@83.222.16.15 "systemctl status analytics-api --no-pager"
+ssh -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=no -p 2222 root@83.222.16.15 "systemctl status analytics-api --no-pager"
 ```
 
 3. Nginx access log (последние 20 строк):
 ```bash
-sshpass -p '@vnDBp5VCt2+' ssh -o StrictHostKeyChecking=no root@83.222.16.15 "tail -20 /var/log/nginx/access.log"
+ssh -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=no -p 2222 root@83.222.16.15 "tail -20 /var/log/nginx/access.log"
 ```
 
 ## Вывод:
@@ -27,5 +27,5 @@ sshpass -p '@vnDBp5VCt2+' ssh -o StrictHostKeyChecking=no root@83.222.16.15 "tai
 
 Если есть аргумент "error" или "ошибки" — фильтровать только ошибки:
 ```bash
-sshpass -p '@vnDBp5VCt2+' ssh -o StrictHostKeyChecking=no root@83.222.16.15 "journalctl -u analytics-api --no-pager -n 200 | grep -i 'error\|traceback\|exception\|500'"
+ssh -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=no -p 2222 root@83.222.16.15 "journalctl -u analytics-api --no-pager -n 200 | grep -i 'error\|traceback\|exception\|500'"
 ```

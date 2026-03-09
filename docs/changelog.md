@@ -11,6 +11,16 @@
 
 ---
 
+## 2026-03-09 (patch)
+
+### Fix: Ozon UE storage-only products double deduction (P0)
+- **Bug:** Storage cost application in `dashboard.py` created entries in `ozon_order_date_by_product` for products WITHOUT finance records (0 sales). This triggered the delivery-based calculation path instead of the storage-only path, causing `net_profit = -storage - purchase` instead of `net_profit = -storage`
+- **Impact:** Л-Карнитин: -752₽ → -392₽ (was overstated by 360₽ = purchase_price). Бустер тестостерона: -1093.74₽ → -689.74₽ (overstated by 404₽)
+- **Fix:** Storage loop now only modifies existing entries in `ozon_order_date_by_product` (products with finance records). Storage-only products handled by safety check (line 964)
+- **Files:** `backend/app/api/v1/dashboard.py` (lines 601-606)
+
+---
+
 ## 2026-03-09
 
 ### Feature Gates for Dashboard Charts + 403 Fix

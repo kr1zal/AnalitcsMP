@@ -626,10 +626,10 @@ npm install -D <package>    # dev dependency
 curl -s https://reviomp.ru/health
 
 # Проверка статуса сервиса (на VPS)
-ssh root@83.222.16.15 "systemctl status analytics-api"
+ssh -i ~/.ssh/id_ed25519 -p 2222 root@83.222.16.15 "systemctl status analytics-api"
 
 # Логи backend (на VPS)
-ssh root@83.222.16.15 "journalctl -u analytics-api -f --no-pager -n 100"
+ssh -i ~/.ssh/id_ed25519 -p 2222 root@83.222.16.15 "journalctl -u analytics-api -f --no-pager -n 100"
 ```
 
 ### Supabase

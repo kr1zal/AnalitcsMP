@@ -13,7 +13,7 @@ You deploy with zero-downtime methodology: verify before deploy, verify after de
 ```
 URL:        https://reviomp.ru
 VPS:        Beget 83.222.16.15, Ubuntu 24.04
-SSH:        ssh root@83.222.16.15 (password: @vnDBp5VCt2+)
+SSH:        ssh -i ~/.ssh/id_ed25519 -p 2222 root@83.222.16.15 (key-only auth)
 Backend:    systemd service "analytics-api" at /var/www/analytics/backend/
 Frontend:   static files at /var/www/analytics/frontend/
 Nginx:      reverse proxy, SSL via Let's Encrypt
@@ -52,13 +52,13 @@ cd /Users/kr1zal/Documents/ii-devOps/Projects/Analitics/frontend && npm run buil
 ### Phase 2: VPS Health Pre-check
 ```bash
 # Check VPS is reachable
-sshpass -p '@vnDBp5VCt2+' ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 root@83.222.16.15 "echo 'VPS_OK'"
+ssh -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=no -p 2222 -o ConnectTimeout=10 root@83.222.16.15 "echo 'VPS_OK'"
 
 # Check disk space (need at least 500MB free)
-sshpass -p '@vnDBp5VCt2+' ssh -o StrictHostKeyChecking=no root@83.222.16.15 "df -h /var/www/analytics/ | tail -1"
+ssh -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=no -p 2222 root@83.222.16.15 "df -h /var/www/analytics/ | tail -1"
 
 # Check current service status
-sshpass -p '@vnDBp5VCt2+' ssh -o StrictHostKeyChecking=no root@83.222.16.15 "systemctl is-active analytics-api"
+ssh -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=no -p 2222 root@83.222.16.15 "systemctl is-active analytics-api"
 
 # Check current site responds
 curl -s -o /dev/null -w "%{http_code}" --max-time 10 https://reviomp.ru
@@ -69,31 +69,31 @@ If ANY check fails → STOP and report. Do NOT deploy to unhealthy server.
 ### Phase 3: Backup (before destructive changes)
 ```bash
 # Backup current frontend (in case of rollback)
-sshpass -p '@vnDBp5VCt2+' ssh -o StrictHostKeyChecking=no root@83.222.16.15 "cp -r /var/www/analytics/frontend/ /var/www/analytics/frontend_backup_$(date +%Y%m%d_%H%M%S)/"
+ssh -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=no -p 2222 root@83.222.16.15 "cp -r /var/www/analytics/frontend/ /var/www/analytics/frontend_backup_$(date +%Y%m%d_%H%M%S)/"
 ```
 
 ### Phase 4: Frontend Deploy
 ```bash
 cd /Users/kr1zal/Documents/ii-devOps/Projects/Analitics/frontend && \
-sshpass -p '@vnDBp5VCt2+' rsync -avz --delete \
-  -e "ssh -o StrictHostKeyChecking=no" \
+rsync -avz --delete \
+  -e "ssh -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=no -p 2222" \
   dist/ root@83.222.16.15:/var/www/analytics/frontend/
 ```
 
 ### Phase 5: Backend Deploy (only if backend changed)
 ```bash
 cd /Users/kr1zal/Documents/ii-devOps/Projects/Analitics && \
-sshpass -p '@vnDBp5VCt2+' rsync -avz \
+rsync -avz \
   --exclude='venv' --exclude='__pycache__' --exclude='.env' \
-  -e "ssh -o StrictHostKeyChecking=no" \
+  -e "ssh -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=no -p 2222" \
   backend/ root@83.222.16.15:/var/www/analytics/backend/
 
 # Install any new dependencies
-sshpass -p '@vnDBp5VCt2+' ssh -o StrictHostKeyChecking=no root@83.222.16.15 \
+ssh -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=no -p 2222 root@83.222.16.15 \
   "cd /var/www/analytics/backend && source venv/bin/activate && pip install -r requirements.txt --quiet"
 
 # Restart backend service
-sshpass -p '@vnDBp5VCt2+' ssh -o StrictHostKeyChecking=no root@83.222.16.15 \
+ssh -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=no -p 2222 root@83.222.16.15 \
   "systemctl restart analytics-api"
 
 # Wait for service to start
@@ -109,15 +109,15 @@ curl -s -o /dev/null -w "%{http_code}" --max-time 10 https://reviomp.ru
 curl -s -o /dev/null -w "%{http_code}" --max-time 10 https://reviomp.ru/api/health
 
 # 3. Backend service running
-sshpass -p '@vnDBp5VCt2+' ssh -o StrictHostKeyChecking=no root@83.222.16.15 \
+ssh -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=no -p 2222 root@83.222.16.15 \
   "systemctl is-active analytics-api"
 
 # 4. Check backend logs for errors (last 20 lines)
-sshpass -p '@vnDBp5VCt2+' ssh -o StrictHostKeyChecking=no root@83.222.16.15 \
+ssh -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=no -p 2222 root@83.222.16.15 \
   "journalctl -u analytics-api --no-pager -n 20 --since '2 minutes ago'"
 
 # 5. Nginx status
-sshpass -p '@vnDBp5VCt2+' ssh -o StrictHostKeyChecking=no root@83.222.16.15 \
+ssh -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=no -p 2222 root@83.222.16.15 \
   "systemctl is-active nginx"
 
 # 6. SSL certificate validity
@@ -129,11 +129,11 @@ curl -s --max-time 5 https://reviomp.ru -vI 2>&1 | grep -i "expire\|SSL"
 # Only if post-deploy checks fail:
 
 # Frontend rollback — find latest backup
-sshpass -p '@vnDBp5VCt2+' ssh -o StrictHostKeyChecking=no root@83.222.16.15 \
+ssh -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=no -p 2222 root@83.222.16.15 \
   "ls -td /var/www/analytics/frontend_backup_* | head -1"
 
 # Restore from backup
-sshpass -p '@vnDBp5VCt2+' ssh -o StrictHostKeyChecking=no root@83.222.16.15 \
+ssh -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=no -p 2222 root@83.222.16.15 \
   "BACKUP=\$(ls -td /var/www/analytics/frontend_backup_* | head -1) && rm -rf /var/www/analytics/frontend/ && cp -r \$BACKUP /var/www/analytics/frontend/"
 
 # Backend rollback — restart with previous code (git-based)
@@ -143,7 +143,7 @@ sshpass -p '@vnDBp5VCt2+' ssh -o StrictHostKeyChecking=no root@83.222.16.15 \
 ### Phase 8: Cleanup
 ```bash
 # Remove old backups (keep last 3)
-sshpass -p '@vnDBp5VCt2+' ssh -o StrictHostKeyChecking=no root@83.222.16.15 \
+ssh -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=no -p 2222 root@83.222.16.15 \
   "ls -td /var/www/analytics/frontend_backup_* 2>/dev/null | tail -n +4 | xargs rm -rf"
 ```
 

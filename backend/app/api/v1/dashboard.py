@@ -598,12 +598,13 @@ async def get_unit_economics(
                     _accumulate_od_row(pid, amt, cat, ft_val, subcat)
 
                 # Apply per-product daily storage to payout (storage is a NEGATIVE charge)
+                # ONLY for products that already have finance records (sales/commissions).
+                # Storage-only products (0 sales) are handled separately via safety check below.
                 if has_per_product_storage:
                     for pid, storage_cost in per_product_storage.items():
-                        if pid not in ozon_order_date_by_product:
-                            ozon_order_date_by_product[pid] = {"payout": 0.0, "revenue": 0.0}
-                        # storage_cost is positive (amount from XLSX), subtract from payout
-                        ozon_order_date_by_product[pid]["payout"] -= storage_cost
+                        if pid in ozon_order_date_by_product:
+                            # storage_cost is positive (amount from XLSX), subtract from payout
+                            ozon_order_date_by_product[pid]["payout"] -= storage_cost
         except Exception as e:
             logger.warning(f"order_date query failed for Ozon UE: {e}")
             # fallback: ozon_order_date_by_product stays empty → payout_rate method will be used

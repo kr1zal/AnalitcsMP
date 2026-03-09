@@ -129,7 +129,7 @@ class Settings(BaseSettings):
 
 ```bash
 # SSH на VPS
-ssh root@83.222.16.15
+ssh -i ~/.ssh/id_ed25519 -p 2222 root@83.222.16.15
 
 # Миграция 023: привязка аккаунтов
 psql "$DATABASE_URL" < /var/www/analytics/backend/migrations/023_telegram.sql

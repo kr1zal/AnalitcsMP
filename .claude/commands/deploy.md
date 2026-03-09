@@ -11,17 +11,17 @@ Steps:
 5. If there are NEW migrations — STOP and print SQL for user to apply in Supabase Dashboard first. Wait for user confirmation before continuing.
 6. Deploy backend (if backend files changed):
 ```
-sshpass -p '@vnDBp5VCt2+' rsync -avz --exclude='venv' --exclude='__pycache__' -e "ssh -o StrictHostKeyChecking=no" backend/ root@83.222.16.15:/var/www/analytics/backend/
-ssh root@83.222.16.15 "systemctl restart analytics-api"
+rsync -avz --exclude='venv' --exclude='__pycache__' -e "ssh -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=no -p 2222" backend/ root@83.222.16.15:/var/www/analytics/backend/
+ssh -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=no -p 2222 root@83.222.16.15 "systemctl restart analytics-api"
 ```
 7. Deploy frontend:
 ```
-sshpass -p '@vnDBp5VCt2+' rsync -avz --delete -e "ssh -o StrictHostKeyChecking=no" frontend/dist/ root@83.222.16.15:/var/www/analytics/frontend/
+rsync -avz --delete -e "ssh -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=no -p 2222" frontend/dist/ root@83.222.16.15:/var/www/analytics/frontend/
 ```
 8. Verify:
 ```
 curl -s https://reviomp.ru/api/v1/health
-ssh root@83.222.16.15 "journalctl -u analytics-api --no-pager -n 10"
+ssh -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=no -p 2222 root@83.222.16.15 "journalctl -u analytics-api --no-pager -n 10"
 ```
 9. Report result: SUCCESS or FAILED with details
 
