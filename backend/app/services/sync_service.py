@@ -1949,16 +1949,20 @@ class SyncService:
         try:
             products_map = self._get_products_map()
 
-            # Ozon finance API allows max 30 days per request.
-            # Split into 30-day chunks for longer periods (max 12 chunks = ~1 year).
-            chunk_size = timedelta(days=30)
+            # Ozon finance API requires period within a single calendar month.
+            # Split into calendar-month chunks (e.g., Feb 22→Feb 28, Mar 1→Mar 24).
             all_operations = []
             chunk_from = date_from
             chunk_count = 0
-            max_chunks = 12  # safety limit: ~1 year
+            max_chunks = 14  # safety limit: ~1 year
 
             while chunk_from < date_to and chunk_count < max_chunks:
-                chunk_to = min(chunk_from + chunk_size, date_to)
+                # End of current month
+                if chunk_from.month == 12:
+                    month_end = chunk_from.replace(year=chunk_from.year + 1, month=1, day=1) - timedelta(days=1)
+                else:
+                    month_end = chunk_from.replace(month=chunk_from.month + 1, day=1) - timedelta(days=1)
+                chunk_to = min(month_end, date_to)
 
                 # Получаем транзакции для текущего чанка с пагинацией
                 page = 1
