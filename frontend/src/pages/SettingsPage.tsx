@@ -86,7 +86,7 @@ export function SettingsPage() {
         onNavigate={handleSyncNavigate}
       />
 
-      <div className="max-w-5xl mx-auto px-4 py-6 sm:py-10">
+      <div className="max-w-[1600px] mx-auto px-4 py-6 sm:py-10 min-h-[calc(100vh-4rem)]">
         <h1 className="text-xl font-bold text-gray-900 mb-6">Настройки</h1>
 
         <div className="flex flex-col md:flex-row gap-6">
