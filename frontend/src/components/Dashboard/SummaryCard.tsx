@@ -1,25 +1,21 @@
 /**
- * Enterprise SummaryCard — карточка метрики дашборда
+ * SummaryCard v2-refined — enterprise-минималистичная карточка метрики
  *
  * Дизайн:
  * ┌─────────────────────────────────┐
- * │ [icon]  Title           ? badge │
- * │                                 │
- * │  19 502 ₽                       │
- * │  245 шт · выкуп 81%            │
- * │                                 │
- * │  ком. 4 200, лог. 3 100        │
+ * │ Label                   ? Δ+12% │
+ * │ 19 502 ₽                        │
+ * │ 245 шт · выкуп 81%             │
  * └─────────────────────────────────┘
  *
- * - Цветной icon с bg-circle
- * - Крупное основное значение
- * - Опциональное вторичное значение (secondaryValue)
- * - Change badge (+12% / -5%) в правом верхнем углу
- * - Warning badge (⚠️) при наличии
+ * - Белый фон, gray-200 border, без иконок/градиентов
+ * - Число — главный акцент (26px semibold)
+ * - Hover: border darkens + shadow + text darkens
+ * - Change badge: pill с rounded-[4px], emerald/red
  */
 import { type ReactNode, useState, useRef, useEffect } from 'react';
 import type { LucideIcon } from 'lucide-react';
-import { HelpCircle, AlertTriangle, TrendingUp, TrendingDown } from 'lucide-react';
+import { HelpCircle, AlertTriangle } from 'lucide-react';
 import { createPortal } from 'react-dom';
 import { cn, formatNumber, formatPercent } from '../../lib/utils';
 
@@ -33,7 +29,8 @@ export type CardAccent =
   | 'violet'   // реклама
   | 'slate';   // расходы
 
-const accentStyles: Record<CardAccent, { bg: string; text: string; ring: string }> = {
+/** @deprecated v2-refined: icons removed. Kept for backward compatibility */
+export const accentStyles: Record<CardAccent, { bg: string; text: string; ring: string }> = {
   indigo:  { bg: 'bg-indigo-50',  text: 'text-indigo-600',  ring: 'ring-indigo-100' },
   emerald: { bg: 'bg-emerald-50', text: 'text-emerald-600', ring: 'ring-emerald-100' },
   amber:   { bg: 'bg-amber-50',   text: 'text-amber-600',   ring: 'ring-amber-100' },
@@ -77,49 +74,54 @@ interface SummaryCardProps {
   unit?: string;
 }
 
-// ── Adaptive font size ──
-const getFontSizeClass = (numDigits: number): string => {
-  // 4-col grid → карточки ~25% ширины → ~220px доступно для чисел
-  if (numDigits <= 5) return 'text-2xl sm:text-3xl';   // До 99 999
-  if (numDigits <= 7) return 'text-xl sm:text-2xl';    // До 9 999 999
-  if (numDigits <= 9) return 'text-lg sm:text-xl';     // До 999 999 999
-  return 'text-base sm:text-lg';                        // 10+ цифр
+// ── Adaptive font size (v2-refined: 26px base) ──
+const getFontSizeClass = (numDigits: number, isCompact?: boolean): string => {
+  if (isCompact) {
+    if (numDigits <= 7) return 'text-[20px]';
+    if (numDigits <= 9) return 'text-[18px]';
+    return 'text-[16px]';
+  }
+  if (numDigits <= 7) return 'text-[26px]';
+  if (numDigits <= 9) return 'text-[22px]';
+  return 'text-[18px]';
 };
 
 // ── Currency renderer (рубли крупно, копейки мелко) ──
-const CurrencyValue = ({ value, sizeOverride }: { value: number; sizeOverride?: string }) => {
+const CurrencyValue = ({ value, sizeOverride, compact }: { value: number; sizeOverride?: string; compact?: boolean }) => {
   const isNegative = value < 0;
   const absVal = Math.abs(value);
   const rubles = Math.floor(absVal);
   const kopecks = Math.round((absVal - rubles) * 100);
   const rublesFormatted = rubles.toLocaleString('ru-RU');
   const numDigits = rubles.toString().length;
-  const mainSize = sizeOverride ?? getFontSizeClass(numDigits);
+  const mainSize = sizeOverride ?? getFontSizeClass(numDigits, compact);
 
   return (
-    <span className={cn('font-bold tabular-nums leading-tight', mainSize)}>
-      {isNegative && <span className="text-red-600">−</span>}
+    <span className={cn('font-semibold tabular-nums leading-[1.15] tracking-tight', mainSize)}>
+      {isNegative && <span className="text-red-600">{'\u2212'}</span>}
       <span className={isNegative ? 'text-red-600' : 'text-gray-900'}>
         {rublesFormatted}
       </span>
       {kopecks > 0 && (
-        <span className="text-xs text-gray-400">,{kopecks.toString().padStart(2, '0')}</span>
+        <span className="text-sm text-gray-400 font-normal">,{kopecks.toString().padStart(2, '0')}</span>
       )}
-      <span className="text-xs text-gray-400 ml-0.5">₽</span>
+      <span className="text-sm text-gray-400 font-normal ml-0.5">{'\u20BD'}</span>
     </span>
   );
 };
 
-// ── Change badge component ──
+// ── Change badge component (v2: pill with Unicode arrows) ──
 const ChangeBadge = ({ change, isPositive }: { change: number; isPositive?: boolean }) => {
+  if (change === 0) {
+    return <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium text-gray-400 bg-gray-50 whitespace-nowrap">0%</span>;
+  }
   const positive = isPositive ?? change >= 0;
   const color = positive ? 'text-emerald-700 bg-emerald-50' : 'text-red-700 bg-red-50';
-  const Icon = positive ? TrendingUp : TrendingDown;
+  const arrow = positive ? '\u2191' : '\u2193';
 
   return (
-    <span className={cn('hidden sm:inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] sm:text-xs font-semibold whitespace-nowrap', color)}>
-      <Icon className="w-3 h-3" />
-      {change > 0 ? '+' : ''}{formatPercent(Math.abs(change))}
+    <span className={cn('inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-xs font-medium whitespace-nowrap', color)}>
+      {arrow} {change > 0 ? '+' : ''}{formatPercent(Math.abs(change))}
     </span>
   );
 };
@@ -163,7 +165,7 @@ const CardTooltip = ({ text, align = 'left' }: { text: string; align?: 'left' | 
       <button
         ref={iconRef}
         onClick={handleTap}
-        className="sm:hidden flex-shrink-0 p-0.5 -m-0.5"
+        className="sm:hidden flex-shrink-0 p-2.5 -m-2.5"
         aria-label="Подсказка"
       >
         <HelpCircle className="w-3.5 h-3.5 text-gray-300 active:text-gray-500" />
@@ -179,11 +181,11 @@ const CardTooltip = ({ text, align = 'left' }: { text: string; align?: 'left' | 
         document.body,
       )}
       {/* Desktop: hover */}
-      <div className="hidden sm:block group relative flex-shrink-0">
+      <div className="hidden sm:block group/tip relative flex-shrink-0">
         <HelpCircle className="w-3.5 h-3.5 text-gray-300 hover:text-gray-500 cursor-help transition-colors" />
         <div
           className={cn(
-            'invisible group-hover:visible opacity-0 group-hover:opacity-100 transition-opacity',
+            'invisible group-hover/tip:visible opacity-0 group-hover/tip:opacity-100 transition-opacity',
             'absolute z-50 top-6 w-56 sm:w-72 p-3 bg-gray-900 text-white text-[11px] sm:text-xs rounded-xl shadow-2xl leading-relaxed whitespace-pre-line',
             align === 'right' ? 'right-0 left-auto' : 'left-0 right-auto',
           )}
@@ -206,8 +208,8 @@ export const SummaryCard = ({
   subtitle,
   tooltip,
   tooltipAlign = 'left',
-  icon: Icon,
-  accent = 'indigo',
+  icon: _icon,
+  accent: _accent = 'indigo',
   change,
   isPositive,
   loading = false,
@@ -217,29 +219,24 @@ export const SummaryCard = ({
   compact = false,
   unit,
 }: SummaryCardProps) => {
-  const colors = accentStyles[accent];
-
-  // ── Loading skeleton ──
+  // ── Loading skeleton (v2-refined) ──
   if (loading) {
     return (
       <div className={cn(
-        'bg-white rounded-2xl shadow-sm border border-gray-100 h-full',
-        compact ? 'p-2.5 sm:p-3' : 'p-4 sm:p-5',
+        'bg-white rounded-lg border border-gray-200 h-full',
+        compact ? 'p-2.5 sm:p-3' : 'p-4',
       )}>
-        <div className="animate-pulse">
+        <div className="animate-pulse flex flex-col gap-1">
           {compact ? (
             <>
-              <div className="h-3 bg-gray-100 rounded w-14 mb-2" />
-              <div className="h-5 bg-gray-100 rounded w-3/4" />
+              <div className="h-3 bg-gray-100 rounded w-14" />
+              <div className="h-5 bg-gray-100 rounded w-3/4 mt-1" />
             </>
           ) : (
             <>
-              <div className="flex items-center gap-2 mb-3">
-                <div className="w-8 h-8 sm:w-9 sm:h-9 bg-gray-100 rounded-xl" />
-                <div className="h-3.5 bg-gray-100 rounded w-16" />
-              </div>
-              <div className="h-8 bg-gray-100 rounded w-3/4 mb-2" />
-              <div className="h-3.5 bg-gray-50 rounded w-1/2" />
+              <div className="h-3.5 bg-gray-100 rounded w-20" />
+              <div className="h-7 bg-gray-100 rounded w-3/4 mt-1" />
+              <div className="h-3 bg-gray-50 rounded w-1/2 mt-1" />
             </>
           )}
         </div>
@@ -247,28 +244,32 @@ export const SummaryCard = ({
     );
   }
 
-  // ── Format value ──
-  const sizeClass = compact ? 'text-lg sm:text-xl' : undefined; // undefined → use adaptive
+  // ── Format value (v2-refined: 26px/semibold/tabular-nums) ──
+  const valueBase = compact
+    ? 'font-semibold text-gray-900 tabular-nums leading-[1.15] tracking-tight text-[20px]'
+    : 'font-semibold text-gray-900 tabular-nums leading-[1.15] tracking-tight text-[26px]';
 
   const renderValue = () => {
     if (children) return children;
 
     if (typeof value === 'string') {
-      return <span className={cn('font-bold text-gray-900', compact ? 'text-lg sm:text-xl' : 'text-2xl sm:text-3xl')}>{value}</span>;
+      return <span className={valueBase}>{value}</span>;
     }
+
+    const isNeg = value < 0;
 
     switch (format) {
       case 'currency':
-        return <CurrencyValue value={value} sizeOverride={sizeClass} />;
+        return <CurrencyValue value={value} compact={compact} />;
       case 'percent':
         return (
-          <span className={cn('font-bold text-gray-900 tabular-nums', compact ? 'text-lg sm:text-xl' : 'text-2xl sm:text-3xl')}>
+          <span className={cn(valueBase, isNeg && 'text-red-600')}>
             {formatPercent(value)}
           </span>
         );
       default:
         return (
-          <span className={cn('font-bold text-gray-900 tabular-nums', compact ? 'text-lg sm:text-xl' : 'text-2xl sm:text-3xl')}>
+          <span className={cn(valueBase, isNeg && 'text-red-600')}>
             {formatNumber(value)}
           </span>
         );
@@ -278,14 +279,14 @@ export const SummaryCard = ({
   // ── Compact layout: title + value + unit + axisBadge ──
   if (compact) {
     return (
-      <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-2.5 sm:p-3 h-full flex flex-col justify-between">
-        <span className="text-[11px] font-medium text-gray-400 truncate leading-none">
+      <div className="bg-white rounded-lg border border-gray-200 p-2.5 sm:p-3 transition-all duration-150 hover:border-gray-300 hover:shadow-[0_2px_8px_rgba(0,0,0,0.06)] h-full flex flex-col justify-between group">
+        <span className="text-[11px] font-medium text-gray-500 group-hover:text-gray-700 transition-colors duration-150 truncate leading-none">
           {mobileTitle ?? title}
         </span>
         <div className="flex items-baseline gap-1 overflow-hidden mt-1">
           {renderValue()}
           {unit && format === 'number' && (
-            <span className="text-xs text-gray-400 ml-0.5 flex-shrink-0">{unit}</span>
+            <span className="text-sm text-gray-400 font-normal ml-0.5 flex-shrink-0">{unit}</span>
           )}
         </div>
         {axisBadge && (
@@ -297,37 +298,32 @@ export const SummaryCard = ({
     );
   }
 
-  // ── Full layout ──
+  // ── Full layout (v2-refined) ──
   return (
-    <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 sm:p-5 transition-shadow hover:shadow-md h-full flex flex-col">
-      {/* ── Header: icon + title + tooltip + change badge ── */}
-      <div className="flex items-center justify-between mb-3 sm:mb-4">
-        <div className="flex items-center gap-1.5 sm:gap-2 min-w-0 flex-1">
-          {Icon && (
-            <div className={cn('flex items-center justify-center w-8 h-8 sm:w-9 sm:h-9 rounded-xl ring-1', colors.bg, colors.ring)}>
-              <Icon className={cn('w-4 h-4 sm:w-[18px] sm:h-[18px]', colors.text)} />
-            </div>
-          )}
+    <div className="bg-white rounded-lg border border-gray-200 p-4 transition-all duration-150 hover:border-gray-300 hover:shadow-[0_2px_8px_rgba(0,0,0,0.06)] h-full flex flex-col gap-1 group">
+      {/* ── Header: label + tooltip + warning + change badge ── */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-1.5 min-w-0 flex-1">
           {mobileTitle ? (
             <>
-              <span className="sm:hidden text-xs font-medium text-gray-500 truncate">{mobileTitle}</span>
-              <span className="hidden sm:inline text-xs sm:text-sm font-medium text-gray-500 truncate">{title}</span>
+              <span className="sm:hidden text-[12px] font-medium text-gray-500 group-hover:text-gray-700 transition-colors duration-150 truncate">{mobileTitle}</span>
+              <span className="hidden sm:inline text-[13px] font-medium text-gray-500 group-hover:text-gray-700 transition-colors duration-150 truncate">{title}</span>
             </>
           ) : (
-            <span className="text-xs sm:text-sm font-medium text-gray-500 truncate">{title}</span>
+            <span className="text-[13px] font-medium text-gray-500 group-hover:text-gray-700 transition-colors duration-150 truncate">{title}</span>
           )}
           {tooltip && (
             <CardTooltip text={tooltip} align={tooltipAlign} />
           )}
         </div>
-        {/* Right side: change badge or warning */}
+        {/* Right side: warning + change badge */}
         <div className="flex items-center gap-1.5 flex-shrink-0">
           {warning && (
-            <div className="group relative">
+            <div className="group/warn relative">
               <div className="flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-amber-50 text-amber-600">
                 <AlertTriangle className="w-3 h-3" />
               </div>
-              <div className="invisible group-hover:visible opacity-0 group-hover:opacity-100 transition-opacity absolute z-50 top-full right-0 mt-1.5 w-52 p-2.5 bg-gray-900 text-white text-[11px] rounded-xl shadow-xl whitespace-normal leading-relaxed">
+              <div className="invisible group-hover/warn:visible opacity-0 group-hover/warn:opacity-100 transition-opacity absolute z-50 top-full right-0 mt-1.5 w-52 p-2.5 bg-gray-900 text-white text-[11px] rounded-xl shadow-xl whitespace-normal leading-relaxed">
                 {warning}
                 <span className="absolute -top-1 right-3 w-2 h-2 bg-gray-900 rotate-45" />
               </div>
@@ -341,14 +337,17 @@ export const SummaryCard = ({
       <div className="min-w-0 flex-1 flex flex-col justify-center">
         <div className="flex items-baseline gap-1 overflow-hidden">
           {renderValue()}
+          {unit && format === 'number' && (
+            <span className="text-sm text-gray-400 font-normal ml-0.5">{unit}</span>
+          )}
         </div>
         {secondaryValue && (
-          <p className="text-sm sm:text-base font-medium text-gray-500 mt-0.5 tabular-nums truncate">
+          <p className="text-xs text-gray-400 group-hover:text-gray-500 transition-colors duration-150 mt-0.5 tabular-nums truncate">
             {secondaryValue}
           </p>
         )}
         {subtitle && (
-          <p className="text-[11px] sm:text-xs text-gray-400 mt-1.5 truncate leading-relaxed">
+          <p className="text-[11px] text-gray-400 mt-1 truncate leading-relaxed">
             {subtitle}
           </p>
         )}
@@ -356,7 +355,7 @@ export const SummaryCard = ({
 
       {/* ── Axis badge (inline, часть flow) ── */}
       {axisBadge && (
-        <div className="flex justify-end mt-1.5">
+        <div className="flex justify-end mt-0.5">
           {axisBadge}
         </div>
       )}

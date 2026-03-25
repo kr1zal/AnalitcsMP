@@ -11,6 +11,16 @@
 
 ---
 
+## 2026-03-24 (patch)
+
+### Fix: Ozon costs sync — calendar month chunking (P0)
+- **Bug:** `sync_costs_ozon()` использовал `timedelta(days=30)` для chunking запросов к Ozon Finance API. При `days_back=30` запрос пересекал границы календарных месяцев (напр. Feb 22→Mar 24), Ozon отвечал 400 "too long period, only one month allowed"
+- **Impact:** Ozon costs_details не синхронизировались с 3 марта → dashboard показывал удержания = 0 для всех Ozon товаров
+- **Fix:** Calendar-month splitting — каждый чанк строго в рамках одного месяца (`replace(month+1, day=1) - timedelta(days=1)`)
+- **Files:** `backend/app/services/sync_service.py` (lines 1952-1965)
+
+---
+
 ## 2026-03-09 (patch)
 
 ### Fix: Ozon UE storage-only products double deduction (P0)

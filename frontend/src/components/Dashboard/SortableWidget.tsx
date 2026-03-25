@@ -108,10 +108,7 @@ export const DragOverlayWidget = ({
 
   return (
     <div
-      className={cn(
-        'shadow-xl ring-2 ring-indigo-200',
-        compact ? 'rounded-xl' : 'rounded-2xl',
-      )}
+      className="shadow-[0_4px_16px_rgba(0,0,0,0.1)] ring-1 ring-gray-300 rounded-lg"
     >
       <SummaryCard
         title={definition.title}

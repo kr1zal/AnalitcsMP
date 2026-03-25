@@ -772,7 +772,7 @@ export const DashboardPage = () => {
   };
 
   return (
-    <div className="max-w-7xl mx-auto px-3 sm:px-4 lg:px-6 py-4 sm:py-6 lg:py-8">
+    <div className="max-w-[1600px] mx-auto px-3 sm:px-4 lg:px-6 py-4 sm:py-6 lg:py-8">
       {/* CC=0 reminder modal */}
       {showCcModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={dismissCcModal}>
