@@ -99,7 +99,7 @@ export const Layout = () => {
       {/* Header только на десктопе; на мобиле — только боковая плашка */}
       {!isMobile && (
       <header className="bg-white border-b border-gray-200 sticky top-0 z-40">
-        <div className="max-w-7xl mx-auto px-3 sm:px-6">
+        <div className="max-w-[1600px] mx-auto px-3 sm:px-6">
           <div className="flex items-center justify-between h-14 sm:h-16">
             <Link to="/" className="flex items-center flex-shrink-0">
               <BarChart3 className="w-7 h-7 sm:w-8 sm:h-8 text-indigo-600" />

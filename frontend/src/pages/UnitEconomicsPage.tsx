@@ -221,7 +221,7 @@ export const UnitEconomicsPage = () => {
   // Free plan — показываем FeatureGate блокировку вместо данных
   if (!hasAccess) {
     return (
-      <div className="max-w-7xl mx-auto px-3 sm:px-6 py-4 sm:py-8">
+      <div className="max-w-[1600px] mx-auto px-3 sm:px-6 py-4 sm:py-8">
         <FilterPanel />
         <FeatureGate feature="unit_economics">
           <div className="h-[400px]" />
@@ -248,7 +248,7 @@ export const UnitEconomicsPage = () => {
 
   return (
     <FeatureGate feature="unit_economics">
-      <div className="max-w-7xl mx-auto px-3 sm:px-6 py-4 sm:py-8">
+      <div className="max-w-[1600px] mx-auto px-3 sm:px-6 py-4 sm:py-8">
         {/* Header */}
         <div className="mb-4 sm:mb-6">
           <div className="flex items-center gap-2">

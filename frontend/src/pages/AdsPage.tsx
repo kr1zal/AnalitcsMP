@@ -64,7 +64,7 @@ export const AdsPage = () => {
   // Free plan — показываем FeatureGate блокировку
   if (!hasAccess) {
     return (
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-4 sm:py-6">
+      <div className="max-w-[1600px] mx-auto px-4 sm:px-6 py-4 sm:py-6">
         <h2 className="text-xl sm:text-2xl font-bold text-gray-900 mb-5">Реклама</h2>
         <FeatureGate feature="ads_page">
           <div className="h-[400px]" />
@@ -93,7 +93,7 @@ export const AdsPage = () => {
 
   return (
     <FeatureGate feature="ads_page">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-4 sm:py-6 space-y-5 sm:space-y-6">
+      <div className="max-w-[1600px] mx-auto px-4 sm:px-6 py-4 sm:py-6 space-y-5 sm:space-y-6">
         {/* Title */}
         <h2 className="text-xl sm:text-2xl font-bold text-gray-900">Реклама</h2>
 
