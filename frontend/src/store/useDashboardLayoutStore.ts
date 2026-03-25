@@ -3,9 +3,11 @@
  *
  * Хранит: список включённых виджетов (порядок = порядок отображения),
  * количество колонок, флаги отображения.
- * Персистенция через React Query (GET/PUT /dashboard/config).
+ * Persist: localStorage (мгновенное восстановление при F5).
+ * Синхронизация с сервером через React Query (GET/PUT /dashboard/config).
  */
 import { create } from 'zustand';
+import { persist } from 'zustand/middleware';
 import { DEFAULT_ENABLED_WIDGETS } from '../components/Dashboard/widgets/definitions';
 
 interface DashboardLayoutState {
@@ -52,60 +54,75 @@ const defaultState = {
   isDirty: false,
 };
 
-export const useDashboardLayoutStore = create<DashboardLayoutState>((set) => ({
-  ...defaultState,
+export const useDashboardLayoutStore = create<DashboardLayoutState>()(
+  persist(
+    (set) => ({
+      ...defaultState,
 
-  setConfig: (config) =>
-    set({
-      enabledWidgets: config.enabledWidgets,
-      columnCount: config.columnCount,
-      showAxisBadges: config.showAxisBadges,
-      compactMode: config.compactMode,
-      locked: config.locked,
-      isLoaded: true,
-      isDirty: false,
+      setConfig: (config) =>
+        set({
+          enabledWidgets: config.enabledWidgets,
+          columnCount: config.columnCount,
+          showAxisBadges: config.showAxisBadges,
+          compactMode: config.compactMode,
+          locked: config.locked,
+          isLoaded: true,
+          isDirty: false,
+        }),
+
+      toggleWidget: (id) =>
+        set((state) => {
+          const idx = state.enabledWidgets.indexOf(id);
+          const next =
+            idx >= 0
+              ? state.enabledWidgets.filter((wId) => wId !== id)
+              : [...state.enabledWidgets, id];
+          return { enabledWidgets: next, isDirty: true };
+        }),
+
+      reorderWidgets: (fromIndex, toIndex) =>
+        set((state) => {
+          const next = [...state.enabledWidgets];
+          const [moved] = next.splice(fromIndex, 1);
+          next.splice(toIndex, 0, moved);
+          return { enabledWidgets: next, isDirty: true };
+        }),
+
+      setColumnCount: (n) =>
+        set({ columnCount: n, isDirty: true }),
+
+      toggleAxisBadges: () =>
+        set((state) => ({ showAxisBadges: !state.showAxisBadges, isDirty: true })),
+
+      toggleCompactMode: () =>
+        set((state) => ({ compactMode: !state.compactMode, isDirty: true })),
+
+      toggleLocked: () =>
+        set((state) => ({ locked: !state.locked, isDirty: true })),
+
+      resetToDefaults: () =>
+        set({
+          enabledWidgets: DEFAULT_ENABLED_WIDGETS,
+          columnCount: 4,
+          showAxisBadges: false,
+          compactMode: false,
+          locked: false,
+          isDirty: true,
+        }),
+
+      markClean: () =>
+        set({ isDirty: false }),
     }),
-
-  toggleWidget: (id) =>
-    set((state) => {
-      const idx = state.enabledWidgets.indexOf(id);
-      const next =
-        idx >= 0
-          ? state.enabledWidgets.filter((wId) => wId !== id)
-          : [...state.enabledWidgets, id];
-      return { enabledWidgets: next, isDirty: true };
-    }),
-
-  reorderWidgets: (fromIndex, toIndex) =>
-    set((state) => {
-      const next = [...state.enabledWidgets];
-      const [moved] = next.splice(fromIndex, 1);
-      next.splice(toIndex, 0, moved);
-      return { enabledWidgets: next, isDirty: true };
-    }),
-
-  setColumnCount: (n) =>
-    set({ columnCount: n, isDirty: true }),
-
-  toggleAxisBadges: () =>
-    set((state) => ({ showAxisBadges: !state.showAxisBadges, isDirty: true })),
-
-  toggleCompactMode: () =>
-    set((state) => ({ compactMode: !state.compactMode, isDirty: true })),
-
-  toggleLocked: () =>
-    set((state) => ({ locked: !state.locked, isDirty: true })),
-
-  resetToDefaults: () =>
-    set({
-      enabledWidgets: DEFAULT_ENABLED_WIDGETS,
-      columnCount: 4,
-      showAxisBadges: false,
-      compactMode: false,
-      locked: false,
-      isDirty: true,
-    }),
-
-  markClean: () =>
-    set({ isDirty: false }),
-}));
+    {
+      name: 'dashboard-layout',
+      // Персистим только визуальные настройки, НЕ служебные флаги
+      partialize: (state) => ({
+        enabledWidgets: state.enabledWidgets,
+        columnCount: state.columnCount,
+        showAxisBadges: state.showAxisBadges,
+        compactMode: state.compactMode,
+        locked: state.locked,
+      }),
+    },
+  ),
+);
