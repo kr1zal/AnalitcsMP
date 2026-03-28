@@ -678,6 +678,7 @@ async def get_unit_economics(
                     .lte("order_date", date_to)
                     .eq("settled", True)
                     .eq("status", "sold")
+                    .gt("price", 0)  # Exclude ghost orders (price=0, payout=0)
                     .limit(50000)
                 )
                 if fulfillment_type:

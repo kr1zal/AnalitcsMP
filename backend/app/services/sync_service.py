@@ -2646,6 +2646,8 @@ class SyncService:
                 retail_price = float(row.get("retail_price", 0) or 0)
                 retail_price_withdisc = float(row.get("retail_price_withdisc_rub", 0) or 0)
                 rrd_id = row.get("rrd_id")
+                sale_dt = row.get("sale_dt")  # Дата выкупа (когда покупатель забрал товар)
+                doc_type = row.get("doc_type_name", "")
 
                 ft = self._determine_wb_fulfillment(row)
 
@@ -2659,6 +2661,9 @@ class SyncService:
                     orders_by_srid[srid]["wb_rrd_id"] = rrd_id
                     orders_by_srid[srid]["settled"] = True
                     orders_by_srid[srid]["_fulfillment"] = ft
+                    # sale_dt = дата выкупа. Берём первый ненулевой для "Продажа"
+                    if sale_dt and "Возврат" not in doc_type and not orders_by_srid[srid].get("_sale_dt"):
+                        orders_by_srid[srid]["_sale_dt"] = sale_dt
                     # retail_price_withdisc_rub — реальная цена после СПП (не накапливаем, берём первое ненулевое)
                     if retail_price_withdisc and not orders_by_srid[srid].get("sale_price"):
                         orders_by_srid[srid]["sale_price"] = retail_price_withdisc
@@ -2677,7 +2682,6 @@ class SyncService:
                                 barcode = bc
                                 break
 
-                    doc_type = row.get("doc_type_name", "")
                     status = "sold"
                     if "Возврат" in doc_type:
                         status = "returned"
@@ -2699,6 +2703,7 @@ class SyncService:
                         "wb_rrd_id": rrd_id,
                         "settled": True,
                         "_fulfillment": ft,
+                        "_sale_dt": sale_dt if (sale_dt and "Возврат" not in doc_type) else None,
                     }
 
             # Batch upsert в mp_orders
@@ -2727,6 +2732,7 @@ class SyncService:
                     "warehouse": order_data.get("warehouse"),
                     "updated_at": datetime.now().isoformat(),
                     "fulfillment_type": order_data.get("_fulfillment", "FBO"),
+                    "delivery_date": order_data.get("_sale_dt"),
                 }
                 if self.user_id:
                     row["user_id"] = self.user_id
