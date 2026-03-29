@@ -315,30 +315,14 @@ export const DashboardPage = () => {
     );
   }, [adCostsData?.data, dateRange.from, dateRange.to]);
 
-  if (isSummaryLoading && !summaryData) {
-    return <LoadingSpinner text="Загрузка данных..." />;
-  }
+  // NOTE: NO early return here — FilterPanel must always render to keep URL sync alive.
+  // Loading/error states are handled inline below (after FilterPanel).
+  const showInitialLoading = isSummaryLoading && !summaryData;
 
-  if (error) {
-    const requestUrl = describeRequestUrl(error);
-    const status = axios.isAxiosError(error) ? error.response?.status : undefined;
-    return (
-      <div className="p-6">
-        <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-          <p className="text-red-800">Ошибка загрузки данных: {(error as Error).message}</p>
-          {requestUrl && (
-            <p className="text-sm text-red-700 mt-2 break-all">
-              Запрос: {requestUrl}
-              {typeof status === 'number' ? ` (HTTP ${status})` : ''}
-            </p>
-          )}
-          <p className="text-sm text-red-600 mt-2">
-            Проверьте: backend запущен, `VITE_API_URL` корректен, CORS не блокирует запрос.
-          </p>
-        </div>
-      </div>
-    );
-  }
+  const showError = !!error;
+  const errorMessage = error ? (error as Error).message : '';
+  const errorRequestUrl = error ? describeRequestUrl(error) : null;
+  const errorStatus = error && axios.isAxiosError(error) ? error.response?.status : undefined;
 
   // Данные из summary
   const summary = summaryData?.summary;
@@ -829,6 +813,28 @@ export const DashboardPage = () => {
         exportType={exportType}
       />
 
+      {/* Loading / Error states — AFTER FilterPanel to keep filters alive */}
+      {showInitialLoading && (
+        <LoadingSpinner text="Загрузка данных..." />
+      )}
+      {showError && (
+        <div className="p-6">
+          <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+            <p className="text-red-800">Ошибка загрузки данных: {errorMessage}</p>
+            {errorRequestUrl && (
+              <p className="text-sm text-red-700 mt-2 break-all">
+                Запрос: {errorRequestUrl}
+                {typeof errorStatus === 'number' ? ` (HTTP ${errorStatus})` : ''}
+              </p>
+            )}
+            <p className="text-sm text-red-600 mt-2">
+              Проверьте: backend запущен, VITE_API_URL корректен, CORS не блокирует запрос.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {!showInitialLoading && !showError && <>
       {/* 2. Карточки метрик — Widget Dashboard с DnD */}
       <div className="mb-4 sm:mb-5 lg:mb-6">
         <WidgetGrid
@@ -984,6 +990,7 @@ export const DashboardPage = () => {
           isLoading={!stocksEnabled || stocksLoading}
         />
       </div>
+      </>}
 
     </div>
   );
