@@ -48,7 +48,7 @@ import { useFiltersStore } from '../store/useFiltersStore';
 import { useDashboardLayoutStore } from '../store/useDashboardLayoutStore';
 import { fillDailySeriesYmd, formatCurrency, formatNumber, getDateRangeFromPreset } from '../lib/utils';
 import { useSalesPlanCompletion } from '../hooks/useSalesPlan';
-import type { CostsTreeResponse, Marketplace, MpProfitData } from '../types';
+import type { CostsTreeResponse, Marketplace, MpProfitData, SalesChartPlotPoint, AdCostsChartDataPoint } from '../types';
 
 // Lazy-load charts to keep initial bundle small (recharts is heavy).
 const SalesChart = lazy(() =>
@@ -275,26 +275,30 @@ export const DashboardPage = () => {
   // IMPORTANT: hooks must run before any early returns.
   const salesChartSeries = useMemo(() => {
     const raw = chartData?.data ?? [];
-    if (!raw.length) return raw as any[];
+    if (!raw.length) return [] as SalesChartPlotPoint[];
 
     // Последний реально присутствующий день в данных (YYYY-MM-DD).
-    // После него "нули" чаще означают задержку/неполноту, поэтому для конца периода рисуем gap (null), но дни на оси оставляем.
     const lastActual = raw.reduce<string>((max, p) => (p.date > max ? p.date : max), raw[0].date);
+
+    // Convert raw SalesChartDataPoint → SalesChartPlotPoint (add plot fields)
+    const plotReady: SalesChartPlotPoint[] = raw.map((p) => ({
+      ...p,
+      __plotNull: false,
+      ordersPlot: p.orders,
+      salesPlot: p.sales,
+      revenuePlot: p.revenue,
+    }));
 
     return fillDailySeriesYmd(
       { from: dateRange.from, to: dateRange.to },
-      raw,
-      (date) => ({
-        date,
-        orders: 0,
-        sales: 0,
-        revenue: 0,
-        avg_check: 0,
-        __plotNull: date > lastActual, // только хвост после последней фактической даты
-      }) as any
-    ).map((p: any) => ({
+      plotReady,
+      (date): SalesChartPlotPoint => ({
+        date, orders: 0, sales: 0, revenue: 0, avg_check: 0,
+        __plotNull: date > lastActual,
+        ordersPlot: null, salesPlot: null, revenuePlot: null,
+      })
+    ).map((p) => ({
       ...p,
-      __plotNull: Boolean(p.__plotNull),
       ordersPlot: p.__plotNull ? null : (p.orders ?? 0),
       salesPlot: p.__plotNull ? null : (p.sales ?? 0),
       revenuePlot: p.__plotNull ? null : (p.revenue ?? 0),
@@ -303,11 +307,11 @@ export const DashboardPage = () => {
 
   const adCostsSeriesFull = useMemo(() => {
     const raw = adCostsData?.data ?? [];
-    if (!raw.length) return raw as any[];
+    if (!raw.length) return [] as AdCostsChartDataPoint[];
     return fillDailySeriesYmd(
       { from: dateRange.from, to: dateRange.to },
-      raw as any[],
-      (date) => ({ date, ad_cost: 0, revenue: 0, drr: 0, impressions: 0, clicks: 0, orders: 0 } as any)
+      raw,
+      (date): AdCostsChartDataPoint => ({ date, ad_cost: 0, revenue: 0, drr: 0, impressions: 0, clicks: 0, orders: 0 })
     );
   }, [adCostsData?.data, dateRange.from, dateRange.to]);
 
@@ -908,20 +912,20 @@ export const DashboardPage = () => {
           >
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-2 sm:gap-3">
               {/* Ряд 1: Заказы + Прибыль */}
-              <SalesChart data={salesChartSeries as any} isLoading={!chartsEnabled || chartLoading} />
+              <SalesChart data={salesChartSeries} isLoading={!chartsEnabled || chartLoading} />
               <FeatureGate feature="profit_chart">
                 <ProfitChart
-                  data={salesChartSeries as any}
+                  data={salesChartSeries}
                   profitMargin={profitMargin}
                   isLoading={!chartsEnabled || chartLoading}
                 />
               </FeatureGate>
               {/* Ряд 2: ДРР + Конверсия */}
               <FeatureGate feature="drr_chart">
-                <DrrChart data={adCostsSeriesFull as any} isLoading={!chartsEnabled || adCostsLoading} />
+                <DrrChart data={adCostsSeriesFull} isLoading={!chartsEnabled || adCostsLoading} />
               </FeatureGate>
               <FeatureGate feature="conversion_chart">
-                <ConversionChart data={salesChartSeries as any} isLoading={!chartsEnabled || chartLoading} />
+                <ConversionChart data={salesChartSeries} isLoading={!chartsEnabled || chartLoading} />
               </FeatureGate>
             </div>
           </Suspense>
