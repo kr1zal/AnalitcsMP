@@ -773,7 +773,10 @@ async def get_unit_economics(
             mp_sales_revenue = metrics["revenue"]  # из mp_sales (аналитика)
             costs = metrics["costs"]  # из mp_costs (fallback)
             purchase_price = float(product.get("purchase_price", 0))
-            is_ozon = product_id in ozon_product_ids or bool(product.get("ozon_product_id"))
+            # BUG FIX: use period-specific data, NOT static product.ozon_product_id.
+            # A product registered on Ozon but with 0 Ozon sales this period
+            # must route to WB branches, not Ozon fallback.
+            is_ozon = product_id in ozon_product_ids or product_id in ozon_order_date_by_product
             # Ozon with delivery_date: override sales_count with delivered_count
             # (ЛК shows delivered, not shipped; COGS = purchase_price × delivered)
             if is_ozon and using_delivery_date and product_id in ozon_delivered_counts:
