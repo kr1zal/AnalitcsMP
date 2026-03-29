@@ -143,6 +143,18 @@ function MpCard({ metrics, mp, plan }: { metrics: UnitEconomicsItem; mp: 'wb' | 
         </span>
       </div>
 
+      {/* Отказы / Возвраты (условно, если > 0) */}
+      {((m.cancelled_count ?? 0) > 0 || (m.returns_count ?? 0) > 0) && (
+        <div className="flex items-center gap-3 text-[10px] text-gray-400 -mt-1.5 mb-1">
+          {(m.cancelled_count ?? 0) > 0 && (
+            <span>Отказы: <span className="text-red-400 tabular-nums">{m.cancelled_count}</span></span>
+          )}
+          {(m.returns_count ?? 0) > 0 && (
+            <span>Возвраты: <span className="text-red-400 tabular-nums">{m.returns_count}</span></span>
+          )}
+        </div>
+      )}
+
       {/* Plan progress bar */}
       {plan && plan.plan_revenue > 0 && (
         <div className="mb-3">

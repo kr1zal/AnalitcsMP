@@ -274,15 +274,16 @@ async def get_unit_economics(
                 unattributed_ad += cost
 
         # 4b. Orders count per product (from mp_orders, real-time)
+        # Uses MSK TZ boundaries to match dashboard RPC (Rule #42)
+        # Migration 040: orders = ALL placed (including cancelled)
         orders_by_product: dict[str, int] = {}
         try:
             orders_query = (
                 supabase.table("mp_orders")
-                .select("product_id")
+                .select("product_id, order_id")
                 .eq("user_id", current_user.id)
-                .gte("order_date", date_from)
-                .lte("order_date", date_to)
-                .neq("status", "cancelled")
+                .gte("order_date", f"{date_from}T00:00:00+03:00")
+                .lte("order_date", f"{date_to}T23:59:59+03:00")
                 .gt("price", 0)
                 .limit(50000)
             )
@@ -298,6 +299,32 @@ async def get_unit_economics(
                         orders_by_product[pid] = orders_by_product.get(pid, 0) + 1
         except Exception as e:
             logger.debug(f"Orders count query failed: {e}")
+
+        # 4c. Cancelled orders per product
+        cancelled_by_product: dict[str, int] = {}
+        try:
+            cancelled_query = (
+                supabase.table("mp_orders")
+                .select("product_id")
+                .eq("user_id", current_user.id)
+                .gte("order_date", f"{date_from}T00:00:00+03:00")
+                .lte("order_date", f"{date_to}T23:59:59+03:00")
+                .eq("status", "cancelled")
+                .gt("price", 0)
+                .limit(50000)
+            )
+            if marketplace and marketplace != "all":
+                cancelled_query = cancelled_query.eq("marketplace", marketplace)
+            if fulfillment_type:
+                cancelled_query = cancelled_query.eq("fulfillment_type", fulfillment_type)
+            cancelled_result = cancelled_query.execute()
+            if cancelled_result.data:
+                for row in cancelled_result.data:
+                    pid = row.get("product_id")
+                    if pid:
+                        cancelled_by_product[pid] = cancelled_by_product.get(pid, 0) + 1
+        except Exception as e:
+            logger.debug(f"Cancelled count query failed: {e}")
 
         # 4a. При фильтре по fulfillment_type: пропорциональное распределение рекламы
         # Реклама — account-level, не привязана к FBO/FBS. Чтобы profit_FBO + profit_FBS = profit_Total,
@@ -1003,6 +1030,7 @@ async def get_unit_economics(
                 },
                 "metrics": {
                     "orders_count": orders_by_product.get(product_id, 0),
+                    "cancelled_count": cancelled_by_product.get(product_id, 0),
                     "sales_count": sales_count,
                     "returns_count": metrics["returns"],
                     "revenue": round(displayed_revenue, 2),

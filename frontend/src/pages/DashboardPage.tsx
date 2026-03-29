@@ -529,6 +529,7 @@ export const DashboardPage = () => {
   const ordersCountForTile = summary?.orders ?? 0;
   const ordersRevenueForTile = summary?.orders_sum ?? summary?.revenue ?? 0; // mp_orders price sum (migration 038), fallback to mp_sales revenue
   const buyoutPercent = ordersCountForTile > 0 ? Math.round((salesCountForTile / ordersCountForTile) * 100) : 0;
+  const cancelledCountForTile = summary?.cancelled_count ?? 0;
 
   // Средняя себестоимость за единицу
   const avgCcPerUnit = salesCountForTile > 0 ? purchaseCostsForTile / salesCountForTile : 0;
@@ -598,8 +599,8 @@ export const DashboardPage = () => {
       returns_count: {
         value: returnsCountForTile,
       },
-      buyout_percent: {
-        value: `${buyoutPercent}%`,
+      cancelled_count: {
+        value: cancelledCountForTile,
       },
       avg_check: {
         value: summary?.avg_check ?? 0,

@@ -13,7 +13,6 @@ import {
   Megaphone,
   Banknote,
   TrendingUp,
-  Percent,
   Truck,
   Warehouse,
   Target,
@@ -27,6 +26,7 @@ import {
   MousePointerClick,
   Scale,
   CheckCircle,
+  XCircle,
 } from 'lucide-react';
 import type { WidgetDefinition, WidgetCategory } from './registry';
 
@@ -91,15 +91,15 @@ export const WIDGET_DEFINITIONS: WidgetDefinition[] = [
     dataDeps: ['summary'],
   },
   {
-    id: 'buyout_percent',
-    title: 'Процент выкупа',
-    mobileTitle: 'Выкуп %',
+    id: 'cancelled_count',
+    title: 'Отмены',
     category: 'sales',
     axis: 'order',
-    tooltipLines: ['sales / orders \u00D7 100%', 'Доля выкупленных заказов', 'Данные по дате заказа (order-based)'],
-    icon: Percent,
-    accent: 'emerald',
-    format: 'percent',
+    tooltipLines: ['Количество отменённых заказов', 'status = cancelled', 'Данные по дате заказа (order-based)'],
+    icon: XCircle,
+    accent: 'red',
+    format: 'number',
+    unit: 'шт',
     defaultEnabled: false,
     tier: 'free',
     dataDeps: ['summary'],
