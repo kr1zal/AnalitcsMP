@@ -153,8 +153,8 @@ async def build_summary_message(user_id: str, use_yesterday: bool = True) -> Opt
                 supabase.table("mp_orders")
                 .select("commission, logistics, storage_fee, other_fees")
                 .eq("user_id", user_id)
-                .gte("order_date", f"{date_main}T00:00:00")
-                .lte("order_date", f"{date_main}T23:59:59")
+                .gte("order_date", f"{date_main}T00:00:00+03:00")
+                .lte("order_date", f"{date_main}T23:59:59+03:00")
                 .execute()
             )
             order_rows = order_result.data or []

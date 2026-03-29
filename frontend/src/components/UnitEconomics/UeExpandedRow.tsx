@@ -138,7 +138,9 @@ function MpCard({ metrics, mp, plan }: { metrics: UnitEconomicsItem; mp: 'wb' | 
         <span className={cn('text-[10px] sm:text-xs font-medium px-1.5 py-0.5 rounded', marginColor)}>
           {formatPercent(margin)}
         </span>
-        <span className="text-[10px] text-gray-400 ml-auto">{m.sales_count} шт</span>
+        <span className="text-[10px] text-gray-400 ml-auto">
+          {(m.orders_count ?? 0) > 0 && <>{m.orders_count} зак. · </>}{m.sales_count} выкуп.
+        </span>
       </div>
 
       {/* Plan progress bar */}

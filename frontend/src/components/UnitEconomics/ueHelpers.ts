@@ -9,7 +9,7 @@ import type { UnitEconomicsItem, ProductMetrics } from '../../types';
 export type AbcGrade = 'A' | 'B' | 'C';
 export type AbcMetric = 'profit' | 'revenue';
 export type SortField =
-  | 'name' | 'sales_count' | 'revenue' | 'purchase_costs'
+  | 'name' | 'orders_count' | 'sales_count' | 'revenue' | 'purchase_costs'
   | 'mp_costs' | 'storage_cost' | 'ad_cost' | 'drr' | 'net_profit'
   | 'unit_profit' | 'margin' | 'contribution' | 'plan_completion';
 export type SortDirection = 'asc' | 'desc';
@@ -43,7 +43,8 @@ export const SORT_OPTIONS: { value: SortField; label: string }[] = [
   { value: 'net_profit', label: 'Прибыль' },
   { value: 'revenue', label: 'Выручка' },
   { value: 'margin', label: 'Рентаб.' },
-  { value: 'sales_count', label: 'Продажи' },
+  { value: 'orders_count', label: 'Заказы' },
+  { value: 'sales_count', label: 'Выкупы' },
   { value: 'unit_profit', label: 'На ед.' },
   { value: 'storage_cost', label: 'Хранение' },
   { value: 'name', label: 'Название' },
@@ -203,6 +204,7 @@ export function getContribution(item: UnitEconomicsItem, totalProfit: number): n
 
 /** Sortable numeric fields from ProductMetrics */
 const METRIC_SORT_FIELDS: Record<string, keyof ProductMetrics> = {
+  orders_count: 'orders_count',
   sales_count: 'sales_count',
   revenue: 'revenue',
   purchase_costs: 'purchase_costs',
@@ -257,12 +259,13 @@ export interface UeTotals {
   storage: number;
   adCost: number;
   profit: number;
+  orders: number;
   sales: number;
   returns: number;
 }
 
 export function computeTotals(products: UnitEconomicsItem[]): UeTotals {
-  const t: UeTotals = { revenue: 0, purchase: 0, mpCosts: 0, storage: 0, adCost: 0, profit: 0, sales: 0, returns: 0 };
+  const t: UeTotals = { revenue: 0, purchase: 0, mpCosts: 0, storage: 0, adCost: 0, profit: 0, orders: 0, sales: 0, returns: 0 };
   for (const p of products) {
     t.revenue += p.metrics.revenue;
     t.purchase += p.metrics.purchase_costs;
@@ -270,6 +273,7 @@ export function computeTotals(products: UnitEconomicsItem[]): UeTotals {
     t.storage += p.metrics.storage_cost ?? 0;
     t.adCost += p.metrics.ad_cost ?? 0;
     t.profit += p.metrics.net_profit;
+    t.orders += p.metrics.orders_count ?? 0;
     t.sales += p.metrics.sales_count;
     t.returns += p.metrics.returns_count ?? 0;
   }

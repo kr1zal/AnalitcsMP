@@ -240,7 +240,7 @@ export function UeTable({
   }, []);
 
   // Column count (for colSpan)
-  const colCount = 7 + (hasStorage ? 1 : 0) + (hasAds ? 2 : 0) + (hasPlan ? 1 : 0) + 2; // 7 base + conditional storage + ads(2) + plan + Contribution + Alerts
+  const colCount = 8 + (hasStorage ? 1 : 0) + (hasAds ? 2 : 0) + (hasPlan ? 1 : 0) + 2; // 8 base (incl. Заказы) + conditional storage + ads(2) + plan + Contribution + Alerts
 
   const avgMargin = allTotals.revenue > 0 ? (allTotals.profit / allTotals.revenue) * 100 : 0;
 
@@ -364,7 +364,8 @@ export function UeTable({
           <thead className="bg-gray-50 sticky top-0 z-10">
             <tr>
               <SortableHeader field="name" label="Товар" current={sortField} dir={sortDir} onSort={handleSort} align="left" />
-              <SortableHeader field="sales_count" label="Продажи" current={sortField} dir={sortDir} onSort={handleSort} />
+              <SortableHeader field="orders_count" label="Заказы" current={sortField} dir={sortDir} onSort={handleSort} />
+              <SortableHeader field="sales_count" label="Выкупы" current={sortField} dir={sortDir} onSort={handleSort} />
               <SortableHeader field="revenue" label="Выручка" current={sortField} dir={sortDir} onSort={handleSort} />
               <SortableHeader field="purchase_costs" label="Закупка" current={sortField} dir={sortDir} onSort={handleSort} />
               <SortableHeader field="mp_costs" label="Удерж." current={sortField} dir={sortDir} onSort={handleSort} />
@@ -413,6 +414,9 @@ export function UeTable({
                             <div className="text-[10px] text-gray-400">{item.product.barcode}</div>
                           </div>
                         </div>
+                      </td>
+                      <td className="px-2 sm:px-3 py-2.5 text-right text-sm tabular-nums text-gray-500">
+                        {item.metrics.orders_count ?? 0}
                       </td>
                       <td className="px-2 sm:px-3 py-2.5 text-right text-sm tabular-nums">
                         {item.metrics.sales_count}
@@ -503,6 +507,7 @@ export function UeTable({
             <tfoot className="bg-gray-50 font-semibold border-t border-gray-200">
               <tr>
                 <td className="px-2 sm:px-3 py-2.5 text-sm">ИТОГО <span className="font-normal text-gray-400 text-xs ml-1">({products.length})</span></td>
+                <td className="px-2 sm:px-3 py-2.5 text-right text-sm tabular-nums text-gray-500">{allTotals.orders}</td>
                 <td className="px-2 sm:px-3 py-2.5 text-right text-sm tabular-nums">{allTotals.sales}</td>
                 <td className="px-2 sm:px-3 py-2.5 text-right text-sm tabular-nums">{formatCurrency(allTotals.revenue)}</td>
                 <td className="px-2 sm:px-3 py-2.5 text-right text-sm tabular-nums text-amber-600">{formatCurrency(allTotals.purchase)}</td>
@@ -591,19 +596,17 @@ export function UeTable({
                   {/* Row 2: Metrics grid */}
                   <div className="grid grid-cols-3 gap-x-2 text-[11px]">
                     <div>
-                      <span className="text-gray-500">Продажи</span>
+                      <span className="text-gray-500">Выкупы</span>
+                      <div className="font-medium tabular-nums">{item.metrics.sales_count} шт</div>
+                    </div>
+                    <div>
+                      <span className="text-gray-500">Выручка</span>
                       <div className="font-medium tabular-nums">{formatCurrency(item.metrics.revenue)}</div>
                     </div>
                     <div>
                       <span className="text-gray-500">Прибыль</span>
                       <div className={cn('font-semibold tabular-nums', positive ? 'text-emerald-700' : 'text-red-600')}>
                         {formatCurrency(item.metrics.net_profit)}
-                      </div>
-                    </div>
-                    <div>
-                      <span className="text-gray-500">На ед.</span>
-                      <div className={cn('font-medium tabular-nums', positive ? 'text-emerald-700' : 'text-red-600')}>
-                        {formatCurrency(item.metrics.unit_profit)}
                       </div>
                     </div>
                   </div>
@@ -652,12 +655,13 @@ export function UeTable({
         {products.length > 0 && (
           <div className="px-3 py-2.5 bg-gray-50">
             <div className="text-xs font-semibold text-gray-700 mb-1">ИТОГО ({products.length})</div>
-            <div className={cn(
-              'grid gap-x-2 text-[11px]',
-              hasStorage ? 'grid-cols-2 gap-y-1' : 'grid-cols-3',
-            )}>
+            <div className="grid grid-cols-2 gap-x-2 gap-y-1 text-[11px]">
               <div>
-                <span className="text-gray-500">Продажи</span>
+                <span className="text-gray-500">Выкупы</span>
+                <div className="font-semibold tabular-nums">{allTotals.sales} шт</div>
+              </div>
+              <div>
+                <span className="text-gray-500">Выручка</span>
                 <div className="font-semibold tabular-nums">{formatCurrency(allTotals.revenue)}</div>
               </div>
               <div>

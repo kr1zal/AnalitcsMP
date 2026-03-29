@@ -273,6 +273,32 @@ async def get_unit_economics(
             else:
                 unattributed_ad += cost
 
+        # 4b. Orders count per product (from mp_orders, real-time)
+        orders_by_product: dict[str, int] = {}
+        try:
+            orders_query = (
+                supabase.table("mp_orders")
+                .select("product_id")
+                .eq("user_id", current_user.id)
+                .gte("order_date", date_from)
+                .lte("order_date", date_to)
+                .neq("status", "cancelled")
+                .gt("price", 0)
+                .limit(50000)
+            )
+            if marketplace and marketplace != "all":
+                orders_query = orders_query.eq("marketplace", marketplace)
+            if fulfillment_type:
+                orders_query = orders_query.eq("fulfillment_type", fulfillment_type)
+            orders_result = orders_query.execute()
+            if orders_result.data:
+                for row in orders_result.data:
+                    pid = row.get("product_id")
+                    if pid:
+                        orders_by_product[pid] = orders_by_product.get(pid, 0) + 1
+        except Exception as e:
+            logger.debug(f"Orders count query failed: {e}")
+
         # 4a. При фильтре по fulfillment_type: пропорциональное распределение рекламы
         # Реклама — account-level, не привязана к FBO/FBS. Чтобы profit_FBO + profit_FBS = profit_Total,
         # распределяем рекламу пропорционально: ad_ft = ad × (revenue_ft / revenue_total) per product.
@@ -976,6 +1002,7 @@ async def get_unit_economics(
                     "purchase_price": purchase_price
                 },
                 "metrics": {
+                    "orders_count": orders_by_product.get(product_id, 0),
                     "sales_count": sales_count,
                     "returns_count": metrics["returns"],
                     "revenue": round(displayed_revenue, 2),

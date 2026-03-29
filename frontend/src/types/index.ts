@@ -184,6 +184,7 @@ export interface DashboardSummaryWithPrevResponse {
 // ==================== UNIT-ЭКОНОМИКА ====================
 
 export interface ProductMetrics {
+  orders_count?: number;
   sales_count: number;
   returns_count: number;
   revenue: number;
