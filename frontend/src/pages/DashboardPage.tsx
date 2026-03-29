@@ -532,7 +532,7 @@ export const DashboardPage = () => {
   // Funnel from mp_orders (same axis as orders): sold, delivering, buyout%
   const soldCountForTile = summary?.sold_count ?? 0;
   const deliveringCountForTile = summary?.delivering_count ?? 0;
-  const buyoutPercent = ordersCountForTile > 0 ? Math.round((soldCountForTile / ordersCountForTile) * 1000) / 10 : 0;
+  const buyoutPercent = summary?.buyout_percent ?? 0; // from RPC (v_sold / v_orders), not recalculated
 
   // Средняя себестоимость за единицу
   const avgCcPerUnit = salesCountForTile > 0 ? purchaseCostsForTile / salesCountForTile : 0;

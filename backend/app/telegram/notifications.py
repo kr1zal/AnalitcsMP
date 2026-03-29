@@ -155,6 +155,7 @@ async def build_summary_message(user_id: str, use_yesterday: bool = True) -> Opt
                 .eq("user_id", user_id)
                 .gte("order_date", f"{date_main}T00:00:00+03:00")
                 .lte("order_date", f"{date_main}T23:59:59+03:00")
+                .limit(10000)
                 .execute()
             )
             order_rows = order_result.data or []
