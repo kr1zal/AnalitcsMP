@@ -13,6 +13,7 @@
  * Чужие query params (utm_source, ref и т.д.) сохраняются.
  */
 import { useEffect, useRef } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useFiltersStore } from '../store/useFiltersStore';
 import type { DateRangePreset, FulfillmentType, Marketplace } from '../types';
 
@@ -37,6 +38,7 @@ function isValidDate(s: string): boolean {
 export function useFilterUrlSync() {
   const isInitialized = useRef(false);
   const isUpdatingFromUrl = useRef(false);
+  const [searchParams, setSearchParams] = useSearchParams();
 
   const {
     datePreset,
@@ -55,12 +57,11 @@ export function useFilterUrlSync() {
     if (isInitialized.current) return;
     isInitialized.current = true;
 
-    const params = new URLSearchParams(window.location.search);
-    const urlPeriod = params.get('period');
-    const urlMp = params.get('mp');
-    const urlFt = params.get('ft');
-    const urlFrom = params.get('from');
-    const urlTo = params.get('to');
+    const urlPeriod = searchParams.get('period');
+    const urlMp = searchParams.get('mp');
+    const urlFt = searchParams.get('ft');
+    const urlFrom = searchParams.get('from');
+    const urlTo = searchParams.get('to');
 
     // Nothing in URL → keep Zustand defaults, skip
     if (!urlPeriod && !urlMp && !urlFt && !urlFrom && !urlTo) return;
@@ -84,7 +85,6 @@ export function useFilterUrlSync() {
       setDatePreset(urlPeriod as DateRangePreset);
     }
 
-    // queueMicrotask — executes before next render, no cleanup needed (unlike rAF)
     queueMicrotask(() => {
       isUpdatingFromUrl.current = false;
     });
@@ -97,9 +97,7 @@ export function useFilterUrlSync() {
     // Skip before init (first render)
     if (!isInitialized.current) return;
 
-    // Preserve foreign query params (utm_source, ref, etc.)
-    const params = new URLSearchParams(window.location.search);
-    FILTER_KEYS.forEach((k) => params.delete(k));
+    const params = new URLSearchParams();
 
     // Only write non-default values
     if (datePreset !== DEFAULTS.period) {
@@ -116,12 +114,15 @@ export function useFilterUrlSync() {
       params.set('to', customDateTo);
     }
 
-    const search = params.toString();
-    const newUrl = search
-      ? `${window.location.pathname}?${search}`
-      : window.location.pathname;
+    // Preserve foreign query params (utm_source, ref, etc.)
+    const current = new URLSearchParams(window.location.search);
+    current.forEach((v, k) => {
+      if (!FILTER_KEYS.includes(k as typeof FILTER_KEYS[number])) {
+        params.set(k, v);
+      }
+    });
 
-    // replaceState to avoid polluting browser history
-    window.history.replaceState(null, '', newUrl);
-  }, [datePreset, marketplace, fulfillmentType, customDateFrom, customDateTo]);
+    // Use React Router's setSearchParams — keeps Router in sync (fixes stale URL on first filter change)
+    setSearchParams(params, { replace: true });
+  }, [datePreset, marketplace, fulfillmentType, customDateFrom, customDateTo, setSearchParams]);
 }
