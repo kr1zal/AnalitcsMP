@@ -576,7 +576,7 @@ export const DashboardPage = () => {
       orders_count: {
         value: ordersCountForTile,
         secondaryValue: formatCurrency(ordersRevenueForTile),
-        subtitle: returnsCountForTile > 0 ? `${returnsCountForTile} возвр.` : undefined,
+        // returns shown in separate "Возвраты" widget, not duplicated here
         change: ordersChangePct,
       },
       orders_revenue: {
