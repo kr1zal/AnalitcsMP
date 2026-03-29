@@ -224,7 +224,7 @@ export const SummaryCard = ({
     return (
       <div className={cn(
         'bg-white rounded-lg border border-gray-200 h-full',
-        compact ? 'p-2.5 sm:p-3' : 'p-4',
+        compact ? 'p-2.5 sm:p-3' : 'p-4 min-h-[120px]',
       )}>
         <div className="animate-pulse flex flex-col gap-1">
           {compact ? (
@@ -300,7 +300,7 @@ export const SummaryCard = ({
 
   // ── Full layout (v2-refined) ──
   return (
-    <div className="bg-white rounded-lg border border-gray-200 p-4 transition-all duration-150 hover:border-gray-300 hover:shadow-[0_2px_8px_rgba(0,0,0,0.06)] h-full flex flex-col gap-1 group">
+    <div className="bg-white rounded-lg border border-gray-200 p-4 transition-all duration-150 hover:border-gray-300 hover:shadow-[0_2px_8px_rgba(0,0,0,0.06)] h-full min-h-[120px] flex flex-col gap-1 group">
       {/* ── Header: label + tooltip + warning + change badge ── */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-1.5 min-w-0 flex-1">
