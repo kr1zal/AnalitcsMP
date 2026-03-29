@@ -94,6 +94,10 @@ export interface SalesSummary {
   buyout_percent: number;
   /** Количество отменённых заказов за период (status='cancelled'). Миграция 040. */
   cancelled_count?: number;
+  /** Выкупленные заказы за период (status='sold') из mp_orders. Миграция 040v2. */
+  sold_count?: number;
+  /** Заказы в доставке (orders - sold - cancelled). Миграция 040v2. */
+  delivering_count?: number;
   net_profit: number;
   drr: number;
   ad_cost: number;
@@ -139,6 +143,8 @@ export interface PreviousPeriod {
   orders_sum?: number;
   /** Отменённые заказы за предыдущий период (migration 040) */
   cancelled_count?: number;
+  sold_count?: number;
+  delivering_count?: number;
   revenue_change_percent: number;
   /** Settlement-based profit for prev period (migration 029) */
   settled_profit?: number;

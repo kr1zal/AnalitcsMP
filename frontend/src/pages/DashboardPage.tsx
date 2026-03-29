@@ -528,8 +528,11 @@ export const DashboardPage = () => {
   // ── Данные для новых карточек ──
   const ordersCountForTile = summary?.orders ?? 0;
   const ordersRevenueForTile = summary?.orders_sum ?? summary?.revenue ?? 0; // mp_orders price sum (migration 038), fallback to mp_sales revenue
-  const buyoutPercent = ordersCountForTile > 0 ? Math.round((salesCountForTile / ordersCountForTile) * 100) : 0;
   const cancelledCountForTile = summary?.cancelled_count ?? 0;
+  // Funnel from mp_orders (same axis as orders): sold, delivering, buyout%
+  const soldCountForTile = summary?.sold_count ?? 0;
+  const deliveringCountForTile = summary?.delivering_count ?? 0;
+  const buyoutPercent = ordersCountForTile > 0 ? Math.round((soldCountForTile / ordersCountForTile) * 1000) / 10 : 0;
 
   // Средняя себестоимость за единицу
   const avgCcPerUnit = salesCountForTile > 0 ? purchaseCostsForTile / salesCountForTile : 0;
@@ -593,8 +596,8 @@ export const DashboardPage = () => {
         secondaryValue: `${ordersCountForTile} шт`,
       },
       sales_count: {
-        value: salesCountForTile,
-        secondaryValue: `выкуп ${buyoutPercent}%`,
+        value: soldCountForTile,
+        secondaryValue: `выкуп ${buyoutPercent}%` + (deliveringCountForTile > 0 ? ` · в пути ${deliveringCountForTile}` : ''),
       },
       returns_count: {
         value: returnsCountForTile,
@@ -614,7 +617,7 @@ export const DashboardPage = () => {
       // ── Finance (SETTLEMENT-based) ──
       revenue_settled: {
         value: revenueForTile,
-        secondaryValue: `${salesCountForTile} \u0448\u0442 \u00B7 \u0432\u044B\u043A\u0443\u043F ${buyoutPercent}%`,
+        secondaryValue: `${soldCountForTile} выкуп. · ${buyoutPercent}%`,
         subtitle: (() => {
           if (marketplace === 'all') {
             const oz = getSalesTotalFromCostsTree(ozonCostsTreeData);

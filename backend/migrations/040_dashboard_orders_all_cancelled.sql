@@ -1,11 +1,13 @@
--- Migration 040: Orders = ALL placed (incl. cancelled) + cancelled_count metric
+-- Migration 040: Order funnel — single-axis metrics from mp_orders
 --
 -- Changes from 039:
---   1. v_orders: removed "status != 'cancelled'" — now counts ALL placed orders
---   2. v_orders_sum: kept excluding cancelled (cancelled don't generate revenue)
---   3. v_cancelled: new — COUNT(DISTINCT order_id WHERE status='cancelled')
---   4. cancelled_count added to JSON summary + previous_period
---   5. buyout_percent: v_sales / v_orders (v_orders now includes cancelled = correct %)
+--   1. v_orders: removed "status != 'cancelled'" — counts ALL placed orders
+--   2. v_orders_sum: kept excluding cancelled (no revenue from cancelled)
+--   3. v_cancelled: COUNT(DISTINCT order_id WHERE status='cancelled')
+--   4. v_sold: COUNT(DISTINCT order_id WHERE status='sold') — buyouts from THESE orders
+--   5. v_delivering: v_orders - v_sold - v_cancelled — pending orders
+--   6. buyout_percent: v_sold / v_orders (true funnel conversion, NOT cross-axis)
+--   7. All new fields in JSON summary + previous_period
 
 CREATE OR REPLACE FUNCTION get_dashboard_summary(
   p_date_from TEXT,
