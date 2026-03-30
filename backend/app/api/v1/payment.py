@@ -211,8 +211,13 @@ async def _handle_payment_succeeded(supabase, payment_record: dict, payment_obj:
     logger.info(f"Subscription activated: user={user_id}, plan={plan}, expires={expires_at}")
 
     # Auto sync_products — пересканировать товары с новым лимитом SKU
+    # Проверяем что sync не запущен (защита от дупликации товаров)
     async def _trigger_sync(uid: str):
         try:
+            sq = supabase.table("mp_sync_queue").select("status").eq("user_id", uid).limit(1).execute()
+            if sq.data and sq.data[0].get("status") == "running":
+                logger.info(f"Sync already running for {uid}, skipping auto-sync after upgrade")
+                return
             from ...services.sync_service import SyncService
             svc = SyncService(user_id=uid)
             result = await svc.sync_products()

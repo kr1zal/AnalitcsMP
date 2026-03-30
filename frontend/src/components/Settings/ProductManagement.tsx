@@ -172,15 +172,17 @@ function SortableLinkedPairRow({
         isDragging ? 'bg-indigo-50 shadow-md' : ''
       }`}
     >
+      {/* Drag handle (вне flex-1, не влияет на ширину колонок) */}
+      <button
+        {...attributes}
+        {...listeners}
+        className="touch-none cursor-grab active:cursor-grabbing text-gray-300 hover:text-gray-500 flex-shrink-0"
+      >
+        <GripVertical className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+      </button>
+
       {/* WB product (flex-1 = same width as unlinked WB column) */}
-      <div className="flex-1 min-w-0 flex items-center gap-1 sm:gap-2">
-        <button
-          {...attributes}
-          {...listeners}
-          className="touch-none cursor-grab active:cursor-grabbing text-gray-300 hover:text-gray-500 flex-shrink-0"
-        >
-          <GripVertical className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-        </button>
+      <div className="flex-1 min-w-0">
         <InlineProduct product={pair.wb} shakeIds={shakeIds} onPriceChange={onPriceChange} />
       </div>
 
@@ -514,7 +516,7 @@ function OzonProOverlay() {
           onClick={() => document.getElementById('subscription')?.scrollIntoView({ behavior: 'smooth' })}
           className="px-4 py-2 text-xs font-medium text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 transition-colors"
         >
-          Подключить Pro — 990₽/мес
+          Подключить Pro — 1490₽/мес
         </button>
       </div>
     </div>

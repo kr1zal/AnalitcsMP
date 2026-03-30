@@ -123,19 +123,44 @@ export const UnitEconomicsPage = () => {
 
   const productsList = productsData?.products ?? [];
 
-  // Фильтрация: связанные пары (product_group_id) показываются одной строкой.
-  // Оставляем первый товар из группы (по id), второй убираем из основного списка —
-  // он будет доступен через mpBreakdown (раскрытие строки WB+Ozon).
+  // Связанные пары (product_group_id) показываются одной строкой.
+  // Первый товар группы — основной, метрики остальных суммируются в него.
+  // Остальные товары группы убираются — доступны через mpBreakdown (раскрытие).
   const unitProducts = useMemo(() => {
     const raw = unitData?.products ?? [];
-    const seenGroups = new Set<string>();
-    return raw.filter((item) => {
+    const groupPrimary = new Map<string, number>(); // groupId → index in result
+    const result: typeof raw = [];
+
+    for (const item of raw) {
       const groupId = item.product?.product_group_id;
-      if (!groupId) return true; // несвязанный — оставляем
-      if (seenGroups.has(groupId)) return false; // дубликат пары — убираем
-      seenGroups.add(groupId);
-      return true;
-    });
+      if (!groupId) {
+        result.push(item);
+        continue;
+      }
+
+      const existingIdx = groupPrimary.get(groupId);
+      if (existingIdx === undefined) {
+        // Первый товар группы — добавляем
+        groupPrimary.set(groupId, result.length);
+        result.push({ ...item, metrics: { ...item.metrics } });
+      } else {
+        // Суммируем метрики в первый товар группы
+        const primary = result[existingIdx];
+        const pm = primary.metrics;
+        const m = item.metrics;
+        pm.sales_count += m.sales_count ?? 0;
+        pm.orders_count = (pm.orders_count ?? 0) + (m.orders_count ?? 0);
+        pm.cancelled_count = (pm.cancelled_count ?? 0) + (m.cancelled_count ?? 0);
+        pm.returns_count += m.returns_count ?? 0;
+        pm.revenue += m.revenue ?? 0;
+        pm.mp_costs += m.mp_costs ?? 0;
+        pm.storage_cost += m.storage_cost ?? 0;
+        pm.purchase_costs += m.purchase_costs ?? 0;
+        pm.ad_cost += m.ad_cost ?? 0;
+        pm.net_profit += m.net_profit ?? 0;
+      }
+    }
+    return result;
   }, [unitData?.products]);
 
   const totals = useMemo(() => computeTotals(unitProducts), [unitProducts]);
