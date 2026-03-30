@@ -302,16 +302,24 @@ async def reorder_products(
     supabase = get_supabase_client()
 
     try:
-        import json
         updates = [
             {"id": item.product_id, "sort_order": item.sort_order}
             for item in body.items
         ]
-        result = supabase.rpc("batch_update_products", {
-            "p_user_id": current_user.id,
-            "p_updates": json.dumps(updates),
-        }).execute()
-        updated = result.data if isinstance(result.data, int) else 0
+        try:
+            result = supabase.rpc("batch_update_products", {
+                "p_user_id": current_user.id,
+                "p_updates": updates,  # Supabase client сериализует JSONB сам
+            }).execute()
+            updated = result.data if isinstance(result.data, int) else len(updates)
+        except Exception:
+            # Fallback: поштучный UPDATE если RPC недоступен
+            updated = 0
+            now = datetime.now(timezone.utc).isoformat()
+            for item in body.items:
+                r = supabase.table("mp_products").update({"sort_order": item.sort_order, "updated_at": now}).eq("id", item.product_id).eq("user_id", current_user.id).execute()
+                if r.data:
+                    updated += 1
 
         return {"status": "success", "updated": updated}
 

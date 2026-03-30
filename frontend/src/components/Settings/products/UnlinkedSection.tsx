@@ -47,7 +47,7 @@ function UnlinkedLinkColumn({
   );
 
   return (
-    <div className="hidden sm:flex flex-col items-center w-10 flex-shrink-0">
+    <div className="flex flex-col items-center w-6 sm:w-10 flex-shrink-0">
       {/* Spacer matching ProductSearch height (py-1 text-xs ~26px + mb-1.5=6px) */}
       <div className="h-[26px] mb-1.5" />
       <div className={`${HEADER_H} flex items-end justify-center pb-0.5`}>
@@ -229,7 +229,7 @@ export function UnlinkedSection({
   const [searchOzon, setSearchOzon] = useState('');
   const [visibleWbCount, setVisibleWbCount] = useState(PAGE_SIZE);
   const [visibleOzonCount, setVisibleOzonCount] = useState(PAGE_SIZE);
-  const [mobileTab, setMobileTab] = useState<'wb' | 'ozon'>('wb');
+
 
   const filteredWb = useMemo(() => {
     if (!searchWb.trim()) return unlinkedWb;
@@ -260,50 +260,34 @@ export function UnlinkedSection({
   }
 
   return (
-    <>
-      {/* Mobile tabs (< sm) */}
-      {!isOzonDisabled && (
-        <div className="flex gap-1 mb-2 sm:hidden">
-          <button
-            onClick={() => setMobileTab('wb')}
-            className={`flex-1 px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${
-              mobileTab === 'wb'
-                ? 'bg-indigo-600 text-white'
-                : 'bg-gray-100 text-gray-600'
-            }`}
-          >
-            Wildberries ({filteredWb.length})
-          </button>
-          <button
-            onClick={() => setMobileTab('ozon')}
-            className={`flex-1 px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${
-              mobileTab === 'ozon'
-                ? 'bg-indigo-600 text-white'
-                : 'bg-gray-100 text-gray-600'
-            }`}
-          >
-            Ozon ({filteredOzon.length})
-          </button>
-        </div>
-      )}
+    <div className="flex gap-0 sm:gap-1">
+      <div className="flex-1 min-w-0">
+        <ProductSearch value={searchWb} onChange={setSearchWb} placeholder="Поиск WB..." />
+        <ProductColumn
+          title="WB"
+          products={filteredWb}
+          shakeIds={shakeIds}
+          onPriceChange={onPriceChange}
+          onReorder={onReorderWb}
+          visibleCount={visibleWbCount}
+          onLoadMore={() => setVisibleWbCount(c => c + PAGE_SIZE)}
+        />
+      </div>
 
-      {/* Mobile: single column based on tab */}
-      <div className="sm:hidden">
-        {mobileTab === 'wb' || isOzonDisabled ? (
-          <div>
-            <ProductSearch value={searchWb} onChange={setSearchWb} placeholder="Поиск WB..." />
-            <ProductColumn
-              title="Wildberries"
-              products={filteredWb}
-              shakeIds={shakeIds}
-              onPriceChange={onPriceChange}
-              onReorder={onReorderWb}
-              visibleCount={visibleWbCount}
-              onLoadMore={() => setVisibleWbCount(c => c + PAGE_SIZE)}
-            />
-          </div>
-        ) : (
-          <div>
+      {isOzonDisabled ? (
+        <OzonProOverlay />
+      ) : (
+        <>
+          <UnlinkedLinkColumn
+            wbProducts={filteredWb}
+            ozonProducts={filteredOzon}
+            onLink={onLink}
+            onHelp={onHelpClick}
+            searchActive={!!searchWb.trim() || !!searchOzon.trim()}
+            visibleWb={visibleWbCount}
+            visibleOzon={visibleOzonCount}
+          />
+          <div className="flex-1 min-w-0">
             <ProductSearch value={searchOzon} onChange={setSearchOzon} placeholder="Поиск Ozon..." />
             <ProductColumn
               title="Ozon"
@@ -315,53 +299,8 @@ export function UnlinkedSection({
               onReorder={onReorderOzon}
             />
           </div>
-        )}
-        {isOzonDisabled && <OzonProOverlay />}
-      </div>
-
-      {/* Desktop: 3-column layout (sm+) */}
-      <div className="hidden sm:flex gap-1">
-        <div className="flex-1 min-w-0">
-          <ProductSearch value={searchWb} onChange={setSearchWb} placeholder="Поиск WB..." />
-          <ProductColumn
-            title="Wildberries"
-            products={filteredWb}
-            shakeIds={shakeIds}
-            onPriceChange={onPriceChange}
-            onReorder={onReorderWb}
-            visibleCount={visibleWbCount}
-            onLoadMore={() => setVisibleWbCount(c => c + PAGE_SIZE)}
-          />
-        </div>
-
-        {isOzonDisabled ? (
-          <OzonProOverlay />
-        ) : (
-          <>
-            <UnlinkedLinkColumn
-              wbProducts={filteredWb}
-              ozonProducts={filteredOzon}
-              onLink={onLink}
-              onHelp={onHelpClick}
-              searchActive={!!searchWb.trim() || !!searchOzon.trim()}
-              visibleWb={visibleWbCount}
-              visibleOzon={visibleOzonCount}
-            />
-            <div className="flex-1 min-w-0">
-              <ProductSearch value={searchOzon} onChange={setSearchOzon} placeholder="Поиск Ozon..." />
-              <ProductColumn
-                title="Ozon"
-                products={filteredOzon}
-                visibleCount={visibleOzonCount}
-                onLoadMore={() => setVisibleOzonCount(c => c + PAGE_SIZE)}
-                shakeIds={shakeIds}
-                onPriceChange={onPriceChange}
-                onReorder={onReorderOzon}
-              />
-            </div>
-          </>
-        )}
-      </div>
-    </>
+        </>
+      )}
+    </div>
   );
 }
