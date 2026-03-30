@@ -341,7 +341,14 @@ async def get_unit_economics(
                 total_revenue_by_product[pid] = total_revenue_by_product.get(pid, 0) + float(sale.get("revenue", 0))
 
         # 5. Агрегация продаж и удержаний по товарам
+        # Начинаем со ВСЕХ товаров (не только с продажами) — каждый товар
+        # должен быть в UE даже если продаж за период нет (покажем нули).
+        # Пропускаем WB_ACCOUNT (системный)
         product_metrics: dict[str, dict] = {}
+        for pid in products:
+            if products[pid].get("barcode") == "WB_ACCOUNT":
+                continue
+            product_metrics[pid] = {"sales": 0, "revenue": 0, "costs": 0, "returns": 0}
 
         # 5a. FBO/FBS breakdown per product (when not filtered by fulfillment_type)
         ft_sales: dict[str, dict[str, dict]] = {}  # {product_id: {FBO: {sales, revenue}, FBS: {...}}}
