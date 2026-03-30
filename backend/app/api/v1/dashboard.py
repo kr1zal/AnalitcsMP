@@ -1033,7 +1033,8 @@ async def get_unit_economics(
                     "id": product_id,
                     "name": product["name"],
                     "barcode": product["barcode"],
-                    "purchase_price": purchase_price
+                    "purchase_price": purchase_price,
+                    "product_group_id": product.get("product_group_id"),
                 },
                 "metrics": {
                     "orders_count": orders_by_product.get(product_id, 0),

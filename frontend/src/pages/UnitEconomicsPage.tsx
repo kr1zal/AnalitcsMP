@@ -121,8 +121,22 @@ export const UnitEconomicsPage = () => {
 
   // ==================== DERIVED DATA ====================
 
-  const unitProducts = unitData?.products ?? [];
   const productsList = productsData?.products ?? [];
+
+  // Фильтрация: связанные пары (product_group_id) показываются одной строкой.
+  // Оставляем первый товар из группы (по id), второй убираем из основного списка —
+  // он будет доступен через mpBreakdown (раскрытие строки WB+Ozon).
+  const unitProducts = useMemo(() => {
+    const raw = unitData?.products ?? [];
+    const seenGroups = new Set<string>();
+    return raw.filter((item) => {
+      const groupId = item.product?.product_group_id;
+      if (!groupId) return true; // несвязанный — оставляем
+      if (seenGroups.has(groupId)) return false; // дубликат пары — убираем
+      seenGroups.add(groupId);
+      return true;
+    });
+  }, [unitData?.products]);
 
   const totals = useMemo(() => computeTotals(unitProducts), [unitProducts]);
   const hasAds = totals.adCost > 0;

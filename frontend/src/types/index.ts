@@ -223,6 +223,7 @@ export interface UnitEconomicsItem {
     name: string;
     barcode: string;
     purchase_price: number;
+    product_group_id?: string | null;
   };
   metrics: ProductMetrics;
   fulfillment_breakdown?: {

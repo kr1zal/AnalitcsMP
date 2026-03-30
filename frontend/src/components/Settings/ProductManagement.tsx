@@ -172,37 +172,41 @@ function SortableLinkedPairRow({
         isDragging ? 'bg-indigo-50 shadow-md' : ''
       }`}
     >
-      {/* Drag handle for entire pair */}
-      <button
-        {...attributes}
-        {...listeners}
-        className="touch-none cursor-grab active:cursor-grabbing text-gray-300 hover:text-gray-500 flex-shrink-0"
-      >
-        <GripVertical className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-      </button>
+      {/* WB product (flex-1 = same width as unlinked WB column) */}
+      <div className="flex-1 min-w-0 flex items-center gap-1 sm:gap-2">
+        <button
+          {...attributes}
+          {...listeners}
+          className="touch-none cursor-grab active:cursor-grabbing text-gray-300 hover:text-gray-500 flex-shrink-0"
+        >
+          <GripVertical className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+        </button>
+        <InlineProduct product={pair.wb} shakeIds={shakeIds} onPriceChange={onPriceChange} />
+      </div>
 
-      {/* WB product */}
-      <InlineProduct product={pair.wb} shakeIds={shakeIds} onPriceChange={onPriceChange} />
+      {/* Lock icon (fixed width = same as LinkColumn w-6 sm:w-10) */}
+      <div className="w-6 sm:w-10 flex items-center justify-center flex-shrink-0">
+        <button
+          onClick={() => {
+            if (pair.isAutoLinked) return;
+            onUnlink(pair.wb.product_group_id!);
+          }}
+          disabled={pair.isAutoLinked}
+          className={`p-0.5 sm:p-1 rounded transition-colors ${
+            pair.isAutoLinked
+              ? 'text-indigo-400 cursor-default'
+              : 'text-indigo-600 hover:bg-indigo-50 hover:text-indigo-800'
+          }`}
+          title={pair.isAutoLinked ? 'Авто-связь (один штрихкод)' : 'Разорвать связь'}
+        >
+          <Lock className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+        </button>
+      </div>
 
-      {/* Lock icon */}
-      <button
-        onClick={() => {
-          if (pair.isAutoLinked) return;
-          onUnlink(pair.wb.product_group_id!);
-        }}
-        disabled={pair.isAutoLinked}
-        className={`p-0.5 sm:p-1 rounded transition-colors flex-shrink-0 ${
-          pair.isAutoLinked
-            ? 'text-indigo-400 cursor-default'
-            : 'text-indigo-600 hover:bg-indigo-50 hover:text-indigo-800'
-        }`}
-        title={pair.isAutoLinked ? 'Авто-связь (один штрихкод)' : 'Разорвать связь'}
-      >
-        <Lock className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-      </button>
-
-      {/* Ozon product */}
-      <InlineProduct product={pair.ozon} shakeIds={shakeIds} onPriceChange={onPriceChange} />
+      {/* Ozon product (flex-1 = same width as unlinked Ozon column) */}
+      <div className="flex-1 min-w-0 flex items-center gap-1 sm:gap-2">
+        <InlineProduct product={pair.ozon} shakeIds={shakeIds} onPriceChange={onPriceChange} />
+      </div>
     </div>
   );
 }
