@@ -476,18 +476,29 @@ def _parse_xlsx_content(content: bytes) -> list[dict]:
         raise HTTPException(status_code=400, detail="XLSX файл пуст")
 
     rows_iter = ws.iter_rows(values_only=True)
-    header_row = next(rows_iter, None)
-    if not header_row:
-        raise HTTPException(status_code=400, detail="XLSX файл не содержит заголовков")
 
-    headers = [str(h).strip().lower() if h else "" for h in header_row]
-
-    id_col = next((i for i, h in enumerate(headers) if h in ID_ALIASES), None)
-    price_col = next((i for i, h in enumerate(headers) if h in PRICE_ALIASES), None)
-
-    if id_col is None and price_col is None and len(headers) >= 2:
-        id_col = 0
-        price_col = len(headers) - 1
+    # Ищем строку с заголовками (может быть не первая — шаблон имеет title row)
+    id_col = None
+    price_col = None
+    for candidate_row in rows_iter:
+        if not candidate_row:
+            continue
+        headers = [str(h).strip().lower() if h else "" for h in candidate_row]
+        id_col = next((i for i, h in enumerate(headers) if h in ID_ALIASES), None)
+        price_col = next((i for i, h in enumerate(headers) if h in PRICE_ALIASES), None)
+        if id_col is not None and price_col is not None:
+            break  # Нашли заголовки
+        # Fallback: если два столбца и похоже на данные (первый = строка, последний = число)
+        if len(headers) >= 2:
+            try:
+                float(str(candidate_row[-1]))
+                # Это данные без заголовков — не пропускаем
+                id_col = 0
+                price_col = len(headers) - 1
+                # Вернуть эту строку обратно нельзя, но она пойдёт как первая данная
+                break
+            except (ValueError, TypeError):
+                pass  # Не число — пропускаем (title row)
 
     if id_col is None or price_col is None:
         raise HTTPException(
