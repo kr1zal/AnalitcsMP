@@ -29,14 +29,22 @@ function UnlinkedLinkColumn({
   onLink,
   onHelp,
   searchActive,
+  visibleWb,
+  visibleOzon,
 }: {
   wbProducts: Product[];
   ozonProducts: Product[];
   onLink: (wb: Product, ozon: Product) => void;
   onHelp: () => void;
   searchActive: boolean;
+  visibleWb: number;
+  visibleOzon: number;
 }) {
-  const maxRows = Math.max(wbProducts.length, ozonProducts.length);
+  // Показываем замочки только для видимых строк (после пагинации)
+  const maxRows = Math.min(
+    Math.max(Math.min(wbProducts.length, visibleWb), Math.min(ozonProducts.length, visibleOzon)),
+    Math.max(wbProducts.length, ozonProducts.length),
+  );
 
   return (
     <div className="flex flex-col items-center w-6 sm:w-10 flex-shrink-0">
@@ -108,6 +116,8 @@ function ProductColumn({
   onPriceChange,
   onReorder,
   disabled,
+  visibleCount,
+  onLoadMore,
 }: {
   title: string;
   products: Product[];
@@ -115,9 +125,10 @@ function ProductColumn({
   onPriceChange: (productId: string, price: number) => void;
   onReorder: (products: Product[]) => void;
   disabled?: boolean;
+  visibleCount: number;
+  onLoadMore: () => void;
 }) {
   const [isDndActive, setIsDndActive] = useState(false);
-  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
@@ -135,14 +146,12 @@ function ProductColumn({
   }, [products, onReorder]);
 
   const activateDnd = useCallback(() => setIsDndActive(true), []);
-  const handleLoadMore = useCallback(() => setVisibleCount(c => c + PAGE_SIZE), []);
 
   const visibleProducts = useMemo(
     () => products.slice(0, visibleCount),
     [products, visibleCount],
   );
 
-  const hasMore = products.length > visibleCount;
 
   const content = (
     <>
@@ -156,9 +165,9 @@ function ProductColumn({
           onActivateDnd={activateDnd}
         />
       ))}
-      {hasMore && (
+      {products.length > visibleCount && (
         <button
-          onClick={handleLoadMore}
+          onClick={onLoadMore}
           className="w-full py-2 text-xs text-indigo-600 hover:text-indigo-800 font-medium transition-colors"
         >
           Показать ещё {Math.min(PAGE_SIZE, products.length - visibleCount)}
@@ -216,6 +225,8 @@ export function UnlinkedSection({
 }: UnlinkedSectionProps) {
   const [searchWb, setSearchWb] = useState('');
   const [searchOzon, setSearchOzon] = useState('');
+  const [visibleWbCount, setVisibleWbCount] = useState(PAGE_SIZE);
+  const [visibleOzonCount, setVisibleOzonCount] = useState(PAGE_SIZE);
 
   const filteredWb = useMemo(() => {
     if (!searchWb.trim()) return unlinkedWb;
@@ -255,6 +266,8 @@ export function UnlinkedSection({
           shakeIds={shakeIds}
           onPriceChange={onPriceChange}
           onReorder={onReorderWb}
+          visibleCount={visibleWbCount}
+          onLoadMore={() => setVisibleWbCount(c => c + PAGE_SIZE)}
         />
       </div>
 
@@ -268,12 +281,16 @@ export function UnlinkedSection({
             onLink={onLink}
             onHelp={onHelpClick}
             searchActive={!!searchWb.trim() || !!searchOzon.trim()}
+            visibleWb={visibleWbCount}
+            visibleOzon={visibleOzonCount}
           />
           <div className="flex-1 min-w-0">
             <ProductSearch value={searchOzon} onChange={setSearchOzon} placeholder="Поиск Ozon..." />
             <ProductColumn
               title="Ozon"
               products={filteredOzon}
+              visibleCount={visibleOzonCount}
+              onLoadMore={() => setVisibleOzonCount(c => c + PAGE_SIZE)}
               shakeIds={shakeIds}
               onPriceChange={onPriceChange}
               onReorder={onReorderOzon}
