@@ -2353,7 +2353,7 @@ class SyncService:
                     # but our unique key is (user,product,mp,date,campaign) — need totals
                     nm_totals: dict[int, dict] = {}
                     for app in day.get("apps", []):
-                        for nm in app.get("nm", []):
+                        for nm in app.get("nms") or app.get("nm") or []:
                             nm_id = nm.get("nmId")
                             if not nm_id:
                                 continue
@@ -2368,7 +2368,7 @@ class SyncService:
                             t["clicks"] += nm.get("clicks", 0)
                             t["cost"] += float(nm.get("sum", 0))
                             t["orders"] += nm.get("orders", 0)
-                            t["orders_sum_rub"] += float(nm.get("ordersSumRub", 0) or 0)
+                            t["orders_sum_rub"] += float(nm.get("sum_price") or nm.get("ordersSumRub") or 0)
 
                     for nm_id, t in nm_totals.items():
                         # Находим товар

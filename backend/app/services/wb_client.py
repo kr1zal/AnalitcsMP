@@ -180,19 +180,15 @@ class WildberriesClient:
         return await self._request("GET", url)
 
     async def get_advert_stats(self, campaign_ids: list[int], date_from: datetime, date_to: datetime) -> list:
-        """Получить статистику по рекламным кампаниям"""
-        url = f"{self.ADS_URL}/adv/v2/fullstats"
-        payload = [
-            {
-                "id": campaign_id,
-                "interval": {
-                    "begin": date_from.strftime("%Y-%m-%d"),
-                    "end": date_to.strftime("%Y-%m-%d")
-                }
-            }
-            for campaign_id in campaign_ids
-        ]
-        return await self._request("POST", url, json=payload)
+        """Получить статистику по рекламным кампаниям (v3 — GET с query params)"""
+        url = f"{self.ADS_URL}/adv/v3/fullstats"
+        # v3 API: GET с ids через запятую, beginDate/endDate в query
+        params = {
+            "ids": ",".join(str(cid) for cid in campaign_ids),
+            "beginDate": date_from.strftime("%Y-%m-%d"),
+            "endDate": date_to.strftime("%Y-%m-%d"),
+        }
+        return await self._request("GET", url, params=params)
 
     # ==================== ХРАНЕНИЕ (PAID STORAGE) ====================
 
