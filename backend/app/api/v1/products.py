@@ -1,16 +1,21 @@
 """
 Роутер для работы с товарами
 """
+import csv
+import io
+import logging
 import uuid
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, UploadFile, File
 from pydantic import BaseModel, Field
 from typing import Optional
 
 from ...db.supabase import get_supabase_client
 from ...auth import CurrentUser, get_current_user
 from ...subscription import _load_subscription
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -391,6 +396,224 @@ async def link_products(
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+MAX_IMPORT_FILE_SIZE = 5 * 1024 * 1024  # 5MB
+MAX_IMPORT_ROWS = 2000
+MAX_PRICE = 999_999
+
+ID_ALIASES = {"barcode", "offer_id", "артикул", "штрихкод", "id", "sku", "баркод"}
+PRICE_ALIASES = {"purchase_price", "себестоимость", "цена закупки", "закупка", "цена", "price", "cost"}
+
+
+def _parse_csv_content(content: bytes) -> list[dict]:
+    """Парсит CSV из bytes, возвращает list[{id, price}]."""
+    text = content.decode("utf-8-sig").strip()
+    if not text:
+        raise HTTPException(status_code=400, detail="Файл пуст")
+
+    # Auto-detect delimiter
+    first_line = text.split("\n", 1)[0]
+    if ";" in first_line:
+        delimiter = ";"
+    elif "\t" in first_line:
+        delimiter = "\t"
+    else:
+        delimiter = ","
+
+    reader = csv.reader(io.StringIO(text), delimiter=delimiter)
+    rows_list = list(reader)
+    if len(rows_list) < 2:
+        raise HTTPException(status_code=400, detail="Файл должен содержать заголовок и хотя бы одну строку данных")
+
+    headers = [h.strip().strip('"').strip("'").lower() for h in rows_list[0]]
+
+    id_col = next((i for i, h in enumerate(headers) if h in ID_ALIASES), None)
+    price_col = next((i for i, h in enumerate(headers) if h in PRICE_ALIASES), None)
+
+    # Fallback: first col = id, last col = price
+    if id_col is None and price_col is None and len(headers) >= 2:
+        id_col = 0
+        price_col = len(headers) - 1
+
+    if id_col is None or price_col is None:
+        raise HTTPException(
+            status_code=400,
+            detail="Не найдены колонки barcode/offer_id и purchase_price. Проверьте заголовки.",
+        )
+
+    results = []
+    for row in rows_list[1:]:
+        if not row or len(row) <= max(id_col, price_col):
+            continue
+        barcode = row[id_col].strip().strip('"').strip("'")
+        price_str = row[price_col].strip().strip('"').strip("'").replace(",", ".")
+        if not barcode or not price_str:
+            continue
+        try:
+            price = float(price_str)
+        except ValueError:
+            continue
+        if price < 0 or price > MAX_PRICE:
+            continue
+        results.append({"barcode": barcode, "price": price})
+
+    return results
+
+
+def _parse_xlsx_content(content: bytes) -> list[dict]:
+    """Парсит XLSX из bytes, возвращает list[{id, price}]."""
+    from openpyxl import load_workbook
+
+    wb = load_workbook(filename=io.BytesIO(content), read_only=True, data_only=True)
+    ws = wb.active
+    if ws is None:
+        raise HTTPException(status_code=400, detail="XLSX файл пуст")
+
+    rows_iter = ws.iter_rows(values_only=True)
+    header_row = next(rows_iter, None)
+    if not header_row:
+        raise HTTPException(status_code=400, detail="XLSX файл не содержит заголовков")
+
+    headers = [str(h).strip().lower() if h else "" for h in header_row]
+
+    id_col = next((i for i, h in enumerate(headers) if h in ID_ALIASES), None)
+    price_col = next((i for i, h in enumerate(headers) if h in PRICE_ALIASES), None)
+
+    if id_col is None and price_col is None and len(headers) >= 2:
+        id_col = 0
+        price_col = len(headers) - 1
+
+    if id_col is None or price_col is None:
+        raise HTTPException(
+            status_code=400,
+            detail="Не найдены колонки barcode/offer_id и purchase_price. Проверьте заголовки.",
+        )
+
+    results = []
+    for row in rows_iter:
+        if not row or len(row) <= max(id_col, price_col):
+            continue
+        barcode = str(row[id_col]).strip() if row[id_col] is not None else ""
+        price_val = row[price_col]
+        if not barcode or price_val is None:
+            continue
+        try:
+            price = float(price_val)
+        except (ValueError, TypeError):
+            continue
+        if price < 0 or price > MAX_PRICE:
+            continue
+        results.append({"barcode": barcode, "price": price})
+
+    wb.close()
+    return results
+
+
+@router.post("/products/import-prices")
+async def import_prices(
+    file: UploadFile = File(...),
+    current_user: CurrentUser = Depends(get_current_user),
+):
+    """
+    Импорт себестоимости из CSV или XLSX файла.
+    Мэтчит строки по barcode, обновляет purchase_price.
+    """
+    # 1. Читаем и валидируем размер
+    content = await file.read()
+    if len(content) > MAX_IMPORT_FILE_SIZE:
+        raise HTTPException(status_code=400, detail="Файл превышает 5MB")
+    if len(content) == 0:
+        raise HTTPException(status_code=400, detail="Файл пуст")
+
+    # 2. Определяем формат по magic bytes
+    is_xlsx = content[:2] == b"PK"
+
+    # 3. Парсим
+    if is_xlsx:
+        parsed_rows = _parse_xlsx_content(content)
+    else:
+        parsed_rows = _parse_csv_content(content)
+
+    if not parsed_rows:
+        raise HTTPException(status_code=400, detail="Не удалось распарсить ни одной строки с данными")
+
+    if len(parsed_rows) > MAX_IMPORT_ROWS:
+        raise HTTPException(status_code=400, detail=f"Превышен лимит строк ({MAX_IMPORT_ROWS})")
+
+    # 4. Загружаем товары пользователя
+    supabase = get_supabase_client()
+    products_result = (
+        supabase.table("mp_products")
+        .select("id, barcode, purchase_price, product_group_id")
+        .eq("user_id", current_user.id)
+        .neq("barcode", "WB_ACCOUNT")
+        .limit(2000)
+        .execute()
+    )
+
+    by_barcode: dict[str, dict] = {}
+    for p in products_result.data or []:
+        by_barcode[p["barcode"]] = p
+
+    # 5. Мэтчим и обновляем
+    updated = 0
+    skipped = 0
+    not_found: list[str] = []
+    errors: list[str] = []
+    now = datetime.now(timezone.utc).isoformat()
+
+    # Собираем группы для batch update связанных товаров
+    group_updates: dict[str, float] = {}  # group_id → price
+
+    for row in parsed_rows:
+        barcode = row["barcode"]
+        price = row["price"]
+
+        product = by_barcode.get(barcode)
+        if not product:
+            not_found.append(barcode)
+            continue
+
+        if product["purchase_price"] == price:
+            skipped += 1
+            updated += 1  # считаем как "обработан успешно"
+            continue
+
+        try:
+            supabase.table("mp_products").update({
+                "purchase_price": price,
+                "updated_at": now,
+            }).eq("id", product["id"]).eq("user_id", current_user.id).execute()
+            updated += 1
+
+            # Обновляем связанные товары в группе
+            gid = product.get("product_group_id")
+            if gid:
+                group_updates[gid] = price
+
+        except Exception as e:
+            errors.append(f"{barcode}: {str(e)}")
+            logger.warning("import-prices update failed for %s: %s", barcode, e)
+
+    # Batch update grouped products
+    for gid, price in group_updates.items():
+        try:
+            supabase.table("mp_products").update({
+                "purchase_price": price,
+                "updated_at": now,
+            }).eq("product_group_id", gid).eq("user_id", current_user.id).execute()
+        except Exception as e:
+            logger.warning("import-prices group update failed for %s: %s", gid, e)
+
+    return {
+        "status": "success",
+        "updated": updated,
+        "total_rows": len(parsed_rows),
+        "skipped": skipped,
+        "not_found": not_found[:50],  # лимитируем вывод
+        "errors": errors[:20],
+    }
 
 
 @router.post("/products/unlink/{group_id}")

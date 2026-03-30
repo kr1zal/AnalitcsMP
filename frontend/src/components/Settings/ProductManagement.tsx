@@ -17,6 +17,7 @@ import {
 import { CSS } from '@dnd-kit/utilities';
 import { GripVertical, Lock, Unlock, X, AlertCircle, HelpCircle, Download, Upload, Search } from 'lucide-react';
 import { toast } from 'sonner';
+import { useQueryClient } from '@tanstack/react-query';
 import {
   useProducts,
   useUpdatePurchasePrice,
@@ -25,6 +26,7 @@ import {
   useUnlinkProducts,
 } from '../../hooks/useProducts';
 import { useSubscription } from '../../hooks/useSubscription';
+import api from '../../services/api';
 import type { Product } from '../../types';
 
 // ─── Shake animation CSS ───
@@ -583,94 +585,13 @@ function generateCsvTemplate(products: Product[], marketplace: 'wb' | 'ozon'): v
   URL.revokeObjectURL(url);
 }
 
-function parseCsvFile(
-  file: File,
-  products: Product[],
-  onResult: (updated: number, total: number, notFound: string[]) => void,
-  updateFn: (productId: string, price: number) => Promise<void>,
-): void {
-  const reader = new FileReader();
-  reader.onload = async (e) => {
-    const text = e.target?.result as string;
-    if (!text) return;
-
-    // Проверка: Numbers/Excel сохраняет в бинарный формат (.numbers/.xlsx) вместо CSV
-    if (text.startsWith('PK') || text.charCodeAt(0) === 0x50 && text.charCodeAt(1) === 0x4B) {
-      onResult(0, 0, ['Файл не в формате CSV. Если вы открывали в Numbers/Excel, используйте "Экспортировать в → CSV" вместо "Сохранить".']);
-      return;
-    }
-
-    const lines = text.replace(/^\uFEFF/, '').trim().split('\n');
-    if (lines.length < 2) {
-      onResult(0, 0, []);
-      return;
-    }
-
-    // Auto-detect delimiter
-    const headerLine = lines[0];
-    const delimiter = headerLine.includes(';') ? ';' : headerLine.includes('\t') ? '\t' : ',';
-    // Strip quotes, BOM, whitespace from headers
-    const stripCell = (s: string) => s.trim().replace(/^["']+|["']+$/g, '').trim().toLowerCase();
-    const headers = headerLine.split(delimiter).map(stripCell);
-
-    // Find columns — flexible matching
-    const ID_ALIASES = ['barcode', 'offer_id', 'артикул', 'штрихкод', 'id', 'sku', 'баркод'];
-    const PRICE_ALIASES = ['purchase_price', 'себестоимость', 'цена закупки', 'закупка', 'цена', 'price', 'cost'];
-
-    const idCol = headers.findIndex(h => ID_ALIASES.includes(h));
-    const priceCol = headers.findIndex(h => PRICE_ALIASES.includes(h));
-
-    // Fallback: если два столбца и нет заголовков — первый = id, второй = price
-    const usePositional = idCol === -1 && priceCol === -1 && headers.length >= 2;
-
-    if (!usePositional && (idCol === -1 || priceCol === -1)) {
-      onResult(0, 0, ['Не найдены колонки barcode/offer_id и purchase_price. Проверьте заголовки CSV.']);
-      return;
-    }
-
-    const effectiveIdCol = usePositional ? 0 : idCol;
-    const effectivePriceCol = usePositional ? (headers.length >= 3 ? 2 : 1) : priceCol;
-    // If positional, first line is data too (no headers)
-    const startLine = usePositional ? 0 : 1;
-
-    // Build product lookup by barcode
-    const byBarcode = new Map(products.map(p => [p.barcode, p]));
-
-    let updated = 0;
-    const notFound: string[] = [];
-    const dataLines = lines.slice(startLine).filter(l => l.trim());
-
-    for (const line of dataLines) {
-      const cols = line.split(delimiter).map(stripCell);
-      const id = cols[effectiveIdCol];
-      const priceStr = cols[effectivePriceCol];
-
-      if (!id || !priceStr) continue;
-
-      const price = parseFloat(priceStr.replace(',', '.'));
-      if (isNaN(price) || price < 0) continue;
-
-      const product = byBarcode.get(id);
-      if (!product) {
-        notFound.push(id);
-        continue;
-      }
-
-      if (product.purchase_price !== price) {
-        try {
-          await updateFn(product.id, price);
-          updated++;
-        } catch {
-          // skip failed
-        }
-      } else {
-        updated++; // already correct
-      }
-    }
-
-    onResult(updated, dataLines.length, notFound);
-  };
-  reader.readAsText(file, 'utf-8');
+interface ImportPricesResponse {
+  status: string;
+  updated: number;
+  total_rows: number;
+  skipped: number;
+  not_found: string[];
+  errors: string[];
 }
 
 // ─── Main Component ───
@@ -783,32 +704,40 @@ export function ProductManagement() {
     [updatePrice],
   );
 
-  // ── CSV upload handler ──
-  const handleCsvUpload = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+  const queryClient = useQueryClient();
+
+  // ── File upload handler (CSV/XLSX → backend) ──
+  const handleFileUpload = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
     setCsvUploading(true);
 
-    parseCsvFile(
-      file,
-      products,
-      (updated, total, notFound) => {
-        setCsvUploading(false);
-        if (notFound.length === 1 && total === 0) {
-          toast.error(notFound[0]);
-        } else {
-          toast.success(`Обновлено ${updated} из ${total} товаров`);
-          if (notFound.length > 0) {
-            toast.error(`Не найдено: ${notFound.slice(0, 5).join(', ')}${notFound.length > 5 ? ` и ещё ${notFound.length - 5}` : ''}`);
-          }
-        }
-        if (fileInputRef.current) fileInputRef.current.value = '';
-      },
-      async (productId, price) => {
-        await updatePrice.mutateAsync({ productId, price });
-      },
-    );
-  }, [products, updatePrice]);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+
+      const { data } = await api.post<ImportPricesResponse>(
+        '/products/import-prices',
+        formData,
+        { headers: { 'Content-Type': 'multipart/form-data' } },
+      );
+
+      toast.success(`Обновлено ${data.updated} из ${data.total_rows} товаров`);
+      if (data.not_found.length > 0) {
+        const preview = data.not_found.slice(0, 5).join(', ');
+        const suffix = data.not_found.length > 5 ? ` и ещё ${data.not_found.length - 5}` : '';
+        toast.error(`Не найдено: ${preview}${suffix}`);
+      }
+
+      queryClient.invalidateQueries({ queryKey: ['products'] });
+    } catch (err: unknown) {
+      const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail || 'Ошибка импорта файла';
+      toast.error(msg);
+    } finally {
+      setCsvUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  }, [queryClient]);
 
   // ── Reorder helper: assigns sort_order to all products (pairs first, then unlinked) ──
   const reorderAll = useCallback(
@@ -976,13 +905,13 @@ export function ProductManagement() {
             className="text-xs font-medium text-gray-500 hover:text-gray-700 border border-gray-200 rounded-lg px-3 py-1.5 flex items-center gap-1 transition-colors disabled:opacity-50"
           >
             <Upload className="w-3 h-3" />
-            {csvUploading ? 'Загрузка...' : 'Загрузить CSV'}
+            {csvUploading ? 'Загрузка...' : 'Загрузить'}
           </button>
           <input
             ref={fileInputRef}
             type="file"
-            accept=".csv,.txt,text/csv,text/plain,application/vnd.ms-excel"
-            onChange={handleCsvUpload}
+            accept=".csv,.xlsx,.xls"
+            onChange={handleFileUpload}
             className="hidden"
           />
           <SKUCounter current={currentSku} max={maxSku} />
