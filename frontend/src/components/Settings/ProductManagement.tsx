@@ -38,16 +38,23 @@ const SHAKE_CSS = `
 .pm-shake { animation: pm-shake 0.4s ease-in-out; }
 `;
 
-// ─── Layout constants (shared between all 3 columns) ───
+// ─── Layout constants ───
 
-const ROW_H = 'h-[44px] sm:h-[40px]';   // product row + lock row
-const HEADER_H = 'h-7';                   // header area above rows (28px)
+const ROW_H = 'h-[44px] sm:h-[40px]';
+const HEADER_H = 'h-7';
 
 // ─── Types ───
 
 interface CCConflict {
   wbProduct: Product;
   ozonProduct: Product;
+}
+
+interface LinkedPair {
+  pairId: string; // groupId or product.id for auto-linked
+  wb: Product;
+  ozon: Product;
+  isAutoLinked: boolean;
 }
 
 // ─── SKU Counter ───
@@ -70,7 +77,137 @@ function SKUCounter({ current, max }: { current: number; max: number | null }) {
   );
 }
 
-// ─── Sortable Product Row ───
+// ─── Inline Product Display (no drag, used inside pair row) ───
+
+function InlineProduct({
+  product,
+  shakeIds,
+  onPriceChange,
+}: {
+  product: Product;
+  shakeIds: Set<string>;
+  onPriceChange: (productId: string, price: number) => void;
+}) {
+  const [localPrice, setLocalPrice] = useState(String(product.purchase_price || ''));
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    setLocalPrice(String(product.purchase_price || ''));
+  }, [product.purchase_price]);
+
+  const handleBlur = () => {
+    const num = parseFloat(localPrice);
+    if (!isNaN(num) && num >= 0 && num !== product.purchase_price) {
+      onPriceChange(product.id, num);
+    } else {
+      setLocalPrice(String(product.purchase_price || ''));
+    }
+  };
+
+  const isShaking = shakeIds.has(product.id);
+
+  return (
+    <div className="flex items-center gap-1 sm:gap-2 flex-1 min-w-0">
+      <span
+        className="text-[11px] sm:text-sm text-gray-800 flex-1 min-w-0 leading-tight line-clamp-2 sm:truncate sm:line-clamp-none"
+        title={product.name}
+      >
+        {product.name}
+      </span>
+      <input
+        ref={inputRef}
+        type="number"
+        value={localPrice}
+        onChange={(e) => setLocalPrice(e.target.value)}
+        onBlur={handleBlur}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') inputRef.current?.blur();
+        }}
+        className={`w-12 sm:w-20 px-1 sm:px-1.5 py-0.5 text-xs sm:text-sm text-right border rounded transition-colors flex-shrink-0 ${
+          isShaking
+            ? 'border-red-500 bg-red-50 pm-shake'
+            : 'border-gray-200 focus:border-indigo-400 focus:ring-1 focus:ring-indigo-200'
+        }`}
+        min={0}
+        step={1}
+      />
+    </div>
+  );
+}
+
+// ─── Sortable Linked Pair Row ───
+
+function SortableLinkedPairRow({
+  pair,
+  shakeIds,
+  onPriceChange,
+  onUnlink,
+}: {
+  pair: LinkedPair;
+  shakeIds: Set<string>;
+  onPriceChange: (productId: string, price: number) => void;
+  onUnlink: (groupId: string) => void;
+}) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: pair.pairId });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+    zIndex: isDragging ? 50 : undefined,
+  };
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      className={`${ROW_H} flex items-center gap-1 sm:gap-2 px-0.5 sm:px-2 rounded-lg hover:bg-gray-50 ${
+        isDragging ? 'bg-indigo-50 shadow-md' : ''
+      }`}
+    >
+      {/* Drag handle for entire pair */}
+      <button
+        {...attributes}
+        {...listeners}
+        className="touch-none cursor-grab active:cursor-grabbing text-gray-300 hover:text-gray-500 flex-shrink-0"
+      >
+        <GripVertical className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+      </button>
+
+      {/* WB product */}
+      <InlineProduct product={pair.wb} shakeIds={shakeIds} onPriceChange={onPriceChange} />
+
+      {/* Lock icon */}
+      <button
+        onClick={() => {
+          if (pair.isAutoLinked) return;
+          onUnlink(pair.wb.product_group_id!);
+        }}
+        disabled={pair.isAutoLinked}
+        className={`p-0.5 sm:p-1 rounded transition-colors flex-shrink-0 ${
+          pair.isAutoLinked
+            ? 'text-indigo-400 cursor-default'
+            : 'text-indigo-600 hover:bg-indigo-50 hover:text-indigo-800'
+        }`}
+        title={pair.isAutoLinked ? 'Авто-связь (один штрихкод)' : 'Разорвать связь'}
+      >
+        <Lock className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+      </button>
+
+      {/* Ozon product */}
+      <InlineProduct product={pair.ozon} shakeIds={shakeIds} onPriceChange={onPriceChange} />
+    </div>
+  );
+}
+
+// ─── Sortable Product Row (for unlinked) ───
 
 function SortableProductRow({
   product,
@@ -123,7 +260,6 @@ function SortableProductRow({
         isDragging ? 'bg-indigo-50 shadow-md' : ''
       }`}
     >
-      {/* Drag handle */}
       <button
         {...attributes}
         {...listeners}
@@ -131,16 +267,12 @@ function SortableProductRow({
       >
         <GripVertical className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
       </button>
-
-      {/* Name — two-line on mobile for better readability */}
       <span
         className="text-[11px] sm:text-sm text-gray-800 flex-1 min-w-0 leading-tight line-clamp-2 sm:truncate sm:line-clamp-none"
         title={product.name}
       >
         {product.name}
       </span>
-
-      {/* Price input */}
       <input
         ref={inputRef}
         type="number"
@@ -162,7 +294,7 @@ function SortableProductRow({
   );
 }
 
-// ─── Product Column ───
+// ─── Unlinked Product Column ───
 
 function ProductColumn({
   title,
@@ -220,26 +352,23 @@ function ProductColumn({
   );
 }
 
-// ─── Lock Column ───
+// ─── Unlinked Link Column (lock icons between unlinked WB and Ozon) ───
 
-function LinkColumn({
+function UnlinkedLinkColumn({
   wbProducts,
   ozonProducts,
   onLink,
-  onUnlink,
   onHelp,
 }: {
   wbProducts: Product[];
   ozonProducts: Product[];
   onLink: (wb: Product, ozon: Product) => void;
-  onUnlink: (groupId: string) => void;
   onHelp: () => void;
 }) {
   const maxRows = Math.max(wbProducts.length, ozonProducts.length);
 
   return (
     <div className="flex flex-col items-center w-6 sm:w-10 flex-shrink-0">
-      {/* Header with help icon — matches ProductColumn HEADER_H */}
       <div className={`${HEADER_H} flex items-end justify-center pb-0.5`}>
         <button onClick={onHelp} className="text-gray-300 hover:text-gray-500 transition-colors">
           <HelpCircle className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
@@ -253,45 +382,15 @@ function LinkColumn({
           return <div key={i} className={ROW_H} />;
         }
 
-        // Auto-linked: same DB row (both marketplace IDs on one product)
-        const isAutoLinked = wb.id === ozon.id;
-
-        // Manually linked: same product_group_id
-        const isManuallyLinked =
-          !isAutoLinked &&
-          !!wb.product_group_id &&
-          !!ozon.product_group_id &&
-          wb.product_group_id === ozon.product_group_id;
-
-        const isLinked = isAutoLinked || isManuallyLinked;
-
         return (
           <div key={i} className={`${ROW_H} flex items-center justify-center`}>
-            {isLinked ? (
-              <button
-                onClick={() => {
-                  if (isAutoLinked) return;
-                  if (wb.product_group_id) onUnlink(wb.product_group_id);
-                }}
-                disabled={isAutoLinked}
-                className={`p-0.5 sm:p-1 rounded transition-colors ${
-                  isAutoLinked
-                    ? 'text-indigo-400 cursor-default'
-                    : 'text-indigo-600 hover:bg-indigo-50 hover:text-indigo-800'
-                }`}
-                title={isAutoLinked ? 'Авто-связь (один штрихкод)' : 'Разорвать связь'}
-              >
-                <Lock className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-              </button>
-            ) : (
-              <button
-                onClick={() => onLink(wb, ozon)}
-                className="p-0.5 sm:p-1 rounded text-gray-300 hover:text-indigo-600 hover:bg-indigo-50 transition-colors"
-                title="Связать товары"
-              >
-                <Unlock className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-              </button>
-            )}
+            <button
+              onClick={() => onLink(wb, ozon)}
+              className="p-0.5 sm:p-1 rounded text-gray-300 hover:text-indigo-600 hover:bg-indigo-50 transition-colors"
+              title="Связать товары"
+            >
+              <Unlock className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+            </button>
           </div>
         );
       })}
@@ -418,7 +517,7 @@ function OzonProOverlay() {
   );
 }
 
-// ─── Info Modal (click-to-open, mobile bottom-sheet) ───
+// ─── Info Modal ───
 
 function InfoModal({
   title,
@@ -466,20 +565,65 @@ export function ProductManagement() {
 
   const products = productsData?.products || [];
 
-  // Split into WB and Ozon lists
-  const wbProducts = useMemo(
-    () => products.filter((p) => p.wb_nm_id).sort((a, b) => a.sort_order - b.sort_order),
-    [products],
-  );
-  const ozonProducts = useMemo(
-    () =>
-      products.filter((p) => p.ozon_product_id).sort((a, b) => a.sort_order - b.sort_order),
-    [products],
-  );
+  // ── Group products: linked pairs (top) + unlinked (bottom) ──
+
+  const { linkedPairs, unlinkedWb, unlinkedOzon } = useMemo(() => {
+    const pairs: LinkedPair[] = [];
+    const groupMap = new Map<string, { wb?: Product; ozon?: Product }>();
+    const usedIds = new Set<string>();
+
+    // 1. Find auto-linked (single product with both wb_nm_id + ozon_product_id)
+    for (const p of products) {
+      if (p.wb_nm_id && p.ozon_product_id) {
+        pairs.push({ pairId: `auto-${p.id}`, wb: p, ozon: p, isAutoLinked: true });
+        usedIds.add(p.id);
+      }
+    }
+
+    // 2. Find manually linked (same product_group_id)
+    for (const p of products) {
+      if (usedIds.has(p.id) || !p.product_group_id) continue;
+      const entry = groupMap.get(p.product_group_id) || {};
+      if (p.wb_nm_id) entry.wb = p;
+      if (p.ozon_product_id) entry.ozon = p;
+      groupMap.set(p.product_group_id, entry);
+    }
+
+    for (const [groupId, entry] of groupMap) {
+      if (entry.wb && entry.ozon) {
+        pairs.push({ pairId: groupId, wb: entry.wb, ozon: entry.ozon, isAutoLinked: false });
+        usedIds.add(entry.wb.id);
+        usedIds.add(entry.ozon.id);
+      }
+    }
+
+    // Sort pairs by min sort_order of the pair
+    pairs.sort((a, b) => {
+      const aOrder = Math.min(a.wb.sort_order, a.ozon.sort_order);
+      const bOrder = Math.min(b.wb.sort_order, b.ozon.sort_order);
+      return aOrder - bOrder;
+    });
+
+    // 3. Remaining unlinked
+    const ulWb = products
+      .filter((p) => !usedIds.has(p.id) && p.wb_nm_id)
+      .sort((a, b) => a.sort_order - b.sort_order);
+    const ulOzon = products
+      .filter((p) => !usedIds.has(p.id) && p.ozon_product_id)
+      .sort((a, b) => a.sort_order - b.sort_order);
+
+    return { linkedPairs: pairs, unlinkedWb: ulWb, unlinkedOzon: ulOzon };
+  }, [products]);
 
   const isOzonDisabled =
     subscription?.limits?.marketplaces &&
     !subscription.limits.marketplaces.includes('ozon');
+
+  // ── DnD sensors for linked pairs ──
+  const pairSensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 150, tolerance: 5 } }),
+  );
 
   // ── Handle price update ──
   const handlePriceChange = useCallback(
@@ -495,27 +639,79 @@ export function ProductManagement() {
     [updatePrice],
   );
 
-  // ── Handle reorder ──
-  const handleReorder = useCallback(
-    (newProducts: Product[]) => {
-      const items = newProducts.map((p, i) => ({ product_id: p.id, sort_order: i }));
+  // ── Reorder helper: assigns sort_order to all products (pairs first, then unlinked) ──
+  const reorderAll = useCallback(
+    (newPairs: LinkedPair[], newUnlinkedWb: Product[], newUnlinkedOzon: Product[]) => {
+      const items: { product_id: string; sort_order: number }[] = [];
+      let order = 0;
+
+      // Linked pairs first
+      for (const pair of newPairs) {
+        if (pair.isAutoLinked) {
+          items.push({ product_id: pair.wb.id, sort_order: order });
+        } else {
+          items.push({ product_id: pair.wb.id, sort_order: order });
+          items.push({ product_id: pair.ozon.id, sort_order: order });
+        }
+        order++;
+      }
+
+      // Unlinked WB
+      for (const p of newUnlinkedWb) {
+        items.push({ product_id: p.id, sort_order: order });
+        order++;
+      }
+
+      // Unlinked Ozon
+      for (const p of newUnlinkedOzon) {
+        items.push({ product_id: p.id, sort_order: order });
+        order++;
+      }
+
       reorderMut.mutate(items);
     },
     [reorderMut],
+  );
+
+  // ── Handle linked pairs drag end ──
+  const handlePairsDragEnd = useCallback(
+    (event: DragEndEvent) => {
+      const { active, over } = event;
+      if (!over || active.id === over.id) return;
+      const oldIndex = linkedPairs.findIndex((p) => p.pairId === active.id);
+      const newIndex = linkedPairs.findIndex((p) => p.pairId === over.id);
+      if (oldIndex === -1 || newIndex === -1) return;
+      const newPairs = arrayMove(linkedPairs, oldIndex, newIndex);
+      reorderAll(newPairs, unlinkedWb, unlinkedOzon);
+    },
+    [linkedPairs, unlinkedWb, unlinkedOzon, reorderAll],
+  );
+
+  // ── Handle unlinked reorder ──
+  const handleUnlinkedWbReorder = useCallback(
+    (newProducts: Product[]) => {
+      reorderAll(linkedPairs, newProducts, unlinkedOzon);
+    },
+    [linkedPairs, unlinkedOzon, reorderAll],
+  );
+
+  const handleUnlinkedOzonReorder = useCallback(
+    (newProducts: Product[]) => {
+      reorderAll(linkedPairs, unlinkedWb, newProducts);
+    },
+    [linkedPairs, unlinkedWb, reorderAll],
   );
 
   // ── Handle link click ──
   const handleLink = useCallback(
     (wb: Product, ozon: Product) => {
       if (wb.purchase_price !== ozon.purchase_price) {
-        // Shake both price cells, then show conflict modal
         setShakeIds(new Set([wb.id, ozon.id]));
         setTimeout(() => {
           setShakeIds(new Set());
           setConflict({ wbProduct: wb, ozonProduct: ozon });
         }, 450);
       } else {
-        // Same price → link directly
         linkMut.mutate(
           { wbId: wb.id, ozonId: ozon.id, purchasePrice: wb.purchase_price },
           {
@@ -574,6 +770,8 @@ export function ProductManagement() {
 
   const currentSku = products.length;
   const maxSku = subscription?.limits?.max_sku ?? null;
+  const hasLinkedPairs = linkedPairs.length > 0;
+  const hasUnlinked = unlinkedWb.length > 0 || unlinkedOzon.length > 0;
 
   return (
     <>
@@ -610,38 +808,83 @@ export function ProductManagement() {
         <p className="text-sm text-gray-500 text-center py-6">
           Товары появятся после первой синхронизации с маркетплейсами.
           <br />
-          <span className="text-xs text-gray-400">Добавьте API-токены ниже и нажмите «Сохранить и синхронизировать».</span>
+          <span className="text-xs text-gray-400">Добавьте API-токены ниже и нажмите "Сохранить и синхронизировать".</span>
         </p>
       ) : (
-        <div className="flex gap-0 sm:gap-1">
-          <ProductColumn
-            title="Wildberries"
-            products={wbProducts}
-            shakeIds={shakeIds}
-            onPriceChange={handlePriceChange}
-            onReorder={handleReorder}
-          />
+        <div>
+          {/* ── Linked Pairs Section ── */}
+          {hasLinkedPairs && (
+            <div className="mb-2">
+              <div className={`${HEADER_H} flex items-end px-1 pb-1`}>
+                <h3 className="text-[10px] sm:text-xs font-semibold text-gray-500 uppercase tracking-wide flex items-center gap-1.5">
+                  <Lock className="w-3 h-3" />
+                  Связанные пары
+                  <button onClick={() => setHelpOpen('links')} className="text-gray-300 hover:text-gray-500 transition-colors">
+                    <HelpCircle className="w-3 h-3" />
+                  </button>
+                </h3>
+              </div>
+              <DndContext sensors={pairSensors} collisionDetection={closestCenter} onDragEnd={handlePairsDragEnd}>
+                <SortableContext items={linkedPairs.map((p) => p.pairId)} strategy={verticalListSortingStrategy}>
+                  {linkedPairs.map((pair) => (
+                    <SortableLinkedPairRow
+                      key={pair.pairId}
+                      pair={pair}
+                      shakeIds={shakeIds}
+                      onPriceChange={handlePriceChange}
+                      onUnlink={handleUnlinkClick}
+                    />
+                  ))}
+                </SortableContext>
+              </DndContext>
+            </div>
+          )}
 
-          {isOzonDisabled ? (
-            <OzonProOverlay />
-          ) : (
-            <>
-              <LinkColumn
-                wbProducts={wbProducts}
-                ozonProducts={ozonProducts}
-                onLink={handleLink}
-                onUnlink={handleUnlinkClick}
-                onHelp={() => setHelpOpen('links')}
-              />
+          {/* ── Divider between linked and unlinked ── */}
+          {hasLinkedPairs && hasUnlinked && (
+            <div className="border-t border-gray-200 my-3" />
+          )}
 
+          {/* ── Unlinked Section ── */}
+          {hasUnlinked && (
+            <div className="flex gap-0 sm:gap-1">
               <ProductColumn
-                title="Ozon"
-                products={ozonProducts}
+                title="Wildberries"
+                products={unlinkedWb}
                 shakeIds={shakeIds}
                 onPriceChange={handlePriceChange}
-                onReorder={handleReorder}
+                onReorder={handleUnlinkedWbReorder}
               />
-            </>
+
+              {isOzonDisabled ? (
+                <OzonProOverlay />
+              ) : (
+                <>
+                  <UnlinkedLinkColumn
+                    wbProducts={unlinkedWb}
+                    ozonProducts={unlinkedOzon}
+                    onLink={handleLink}
+                    onHelp={() => setHelpOpen('links')}
+                  />
+
+                  <ProductColumn
+                    title="Ozon"
+                    products={unlinkedOzon}
+                    shakeIds={shakeIds}
+                    onPriceChange={handlePriceChange}
+                    onReorder={handleUnlinkedOzonReorder}
+                  />
+                </>
+              )}
+            </div>
+          )}
+
+          {/* Edge case: all products are linked, show Ozon disabled if needed */}
+          {!hasUnlinked && isOzonDisabled && (
+            <div className="flex gap-0 sm:gap-1">
+              <div className="flex-1" />
+              <OzonProOverlay />
+            </div>
           )}
         </div>
       )}
@@ -663,19 +906,19 @@ export function ProductManagement() {
               <p>Импортируются автоматически при синхронизации с маркетплейсами. Вручную добавить нельзя.</p>
             </div>
             <div>
-              <p className="font-medium text-gray-800 mb-1">Себестоимость (₽)</p>
-              <p>Число справа от названия — закупочная цена. Используется для расчёта прибыли на дашборде.</p>
+              <p className="font-medium text-gray-800 mb-1">Себестоимость (рублей)</p>
+              <p>Число справа от названия -- закупочная цена. Используется для расчёта прибыли на дашборде.</p>
             </div>
             <div>
               <p className="font-medium text-gray-800 mb-1">Порядок отображения</p>
-              <p>Перетаскивайте <span className="inline-block align-middle text-gray-400">⋮⋮</span> слева от названия для изменения порядка.</p>
+              <p>Перетаскивайте <span className="inline-block align-middle text-gray-400">||</span> слева от названия для изменения порядка. Связанные пары перемещаются целиком.</p>
             </div>
             <div>
               <p className="font-medium text-gray-800 mb-1">Группы товаров</p>
-              <p>Если товар связан с другим (замочек между колонками), изменение себестоимости обновит оба товара.</p>
+              <p>Связанные товары (замочек) отображаются наверху как единая строка. Изменение себестоимости обновит оба товара.</p>
             </div>
             <div className="bg-gray-50 rounded-lg px-3 py-2 text-gray-500">
-              Количество товаров ограничено тарифом (SKU). На бесплатном — до 3, на Pro — до 20.
+              Количество товаров ограничено тарифом (SKU). На бесплатном -- до 3, на Pro -- до 20.
             </div>
           </div>
         </InfoModal>
@@ -688,7 +931,7 @@ export function ProductManagement() {
               <Lock className="w-4 h-4 text-indigo-400 flex-shrink-0 mt-0.5" />
               <div>
                 <p className="font-medium text-gray-800">Авто-связь</p>
-                <p>Один штрихкод на WB и Ozon — один товар в базе. Разорвать нельзя.</p>
+                <p>Один штрихкод на WB и Ozon -- один товар в базе. Разорвать нельзя.</p>
               </div>
             </div>
             <div className="flex gap-2.5 items-start">
@@ -702,11 +945,11 @@ export function ProductManagement() {
               <Unlock className="w-4 h-4 text-gray-400 flex-shrink-0 mt-0.5" />
               <div>
                 <p className="font-medium text-gray-800">Не связаны</p>
-                <p>Нажмите открытый замок, чтобы связать. Если себестоимость отличается — выберете единую цену.</p>
+                <p>Нажмите открытый замок между несвязанными товарами, чтобы связать. Если себестоимость отличается -- выберете единую цену.</p>
               </div>
             </div>
             <div className="bg-indigo-50 rounded-lg px-3 py-2 text-indigo-700">
-              Связанные товары считаются одним SKU и делят себестоимость.
+              Связанные товары считаются одним SKU и делят себестоимость. Они отображаются наверху списка как единые строки.
             </div>
           </div>
         </InfoModal>
