@@ -519,6 +519,15 @@ async def import_prices(
     Импорт себестоимости из CSV или XLSX файла.
     Мэтчит строки по barcode, обновляет purchase_price.
     """
+    # 0. Validate file extension
+    allowed_extensions = (".csv", ".xlsx", ".xls")
+    filename = file.filename or ""
+    if not filename.lower().endswith(allowed_extensions):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Неподдерживаемый формат файла. Допустимые: {', '.join(allowed_extensions)}",
+        )
+
     # 1. Читаем и валидируем размер
     content = await file.read()
     if len(content) > MAX_IMPORT_FILE_SIZE:

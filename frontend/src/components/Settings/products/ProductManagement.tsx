@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback, useMemo } from 'react';
+import { useState, useRef, useCallback, useMemo, useEffect } from 'react';
 import { HelpCircle, AlertCircle, Lock, Unlock, X } from 'lucide-react';
 import { toast } from 'sonner';
 import {
@@ -180,6 +180,21 @@ export function ProductManagement() {
   // Debounced reorder
   const pendingRef = useRef<Map<string, number>>(new Map());
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Flush pending reorder on unmount
+  useEffect(() => {
+    return () => {
+      if (timerRef.current) {
+        clearTimeout(timerRef.current);
+        const batch = Array.from(pendingRef.current.entries()).map(
+          ([product_id, sort_order]) => ({ product_id, sort_order }),
+        );
+        if (batch.length > 0) reorderMut.mutate(batch);
+        pendingRef.current.clear();
+      }
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const products = productsData?.products || [];
 

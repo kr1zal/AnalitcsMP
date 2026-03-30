@@ -28,11 +28,13 @@ function UnlinkedLinkColumn({
   ozonProducts,
   onLink,
   onHelp,
+  searchActive,
 }: {
   wbProducts: Product[];
   ozonProducts: Product[];
   onLink: (wb: Product, ozon: Product) => void;
   onHelp: () => void;
+  searchActive: boolean;
 }) {
   const maxRows = Math.max(wbProducts.length, ozonProducts.length);
 
@@ -55,8 +57,13 @@ function UnlinkedLinkColumn({
           <div key={i} className={`${ROW_H} flex items-center justify-center`}>
             <button
               onClick={() => onLink(wb, ozon)}
-              className="p-0.5 sm:p-1 rounded text-gray-300 hover:text-indigo-600 hover:bg-indigo-50 transition-colors"
-              title="Связать товары"
+              disabled={searchActive}
+              className={`p-0.5 sm:p-1 rounded transition-colors ${
+                searchActive
+                  ? 'text-gray-200 cursor-not-allowed'
+                  : 'text-gray-300 hover:text-indigo-600 hover:bg-indigo-50'
+              }`}
+              title={searchActive ? 'Сбросьте поиск для связывания' : 'Связать товары'}
             >
               <Unlock className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
             </button>
@@ -143,7 +150,7 @@ function ProductColumn({
         <ProductRow
           key={product.id}
           product={product}
-          shakeIds={shakeIds}
+          isShaking={shakeIds.has(product.id)}
           onPriceChange={onPriceChange}
           isDndActive={isDndActive}
           onActivateDnd={activateDnd}
@@ -260,6 +267,7 @@ export function UnlinkedSection({
             ozonProducts={filteredOzon}
             onLink={onLink}
             onHelp={onHelpClick}
+            searchActive={!!searchWb.trim() || !!searchOzon.trim()}
           />
           <div className="flex-1 min-w-0">
             <ProductSearch value={searchOzon} onChange={setSearchOzon} placeholder="Поиск Ozon..." />

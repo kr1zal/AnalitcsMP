@@ -93,7 +93,7 @@ export const LinkedPairRow = memo(function LinkedPairRow({
 
   const handleUnlink = useCallback(() => {
     if (pair.isAutoLinked) return;
-    onUnlink(pair.wb.product_group_id!);
+    onUnlink(pair.wb.product_group_id ?? '');
   }, [pair.isAutoLinked, pair.wb.product_group_id, onUnlink]);
 
   return (
@@ -108,6 +108,7 @@ export const LinkedPairRow = memo(function LinkedPairRow({
         {...attributes}
         {...listeners}
         className="touch-none cursor-grab active:cursor-grabbing text-gray-300 hover:text-gray-500 flex-shrink-0"
+        aria-label="Перетащить пару"
       >
         <GripVertical className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
       </button>

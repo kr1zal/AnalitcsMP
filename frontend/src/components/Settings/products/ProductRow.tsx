@@ -7,7 +7,7 @@ import { ROW_H } from './constants';
 
 interface ProductRowProps {
   product: Product;
-  shakeIds: Set<string>;
+  isShaking: boolean;
   onPriceChange: (productId: string, price: number) => void;
   isDndActive: boolean;
   onActivateDnd: () => void;
@@ -15,7 +15,7 @@ interface ProductRowProps {
 
 function StaticProductRowInner({
   product,
-  shakeIds,
+  isShaking,
   onPriceChange,
   onActivateDnd,
 }: Omit<ProductRowProps, 'isDndActive'>) {
@@ -35,8 +35,6 @@ function StaticProductRowInner({
     }
   }, [localPrice, product.purchase_price, product.id, onPriceChange]);
 
-  const isShaking = shakeIds.has(product.id);
-
   return (
     <div
       className={`${ROW_H} flex items-center gap-1 sm:gap-2 px-0.5 sm:px-2 rounded-lg hover:bg-gray-50`}
@@ -45,6 +43,7 @@ function StaticProductRowInner({
         onMouseDown={onActivateDnd}
         onTouchStart={onActivateDnd}
         className="touch-none cursor-grab active:cursor-grabbing text-gray-300 hover:text-gray-500 flex-shrink-0"
+        aria-label="Перетащить"
       >
         <GripVertical className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
       </button>
@@ -77,7 +76,7 @@ function StaticProductRowInner({
 
 function SortableProductRowInner({
   product,
-  shakeIds,
+  isShaking,
   onPriceChange,
 }: Omit<ProductRowProps, 'isDndActive' | 'onActivateDnd'>) {
   const {
@@ -112,8 +111,6 @@ function SortableProductRowInner({
     }
   }, [localPrice, product.purchase_price, product.id, onPriceChange]);
 
-  const isShaking = shakeIds.has(product.id);
-
   return (
     <div
       ref={setNodeRef}
@@ -126,6 +123,7 @@ function SortableProductRowInner({
         {...attributes}
         {...listeners}
         className="touch-none cursor-grab active:cursor-grabbing text-gray-300 hover:text-gray-500 flex-shrink-0"
+        aria-label="Перетащить"
       >
         <GripVertical className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
       </button>
@@ -161,7 +159,7 @@ function productRowComparator(prev: ProductRowProps, next: ProductRowProps): boo
     prev.product.id === next.product.id &&
     prev.product.purchase_price === next.product.purchase_price &&
     prev.isDndActive === next.isDndActive &&
-    prev.shakeIds === next.shakeIds
+    prev.isShaking === next.isShaking
   );
 }
 
@@ -170,7 +168,7 @@ export const ProductRow = memo(function ProductRow(props: ProductRowProps) {
     return (
       <SortableProductRowInner
         product={props.product}
-        shakeIds={props.shakeIds}
+        isShaking={props.isShaking}
         onPriceChange={props.onPriceChange}
       />
     );
@@ -178,7 +176,7 @@ export const ProductRow = memo(function ProductRow(props: ProductRowProps) {
   return (
     <StaticProductRowInner
       product={props.product}
-      shakeIds={props.shakeIds}
+      isShaking={props.isShaking}
       onPriceChange={props.onPriceChange}
       onActivateDnd={props.onActivateDnd}
     />
