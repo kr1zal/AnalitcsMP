@@ -594,6 +594,12 @@ function parseCsvFile(
     const text = e.target?.result as string;
     if (!text) return;
 
+    // Проверка: Numbers/Excel сохраняет в бинарный формат (.numbers/.xlsx) вместо CSV
+    if (text.startsWith('PK') || text.charCodeAt(0) === 0x50 && text.charCodeAt(1) === 0x4B) {
+      onResult(0, 0, ['Файл не в формате CSV. Если вы открывали в Numbers/Excel, используйте "Экспортировать в → CSV" вместо "Сохранить".']);
+      return;
+    }
+
     const lines = text.replace(/^\uFEFF/, '').trim().split('\n');
     if (lines.length < 2) {
       onResult(0, 0, []);
