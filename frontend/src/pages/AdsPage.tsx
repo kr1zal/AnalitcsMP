@@ -221,6 +221,7 @@ export const AdsPage = () => {
         <AdsCampaignTable
           campaigns={campaigns}
           isLoading={campaignsLoading}
+          totalDrr={totals.drr}
         />
 
         {/* Daily breakdown (collapsible) */}

@@ -11,6 +11,7 @@ import type { AdCampaignItem } from '../../types';
 interface AdsCampaignTableProps {
   campaigns: AdCampaignItem[];
   isLoading: boolean;
+  totalDrr?: number;
 }
 
 type SortField = 'cost' | 'impressions' | 'clicks' | 'ctr' | 'orders' | 'drr' | 'cpc';
@@ -47,7 +48,7 @@ const getMpBadge = (mp: string) => {
   return <span className="px-1.5 py-0.5 text-[10px] font-medium rounded bg-blue-100 text-blue-700">Ozon</span>;
 };
 
-export const AdsCampaignTable = ({ campaigns, isLoading }: AdsCampaignTableProps) => {
+export const AdsCampaignTable = ({ campaigns, isLoading, totalDrr }: AdsCampaignTableProps) => {
   const [search, setSearch] = useState('');
   const [mpFilter, setMpFilter] = useState<MpFilter>('all');
   const [sortField, setSortField] = useState<SortField>('cost');
@@ -283,7 +284,9 @@ export const AdsCampaignTable = ({ campaigns, isLoading }: AdsCampaignTableProps
                 {formatPercent(totalImpressions > 0 ? (totalClicks / totalImpressions) * 100 : 0)}
               </td>
               <td className="px-3 py-2.5 text-right text-gray-900 tabular-nums">{formatNumber(totalOrders)}</td>
-              <td className="px-3 py-2.5 text-right text-gray-500">—</td>
+              <td className={cn('px-3 py-2.5 text-right tabular-nums', totalDrr ? getDrrColor(totalDrr) : 'text-gray-500')}>
+                {totalDrr ? formatPercent(totalDrr) : '—'}
+              </td>
               <td className="px-3 py-2.5 text-right text-gray-700 tabular-nums">
                 {formatCurrency(totalClicks > 0 ? totalCost / totalClicks : 0)}
               </td>
