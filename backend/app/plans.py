@@ -40,7 +40,7 @@ PLANS = {
     "pro": {
         "name": "Pro",
         "price_rub": 1490,
-        "max_sku": 50,
+        "max_sku": 60,
         "marketplaces": ["wb", "ozon"],
         "auto_sync": True,
         "sync_interval_hours": 6,
