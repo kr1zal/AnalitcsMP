@@ -452,9 +452,12 @@ def _parse_csv_content(content: bytes) -> list[dict]:
         if not row or len(row) <= max(id_col, price_col):
             continue
         barcode = row[id_col].strip().strip('"').strip("'")
-        price_str = row[price_col].strip().strip('"').strip("'").replace(",", ".")
-        if not barcode or not price_str:
+        if not barcode:
             continue
+        price_str = row[price_col].strip().strip('"').strip("'").replace(",", ".")
+        # Пустая ячейка = 0 (удаление себестоимости)
+        if not price_str:
+            price_str = "0"
         try:
             price = float(price_str)
         except ValueError:
@@ -511,9 +514,12 @@ def _parse_xlsx_content(content: bytes) -> list[dict]:
         if not row or len(row) <= max(id_col, price_col):
             continue
         barcode = str(row[id_col]).strip() if row[id_col] is not None else ""
-        price_val = row[price_col]
-        if not barcode or price_val is None:
+        if not barcode:
             continue
+        price_val = row[price_col]
+        # Пустая ячейка или None = 0 (удаление себестоимости)
+        if price_val is None or (isinstance(price_val, str) and price_val.strip() == ""):
+            price_val = 0
         try:
             price = float(price_val)
         except (ValueError, TypeError):
