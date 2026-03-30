@@ -236,14 +236,17 @@ async def get_unit_economics(
         date_to = datetime.now().strftime("%Y-%m-%d")
 
     try:
-        # ── Параллельная загрузка данных (asyncio.to_thread для синхронного Supabase client) ──
+        # ── Параллельная загрузка данных ──
+        # Каждый thread создаёт свой Supabase client (не thread-safe)
         import asyncio
 
         def _fetch_products():
-            return supabase.table("mp_products").select("*").eq("user_id", current_user.id).limit(500).execute()
+            sb = get_supabase_client()
+            return sb.table("mp_products").select("*").eq("user_id", current_user.id).limit(500).execute()
 
         def _fetch_sales():
-            q = supabase.table("mp_sales").select("*").eq("user_id", current_user.id).gte("date", date_from).lte("date", date_to)
+            sb = get_supabase_client()
+            q = sb.table("mp_sales").select("*").eq("user_id", current_user.id).gte("date", date_from).lte("date", date_to)
             if marketplace and marketplace != "all":
                 q = q.eq("marketplace", marketplace)
             if fulfillment_type:
@@ -251,7 +254,8 @@ async def get_unit_economics(
             return q.limit(50000).execute()
 
         def _fetch_costs():
-            q = supabase.table("mp_costs").select("*").eq("user_id", current_user.id).gte("date", date_from).lte("date", date_to)
+            sb = get_supabase_client()
+            q = sb.table("mp_costs").select("*").eq("user_id", current_user.id).gte("date", date_from).lte("date", date_to)
             if marketplace and marketplace != "all":
                 q = q.eq("marketplace", marketplace)
             if fulfillment_type:
@@ -259,7 +263,8 @@ async def get_unit_economics(
             return q.limit(50000).execute()
 
         def _fetch_ads():
-            q = supabase.table("mp_ad_costs").select("product_id, cost").eq("user_id", current_user.id).gte("date", date_from).lte("date", date_to)
+            sb = get_supabase_client()
+            q = sb.table("mp_ad_costs").select("product_id, cost").eq("user_id", current_user.id).gte("date", date_from).lte("date", date_to)
             if marketplace and marketplace != "all":
                 q = q.eq("marketplace", marketplace)
             return q.limit(10000).execute()
@@ -290,7 +295,8 @@ async def get_unit_economics(
         cancelled_by_product: dict[str, int] = {}
 
         def _fetch_orders():
-            q = (supabase.table("mp_orders")
+            sb = get_supabase_client()
+            q = (sb.table("mp_orders")
                 .select("product_id, order_id")
                 .eq("user_id", current_user.id)
                 .gte("order_date", f"{date_from}T00:00:00+03:00")
@@ -303,7 +309,8 @@ async def get_unit_economics(
             return q.execute()
 
         def _fetch_cancelled():
-            q = (supabase.table("mp_orders")
+            sb = get_supabase_client()
+            q = (sb.table("mp_orders")
                 .select("product_id")
                 .eq("user_id", current_user.id)
                 .gte("order_date", f"{date_from}T00:00:00+03:00")
