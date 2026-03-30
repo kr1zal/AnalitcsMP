@@ -302,19 +302,16 @@ async def reorder_products(
     supabase = get_supabase_client()
 
     try:
-        updated = 0
-        now = datetime.now(timezone.utc).isoformat()
-
-        for item in body.items:
-            result = (
-                supabase.table("mp_products")
-                .update({"sort_order": item.sort_order, "updated_at": now})
-                .eq("id", item.product_id)
-                .eq("user_id", current_user.id)
-                .execute()
-            )
-            if result.data:
-                updated += 1
+        import json
+        updates = [
+            {"id": item.product_id, "sort_order": item.sort_order}
+            for item in body.items
+        ]
+        result = supabase.rpc("batch_update_products", {
+            "p_user_id": current_user.id,
+            "p_updates": json.dumps(updates),
+        }).execute()
+        updated = result.data if isinstance(result.data, int) else 0
 
         return {"status": "success", "updated": updated}
 
@@ -565,14 +562,15 @@ async def import_prices(
     for p in products_result.data or []:
         by_barcode[p["barcode"]] = p
 
-    # 5. Мэтчим и обновляем
-    updated = 0
+    # 5. Мэтчим и собираем batch updates
+    import json
+
     skipped = 0
     not_found: list[str] = []
     errors: list[str] = []
-    now = datetime.now(timezone.utc).isoformat()
 
-    # Собираем группы для batch update связанных товаров
+    # Собираем обновления для batch RPC
+    batch_updates: list[dict] = []
     group_updates: dict[str, float] = {}  # group_id → price
 
     for row in parsed_rows:
@@ -586,38 +584,40 @@ async def import_prices(
 
         if product["purchase_price"] == price:
             skipped += 1
-            updated += 1  # считаем как "обработан успешно"
             continue
 
+        batch_updates.append({"id": product["id"], "purchase_price": price})
+
+        gid = product.get("product_group_id")
+        if gid:
+            group_updates[gid] = price
+
+    # Batch update via RPC
+    updated = 0
+    if batch_updates:
         try:
-            supabase.table("mp_products").update({
-                "purchase_price": price,
-                "updated_at": now,
-            }).eq("id", product["id"]).eq("user_id", current_user.id).execute()
-            updated += 1
-
-            # Обновляем связанные товары в группе
-            gid = product.get("product_group_id")
-            if gid:
-                group_updates[gid] = price
-
+            result = supabase.rpc("batch_update_products", {
+                "p_user_id": current_user.id,
+                "p_updates": json.dumps(batch_updates),
+            }).execute()
+            updated = result.data if isinstance(result.data, int) else 0
         except Exception as e:
-            errors.append(f"{barcode}: {str(e)}")
-            logger.warning("import-prices update failed for %s: %s", barcode, e)
+            errors.append(f"batch update failed: {str(e)}")
+            logger.warning("import-prices batch update failed: %s", e)
 
-    # Batch update grouped products
+    # Update grouped products (linked pairs get same price)
     for gid, price in group_updates.items():
         try:
             supabase.table("mp_products").update({
                 "purchase_price": price,
-                "updated_at": now,
+                "updated_at": datetime.now(timezone.utc).isoformat(),
             }).eq("product_group_id", gid).eq("user_id", current_user.id).execute()
         except Exception as e:
             logger.warning("import-prices group update failed for %s: %s", gid, e)
 
     return {
         "status": "success",
-        "updated": updated,
+        "updated": updated + skipped,
         "total_rows": len(parsed_rows),
         "skipped": skipped,
         "not_found": not_found[:50],  # лимитируем вывод
