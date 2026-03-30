@@ -325,11 +325,16 @@ export function ProductManagement() {
     [linkedPairs, unlinkedWb, reorderAll],
   );
 
+  const shakeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => () => { if (shakeTimerRef.current) clearTimeout(shakeTimerRef.current); }, []);
+
   const handleLink = useCallback(
     (wb: Product, ozon: Product) => {
       if (wb.purchase_price !== ozon.purchase_price) {
         setShakeIds(new Set([wb.id, ozon.id]));
-        setTimeout(() => {
+        if (shakeTimerRef.current) clearTimeout(shakeTimerRef.current);
+        shakeTimerRef.current = setTimeout(() => {
           setShakeIds(new Set());
           setConflict({ wbProduct: wb, ozonProduct: ozon });
         }, 450);

@@ -625,7 +625,7 @@ async def import_prices(
 
     return {
         "status": "success",
-        "updated": updated + skipped,
+        "updated": updated,
         "total_rows": len(parsed_rows),
         "skipped": skipped,
         "not_found": not_found[:50],  # лимитируем вывод

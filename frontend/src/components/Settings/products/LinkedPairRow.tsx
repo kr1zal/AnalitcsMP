@@ -138,4 +138,10 @@ export const LinkedPairRow = memo(function LinkedPairRow({
       </div>
     </div>
   );
-});
+}, (prev, next) =>
+  prev.pair.pairId === next.pair.pairId &&
+  prev.pair.wb.purchase_price === next.pair.wb.purchase_price &&
+  prev.pair.ozon.purchase_price === next.pair.ozon.purchase_price &&
+  prev.shakeIds.has(prev.pair.wb.id) === next.shakeIds.has(next.pair.wb.id) &&
+  prev.shakeIds.has(prev.pair.ozon.id) === next.shakeIds.has(next.pair.ozon.id)
+);
