@@ -102,77 +102,38 @@ export const LinkedPairRow = memo(function LinkedPairRow({
       style={style}
       className={`rounded-lg hover:bg-gray-50 ${isDragging ? 'bg-indigo-50 shadow-md' : ''}`}
     >
-      {/* Desktop: single row */}
-      <div className={`hidden sm:flex ${ROW_H} items-center gap-2 px-2`}>
+      {/* Single row layout — same on mobile and desktop */}
+      <div className={`flex ${ROW_H} items-center gap-1 sm:gap-2 px-0.5 sm:px-2`}>
         <button
           {...attributes}
           {...listeners}
           className="touch-none cursor-grab active:cursor-grabbing text-gray-300 hover:text-gray-500 flex-shrink-0"
           aria-label="Перетащить пару"
         >
-          <GripVertical className="w-4 h-4" />
+          <GripVertical className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
         </button>
 
         <div className="flex-1 min-w-0">
           <InlineProduct product={pair.wb} shakeIds={shakeIds} onPriceChange={onPriceChange} />
         </div>
 
-        <div className="w-10 flex items-center justify-center flex-shrink-0">
+        <div className="w-6 sm:w-10 flex items-center justify-center flex-shrink-0">
           <button
             onClick={handleUnlink}
             disabled={pair.isAutoLinked}
-            className={`p-1 rounded transition-colors ${
+            className={`p-0.5 sm:p-1 rounded transition-colors ${
               pair.isAutoLinked
                 ? 'text-indigo-400 cursor-default'
                 : 'text-indigo-600 hover:bg-indigo-50 hover:text-indigo-800'
             }`}
             title={pair.isAutoLinked ? 'Авто-связь (один штрихкод)' : 'Разорвать связь'}
           >
-            <Lock className="w-4 h-4" />
+            <Lock className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
           </button>
         </div>
 
-        <div className="flex-1 min-w-0 flex items-center gap-2">
+        <div className="flex-1 min-w-0">
           <InlineProduct product={pair.ozon} shakeIds={shakeIds} onPriceChange={onPriceChange} />
-        </div>
-      </div>
-
-      {/* Mobile: stacked layout */}
-      <div className="sm:hidden px-1 py-1.5">
-        <div className="flex items-center gap-1">
-          <button
-            {...attributes}
-            {...listeners}
-            className="touch-none cursor-grab active:cursor-grabbing text-gray-300 hover:text-gray-500 flex-shrink-0"
-            aria-label="Перетащить пару"
-          >
-            <GripVertical className="w-3.5 h-3.5" />
-          </button>
-          <span className="text-[10px] font-medium text-gray-400 uppercase w-6 flex-shrink-0">WB</span>
-          <div className="flex-1 min-w-0">
-            <InlineProduct product={pair.wb} shakeIds={shakeIds} onPriceChange={onPriceChange} />
-          </div>
-        </div>
-        <div className="flex items-center gap-1 mt-0.5">
-          <div className="w-3.5 flex-shrink-0" />
-          <div className="w-6 flex items-center justify-center flex-shrink-0">
-            <button
-              onClick={handleUnlink}
-              disabled={pair.isAutoLinked}
-              className={`p-0.5 rounded transition-colors ${
-                pair.isAutoLinked
-                  ? 'text-indigo-400 cursor-default'
-                  : 'text-indigo-600 hover:bg-indigo-50 hover:text-indigo-800'
-              }`}
-              title={pair.isAutoLinked ? 'Авто-связь' : 'Разорвать связь'}
-            >
-              <Lock className="w-3 h-3" />
-            </button>
-          </div>
-          <span className="text-[10px] font-medium text-gray-400 uppercase w-12 flex-shrink-0">Ozon</span>
-          <div className="flex-1 min-w-0">
-            <InlineProduct product={pair.ozon} shakeIds={shakeIds} onPriceChange={onPriceChange} />
-          </div>
         </div>
       </div>
     </div>

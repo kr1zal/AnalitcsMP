@@ -77,26 +77,19 @@ export function CsvToolbar({ products }: CsvToolbarProps) {
   const handleDownloadOzon = useCallback(() => generateCsvTemplate(products, 'ozon'), [products]);
   const handleUploadClick = useCallback(() => fileInputRef.current?.click(), []);
 
+  const btnClass = "text-[10px] sm:text-xs font-medium text-gray-500 hover:text-gray-700 border border-gray-200 rounded px-1.5 py-1 sm:px-2.5 sm:py-1.5 flex items-center gap-0.5 sm:gap-1 transition-colors whitespace-nowrap";
+
   return (
-    <>
-      <button
-        onClick={handleDownloadWb}
-        className="text-xs font-medium text-gray-500 hover:text-gray-700 border border-gray-200 rounded-lg px-3 py-1.5 flex items-center gap-1 transition-colors"
-      >
+    <div className="flex items-center gap-1 sm:gap-2">
+      <button onClick={handleDownloadWb} className={btnClass}>
         <Download className="w-3 h-3" />
-        Шаблон WB
+        <span className="hidden sm:inline">Шаблон</span> WB
       </button>
-      <button
-        onClick={handleDownloadOzon}
-        className="text-xs font-medium text-gray-500 hover:text-gray-700 border border-gray-200 rounded-lg px-3 py-1.5 flex items-center gap-1 transition-colors"
-      >
+      <button onClick={handleDownloadOzon} className={btnClass}>
         <Download className="w-3 h-3" />
-        Шаблон Ozon
+        <span className="hidden sm:inline">Шаблон</span> Ozon
       </button>
-      <button
-        onClick={handleUploadClick}
-        className="text-xs font-medium text-gray-500 hover:text-gray-700 border border-gray-200 rounded-lg px-3 py-1.5 flex items-center gap-1 transition-colors"
-      >
+      <button onClick={handleUploadClick} className={btnClass}>
         <Upload className="w-3 h-3" />
         Загрузить
       </button>
@@ -107,6 +100,6 @@ export function CsvToolbar({ products }: CsvToolbarProps) {
         onChange={handleFileUpload}
         className="hidden"
       />
-    </>
+    </div>
   );
 }

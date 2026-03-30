@@ -398,17 +398,15 @@ export function ProductManagement() {
     <>
       <style>{SHAKE_CSS}</style>
 
-      <div className="flex items-center justify-between mb-3">
+      <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
         <div className="flex items-center gap-1.5">
           <h2 className="text-sm font-semibold text-gray-900">Товары</h2>
           <button onClick={() => setHelpOpen('products')} className="text-gray-400 hover:text-gray-600 transition-colors">
             <HelpCircle className="w-3.5 h-3.5" />
           </button>
-        </div>
-        <div className="flex items-center gap-2">
-          <CsvToolbar products={products} />
           <SKUCounter current={currentSku} max={maxSku} />
         </div>
+        <CsvToolbar products={products} />
       </div>
 
       {maxSku !== null && currentSku > maxSku && (
