@@ -291,17 +291,36 @@ export function ProductManagement() {
   );
 
   // ── Handlers ──
+  // Debounced price updates — batch через 1.5 сек неактивности
+  const pendingPricesRef = useRef<Map<string, number>>(new Map());
+  const priceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const flushPrices = useCallback(() => {
+    const pending = pendingPricesRef.current;
+    if (pending.size === 0) return;
+    const entries = Array.from(pending.entries());
+    pending.clear();
+    // Отправляем по одному (batch RPC для цен уже есть через import, но мутация useUpdatePurchasePrice — по одному)
+    for (const [productId, price] of entries) {
+      updatePrice.mutate({ productId, price });
+    }
+    toast.success(`Себестоимость обновлена (${entries.length})`);
+  }, [updatePrice]);
+
+  useEffect(() => {
+    return () => {
+      if (priceTimerRef.current) clearTimeout(priceTimerRef.current);
+      flushPrices();
+    };
+  }, [flushPrices]);
+
   const handlePriceChange = useCallback(
     (productId: string, price: number) => {
-      updatePrice.mutate(
-        { productId, price },
-        {
-          onSuccess: () => toast.success('Себестоимость обновлена'),
-          onError: () => toast.error('Ошибка обновления себестоимости'),
-        },
-      );
+      pendingPricesRef.current.set(productId, price);
+      if (priceTimerRef.current) clearTimeout(priceTimerRef.current);
+      priceTimerRef.current = setTimeout(flushPrices, 1500);
     },
-    [updatePrice],
+    [flushPrices],
   );
 
   const handlePairsReorder = useCallback(
