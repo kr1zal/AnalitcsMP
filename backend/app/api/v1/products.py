@@ -617,12 +617,20 @@ async def import_prices(
         try:
             result = supabase.rpc("batch_update_products", {
                 "p_user_id": current_user.id,
-                "p_updates": json.dumps(batch_updates),
+                "p_updates": batch_updates,
             }).execute()
-            updated = result.data if isinstance(result.data, int) else 0
-        except Exception as e:
-            errors.append(f"batch update failed: {str(e)}")
-            logger.warning("import-prices batch update failed: %s", e)
+            updated = result.data if isinstance(result.data, int) else len(batch_updates)
+        except Exception:
+            # Fallback: поштучный UPDATE
+            for upd in batch_updates:
+                try:
+                    supabase.table("mp_products").update({
+                        "purchase_price": upd["purchase_price"],
+                        "updated_at": datetime.now(timezone.utc).isoformat(),
+                    }).eq("id", upd["id"]).eq("user_id", current_user.id).execute()
+                    updated += 1
+                except Exception as e2:
+                    errors.append(f"update {upd['id']}: {str(e2)}")
 
     # Update grouped products (linked pairs get same price)
     for gid, price in group_updates.items():
