@@ -1,7 +1,7 @@
 /**
  * ProductsTab — product management (drag&drop, groups, CC).
  */
-import { ProductManagement } from './ProductManagement';
+import { ProductManagement } from './products';
 
 export function ProductsTab() {
   return (
