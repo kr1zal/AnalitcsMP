@@ -27,9 +27,11 @@ function StaticProductRowInner({
   }, [product.purchase_price]);
 
   const handleBlur = useCallback(() => {
-    const num = parseFloat(localPrice);
+    const trimmed = localPrice.trim();
+    const num = trimmed === '' ? 0 : parseFloat(trimmed);
     if (!isNaN(num) && num >= 0 && num !== product.purchase_price) {
       onPriceChange(product.id, num);
+      setLocalPrice(num === 0 ? '' : String(num));
     } else {
       setLocalPrice(String(product.purchase_price || ''));
     }
@@ -103,9 +105,11 @@ function SortableProductRowInner({
   }, [product.purchase_price]);
 
   const handleBlur = useCallback(() => {
-    const num = parseFloat(localPrice);
+    const trimmed = localPrice.trim();
+    const num = trimmed === '' ? 0 : parseFloat(trimmed);
     if (!isNaN(num) && num >= 0 && num !== product.purchase_price) {
       onPriceChange(product.id, num);
+      setLocalPrice(num === 0 ? '' : String(num));
     } else {
       setLocalPrice(String(product.purchase_price || ''));
     }
