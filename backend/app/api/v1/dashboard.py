@@ -236,31 +236,43 @@ async def get_unit_economics(
         date_to = datetime.now().strftime("%Y-%m-%d")
 
     try:
+        # ── Параллельная загрузка данных (asyncio.to_thread для синхронного Supabase client) ──
+        import asyncio
+
+        def _fetch_products():
+            return supabase.table("mp_products").select("*").eq("user_id", current_user.id).limit(500).execute()
+
+        def _fetch_sales():
+            q = supabase.table("mp_sales").select("*").eq("user_id", current_user.id).gte("date", date_from).lte("date", date_to)
+            if marketplace and marketplace != "all":
+                q = q.eq("marketplace", marketplace)
+            if fulfillment_type:
+                q = q.eq("fulfillment_type", fulfillment_type)
+            return q.limit(50000).execute()
+
+        def _fetch_costs():
+            q = supabase.table("mp_costs").select("*").eq("user_id", current_user.id).gte("date", date_from).lte("date", date_to)
+            if marketplace and marketplace != "all":
+                q = q.eq("marketplace", marketplace)
+            if fulfillment_type:
+                q = q.eq("fulfillment_type", fulfillment_type)
+            return q.limit(50000).execute()
+
+        def _fetch_ads():
+            q = supabase.table("mp_ad_costs").select("product_id, cost").eq("user_id", current_user.id).gte("date", date_from).lte("date", date_to)
+            if marketplace and marketplace != "all":
+                q = q.eq("marketplace", marketplace)
+            return q.limit(10000).execute()
+
+        products_result, sales_result, costs_result, ad_result = await asyncio.gather(
+            asyncio.to_thread(_fetch_products),
+            asyncio.to_thread(_fetch_sales),
+            asyncio.to_thread(_fetch_costs),
+            asyncio.to_thread(_fetch_ads),
+        )
+
         # 1. Продукты пользователя
-        products_result = supabase.table("mp_products").select("*").eq("user_id", current_user.id).limit(500).execute()
         products = {p["id"]: p for p in products_result.data}
-
-        # 2. Продажи (mp_sales — аналитика, все заказы)
-        sales_query = supabase.table("mp_sales").select("*").eq("user_id", current_user.id).gte("date", date_from).lte("date", date_to)
-        if marketplace and marketplace != "all":
-            sales_query = sales_query.eq("marketplace", marketplace)
-        if fulfillment_type:
-            sales_query = sales_query.eq("fulfillment_type", fulfillment_type)
-        sales_result = sales_query.limit(50000).execute()
-
-        # 3. Удержания МП (mp_costs) — для отображения в таблице
-        costs_query = supabase.table("mp_costs").select("*").eq("user_id", current_user.id).gte("date", date_from).lte("date", date_to)
-        if marketplace and marketplace != "all":
-            costs_query = costs_query.eq("marketplace", marketplace)
-        if fulfillment_type:
-            costs_query = costs_query.eq("fulfillment_type", fulfillment_type)
-        costs_result = costs_query.limit(50000).execute()
-
-        # 4. Рекламные расходы по товарам (mp_ad_costs) — NOT filtered by fulfillment_type (account-level)
-        ad_query = supabase.table("mp_ad_costs").select("product_id, cost").eq("user_id", current_user.id).gte("date", date_from).lte("date", date_to)
-        if marketplace and marketplace != "all":
-            ad_query = ad_query.eq("marketplace", marketplace)
-        ad_result = ad_query.limit(10000).execute()
 
         # Агрегация рекламы по product_id
         ad_by_product: dict[str, float] = {}
@@ -273,58 +285,51 @@ async def get_unit_economics(
             else:
                 unattributed_ad += cost
 
-        # 4b. Orders count per product (from mp_orders, real-time)
-        # Uses MSK TZ boundaries to match dashboard RPC (Rule #42)
-        # Migration 040: orders = ALL placed (including cancelled)
+        # 4b+4c. Orders + Cancelled (parallel)
         orders_by_product: dict[str, int] = {}
-        try:
-            orders_query = (
-                supabase.table("mp_orders")
+        cancelled_by_product: dict[str, int] = {}
+
+        def _fetch_orders():
+            q = (supabase.table("mp_orders")
                 .select("product_id, order_id")
                 .eq("user_id", current_user.id)
                 .gte("order_date", f"{date_from}T00:00:00+03:00")
                 .lte("order_date", f"{date_to}T23:59:59+03:00")
-                .gt("price", 0)
-                .limit(50000)
-            )
+                .gt("price", 0).limit(50000))
             if marketplace and marketplace != "all":
-                orders_query = orders_query.eq("marketplace", marketplace)
+                q = q.eq("marketplace", marketplace)
             if fulfillment_type:
-                orders_query = orders_query.eq("fulfillment_type", fulfillment_type)
-            orders_result = orders_query.execute()
-            if orders_result.data:
-                for row in orders_result.data:
-                    pid = row.get("product_id")
-                    if pid:
-                        orders_by_product[pid] = orders_by_product.get(pid, 0) + 1
-        except Exception as e:
-            logger.debug(f"Orders count query failed: {e}")
+                q = q.eq("fulfillment_type", fulfillment_type)
+            return q.execute()
 
-        # 4c. Cancelled orders per product
-        cancelled_by_product: dict[str, int] = {}
-        try:
-            cancelled_query = (
-                supabase.table("mp_orders")
+        def _fetch_cancelled():
+            q = (supabase.table("mp_orders")
                 .select("product_id")
                 .eq("user_id", current_user.id)
                 .gte("order_date", f"{date_from}T00:00:00+03:00")
                 .lte("order_date", f"{date_to}T23:59:59+03:00")
-                .eq("status", "cancelled")
-                .gt("price", 0)
-                .limit(50000)
-            )
+                .eq("status", "cancelled").gt("price", 0).limit(50000))
             if marketplace and marketplace != "all":
-                cancelled_query = cancelled_query.eq("marketplace", marketplace)
+                q = q.eq("marketplace", marketplace)
             if fulfillment_type:
-                cancelled_query = cancelled_query.eq("fulfillment_type", fulfillment_type)
-            cancelled_result = cancelled_query.execute()
-            if cancelled_result.data:
-                for row in cancelled_result.data:
-                    pid = row.get("product_id")
-                    if pid:
-                        cancelled_by_product[pid] = cancelled_by_product.get(pid, 0) + 1
+                q = q.eq("fulfillment_type", fulfillment_type)
+            return q.execute()
+
+        try:
+            orders_res, cancelled_res = await asyncio.gather(
+                asyncio.to_thread(_fetch_orders),
+                asyncio.to_thread(_fetch_cancelled),
+            )
+            for row in (orders_res.data or []):
+                pid = row.get("product_id")
+                if pid:
+                    orders_by_product[pid] = orders_by_product.get(pid, 0) + 1
+            for row in (cancelled_res.data or []):
+                pid = row.get("product_id")
+                if pid:
+                    cancelled_by_product[pid] = cancelled_by_product.get(pid, 0) + 1
         except Exception as e:
-            logger.debug(f"Cancelled count query failed: {e}")
+            logger.debug(f"Orders/cancelled query failed: {e}")
 
         # 4a. При фильтре по fulfillment_type: пропорциональное распределение рекламы
         # Реклама — account-level, не привязана к FBO/FBS. Чтобы profit_FBO + profit_FBS = profit_Total,
