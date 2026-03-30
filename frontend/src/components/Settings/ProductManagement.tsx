@@ -15,7 +15,7 @@ import {
   arrayMove,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { GripVertical, Lock, Unlock, X, AlertCircle, HelpCircle } from 'lucide-react';
+import { GripVertical, Lock, Unlock, X, AlertCircle, HelpCircle, Download, Upload, Search } from 'lucide-react';
 import { toast } from 'sonner';
 import {
   useProducts,
@@ -555,6 +555,109 @@ function InfoModal({
   );
 }
 
+// ─── CSV Helpers ───
+
+function generateCsvTemplate(products: Product[], marketplace: 'wb' | 'ozon'): void {
+  const BOM = '\uFEFF';
+  const isWb = marketplace === 'wb';
+  const header = isWb ? 'barcode;name;purchase_price' : 'offer_id;name;purchase_price';
+
+  const filtered = products.filter(p =>
+    isWb ? p.wb_nm_id != null : p.ozon_product_id != null
+  );
+
+  const rows = filtered.map(p => {
+    const id = p.barcode;
+    const name = p.name.replace(/;/g, ',');
+    const price = p.purchase_price || '';
+    return `${id};${name};${price}`;
+  });
+
+  const csv = BOM + header + '\n' + rows.join('\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `template_${marketplace}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function parseCsvFile(
+  file: File,
+  products: Product[],
+  onResult: (updated: number, total: number, notFound: string[]) => void,
+  updateFn: (productId: string, price: number) => Promise<void>,
+): void {
+  const reader = new FileReader();
+  reader.onload = async (e) => {
+    const text = e.target?.result as string;
+    if (!text) return;
+
+    const lines = text.replace(/^\uFEFF/, '').trim().split('\n');
+    if (lines.length < 2) {
+      onResult(0, 0, []);
+      return;
+    }
+
+    // Auto-detect delimiter
+    const headerLine = lines[0];
+    const delimiter = headerLine.includes(';') ? ';' : ',';
+    const headers = headerLine.split(delimiter).map(h => h.trim().toLowerCase());
+
+    // Find columns
+    const idCol = headers.findIndex(h =>
+      h === 'barcode' || h === 'offer_id' || h === 'артикул'
+    );
+    const priceCol = headers.findIndex(h =>
+      h === 'purchase_price' || h === 'себестоимость' || h === 'цена закупки'
+    );
+
+    if (idCol === -1 || priceCol === -1) {
+      onResult(0, 0, ['Не найдены колонки barcode/offer_id и purchase_price']);
+      return;
+    }
+
+    // Build product lookup by barcode
+    const byBarcode = new Map(products.map(p => [p.barcode, p]));
+
+    let updated = 0;
+    const notFound: string[] = [];
+    const dataLines = lines.slice(1).filter(l => l.trim());
+
+    for (const line of dataLines) {
+      const cols = line.split(delimiter);
+      const id = cols[idCol]?.trim();
+      const priceStr = cols[priceCol]?.trim();
+
+      if (!id || !priceStr) continue;
+
+      const price = parseFloat(priceStr.replace(',', '.'));
+      if (isNaN(price) || price < 0) continue;
+
+      const product = byBarcode.get(id);
+      if (!product) {
+        notFound.push(id);
+        continue;
+      }
+
+      if (product.purchase_price !== price) {
+        try {
+          await updateFn(product.id, price);
+          updated++;
+        } catch {
+          // skip failed
+        }
+      } else {
+        updated++; // already correct
+      }
+    }
+
+    onResult(updated, dataLines.length, notFound);
+  };
+  reader.readAsText(file, 'utf-8');
+}
+
 // ─── Main Component ───
 
 export function ProductManagement() {
@@ -568,6 +671,10 @@ export function ProductManagement() {
   const [shakeIds, setShakeIds] = useState<Set<string>>(new Set());
   const [conflict, setConflict] = useState<CCConflict | null>(null);
   const [helpOpen, setHelpOpen] = useState<'products' | 'links' | null>(null);
+  const [searchWb, setSearchWb] = useState('');
+  const [searchOzon, setSearchOzon] = useState('');
+  const [csvUploading, setCsvUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const products = productsData?.products || [];
 
@@ -621,6 +728,22 @@ export function ProductManagement() {
     return { linkedPairs: pairs, unlinkedWb: ulWb, unlinkedOzon: ulOzon };
   }, [products]);
 
+  const filteredUnlinkedWb = useMemo(() => {
+    if (!searchWb.trim()) return unlinkedWb;
+    const q = searchWb.toLowerCase();
+    return unlinkedWb.filter(p =>
+      p.name.toLowerCase().includes(q) || p.barcode.toLowerCase().includes(q)
+    );
+  }, [unlinkedWb, searchWb]);
+
+  const filteredUnlinkedOzon = useMemo(() => {
+    if (!searchOzon.trim()) return unlinkedOzon;
+    const q = searchOzon.toLowerCase();
+    return unlinkedOzon.filter(p =>
+      p.name.toLowerCase().includes(q) || p.barcode.toLowerCase().includes(q)
+    );
+  }, [unlinkedOzon, searchOzon]);
+
   const isOzonDisabled =
     subscription?.limits?.marketplaces &&
     !subscription.limits.marketplaces.includes('ozon');
@@ -644,6 +767,33 @@ export function ProductManagement() {
     },
     [updatePrice],
   );
+
+  // ── CSV upload handler ──
+  const handleCsvUpload = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setCsvUploading(true);
+
+    parseCsvFile(
+      file,
+      products,
+      (updated, total, notFound) => {
+        setCsvUploading(false);
+        if (notFound.length === 1 && total === 0) {
+          toast.error(notFound[0]);
+        } else {
+          toast.success(`Обновлено ${updated} из ${total} товаров`);
+          if (notFound.length > 0) {
+            toast.error(`Не найдено: ${notFound.slice(0, 5).join(', ')}${notFound.length > 5 ? ` и ещё ${notFound.length - 5}` : ''}`);
+          }
+        }
+        if (fileInputRef.current) fileInputRef.current.value = '';
+      },
+      async (productId, price) => {
+        await updatePrice.mutateAsync({ productId, price });
+      },
+    );
+  }, [products, updatePrice]);
 
   // ── Reorder helper: assigns sort_order to all products (pairs first, then unlinked) ──
   const reorderAll = useCallback(
@@ -790,7 +940,38 @@ export function ProductManagement() {
             <HelpCircle className="w-3.5 h-3.5" />
           </button>
         </div>
-        <SKUCounter current={currentSku} max={maxSku} />
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => generateCsvTemplate(products, 'wb')}
+            className="text-xs font-medium text-gray-500 hover:text-gray-700 border border-gray-200 rounded-lg px-3 py-1.5 flex items-center gap-1 transition-colors"
+          >
+            <Download className="w-3 h-3" />
+            Шаблон WB
+          </button>
+          <button
+            onClick={() => generateCsvTemplate(products, 'ozon')}
+            className="text-xs font-medium text-gray-500 hover:text-gray-700 border border-gray-200 rounded-lg px-3 py-1.5 flex items-center gap-1 transition-colors"
+          >
+            <Download className="w-3 h-3" />
+            Шаблон Ozon
+          </button>
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            disabled={csvUploading}
+            className="text-xs font-medium text-gray-500 hover:text-gray-700 border border-gray-200 rounded-lg px-3 py-1.5 flex items-center gap-1 transition-colors disabled:opacity-50"
+          >
+            <Upload className="w-3 h-3" />
+            {csvUploading ? 'Загрузка...' : 'Загрузить CSV'}
+          </button>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".csv"
+            onChange={handleCsvUpload}
+            className="hidden"
+          />
+          <SKUCounter current={currentSku} max={maxSku} />
+        </div>
       </div>
 
       {/* SKU limit exceeded warning */}
@@ -854,32 +1035,72 @@ export function ProductManagement() {
           {/* ── Unlinked Section ── */}
           {hasUnlinked && (
             <div className="flex gap-0 sm:gap-1">
-              <ProductColumn
-                title="Wildberries"
-                products={unlinkedWb}
-                shakeIds={shakeIds}
-                onPriceChange={handlePriceChange}
-                onReorder={handleUnlinkedWbReorder}
-              />
+              <div className="flex-1 min-w-0">
+                <div className="relative mb-1.5">
+                  <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-gray-400" />
+                  <input
+                    type="text"
+                    value={searchWb}
+                    onChange={(e) => setSearchWb(e.target.value)}
+                    placeholder="Поиск WB..."
+                    className="w-full pl-6 pr-7 py-1 text-xs border border-gray-200 rounded-lg focus:border-indigo-400 focus:ring-1 focus:ring-indigo-200 outline-none"
+                  />
+                  {searchWb && (
+                    <button
+                      onClick={() => setSearchWb('')}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  )}
+                </div>
+                <ProductColumn
+                  title="Wildberries"
+                  products={filteredUnlinkedWb}
+                  shakeIds={shakeIds}
+                  onPriceChange={handlePriceChange}
+                  onReorder={handleUnlinkedWbReorder}
+                />
+              </div>
 
               {isOzonDisabled ? (
                 <OzonProOverlay />
               ) : (
                 <>
                   <UnlinkedLinkColumn
-                    wbProducts={unlinkedWb}
-                    ozonProducts={unlinkedOzon}
+                    wbProducts={filteredUnlinkedWb}
+                    ozonProducts={filteredUnlinkedOzon}
                     onLink={handleLink}
                     onHelp={() => setHelpOpen('links')}
                   />
 
-                  <ProductColumn
-                    title="Ozon"
-                    products={unlinkedOzon}
-                    shakeIds={shakeIds}
-                    onPriceChange={handlePriceChange}
-                    onReorder={handleUnlinkedOzonReorder}
-                  />
+                  <div className="flex-1 min-w-0">
+                    <div className="relative mb-1.5">
+                      <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-gray-400" />
+                      <input
+                        type="text"
+                        value={searchOzon}
+                        onChange={(e) => setSearchOzon(e.target.value)}
+                        placeholder="Поиск Ozon..."
+                        className="w-full pl-6 pr-7 py-1 text-xs border border-gray-200 rounded-lg focus:border-indigo-400 focus:ring-1 focus:ring-indigo-200 outline-none"
+                      />
+                      {searchOzon && (
+                        <button
+                          onClick={() => setSearchOzon('')}
+                          className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                        >
+                          <X className="w-3 h-3" />
+                        </button>
+                      )}
+                    </div>
+                    <ProductColumn
+                      title="Ozon"
+                      products={filteredUnlinkedOzon}
+                      shakeIds={shakeIds}
+                      onPriceChange={handlePriceChange}
+                      onReorder={handleUnlinkedOzonReorder}
+                    />
+                  </div>
                 </>
               )}
             </div>
