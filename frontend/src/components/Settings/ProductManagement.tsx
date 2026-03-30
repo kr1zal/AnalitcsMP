@@ -602,33 +602,42 @@ function parseCsvFile(
 
     // Auto-detect delimiter
     const headerLine = lines[0];
-    const delimiter = headerLine.includes(';') ? ';' : ',';
-    const headers = headerLine.split(delimiter).map(h => h.trim().toLowerCase());
+    const delimiter = headerLine.includes(';') ? ';' : headerLine.includes('\t') ? '\t' : ',';
+    // Strip quotes, BOM, whitespace from headers
+    const stripCell = (s: string) => s.trim().replace(/^["']+|["']+$/g, '').trim().toLowerCase();
+    const headers = headerLine.split(delimiter).map(stripCell);
 
-    // Find columns
-    const idCol = headers.findIndex(h =>
-      h === 'barcode' || h === 'offer_id' || h === 'артикул'
-    );
-    const priceCol = headers.findIndex(h =>
-      h === 'purchase_price' || h === 'себестоимость' || h === 'цена закупки'
-    );
+    // Find columns — flexible matching
+    const ID_ALIASES = ['barcode', 'offer_id', 'артикул', 'штрихкод', 'id', 'sku', 'баркод'];
+    const PRICE_ALIASES = ['purchase_price', 'себестоимость', 'цена закупки', 'закупка', 'цена', 'price', 'cost'];
 
-    if (idCol === -1 || priceCol === -1) {
-      onResult(0, 0, ['Не найдены колонки barcode/offer_id и purchase_price']);
+    const idCol = headers.findIndex(h => ID_ALIASES.includes(h));
+    const priceCol = headers.findIndex(h => PRICE_ALIASES.includes(h));
+
+    // Fallback: если два столбца и нет заголовков — первый = id, второй = price
+    const usePositional = idCol === -1 && priceCol === -1 && headers.length >= 2;
+
+    if (!usePositional && (idCol === -1 || priceCol === -1)) {
+      onResult(0, 0, ['Не найдены колонки barcode/offer_id и purchase_price. Проверьте заголовки CSV.']);
       return;
     }
+
+    const effectiveIdCol = usePositional ? 0 : idCol;
+    const effectivePriceCol = usePositional ? (headers.length >= 3 ? 2 : 1) : priceCol;
+    // If positional, first line is data too (no headers)
+    const startLine = usePositional ? 0 : 1;
 
     // Build product lookup by barcode
     const byBarcode = new Map(products.map(p => [p.barcode, p]));
 
     let updated = 0;
     const notFound: string[] = [];
-    const dataLines = lines.slice(1).filter(l => l.trim());
+    const dataLines = lines.slice(startLine).filter(l => l.trim());
 
     for (const line of dataLines) {
-      const cols = line.split(delimiter);
-      const id = cols[idCol]?.trim();
-      const priceStr = cols[priceCol]?.trim();
+      const cols = line.split(delimiter).map(stripCell);
+      const id = cols[effectiveIdCol];
+      const priceStr = cols[effectivePriceCol];
 
       if (!id || !priceStr) continue;
 
@@ -966,7 +975,7 @@ export function ProductManagement() {
           <input
             ref={fileInputRef}
             type="file"
-            accept=".csv"
+            accept=".csv,.txt,text/csv,text/plain,application/vnd.ms-excel"
             onChange={handleCsvUpload}
             className="hidden"
           />
