@@ -95,7 +95,7 @@ class SyncService:
 
     def _log_sync(self, marketplace: str, sync_type: str, status: str,
                   records_count: int = 0, error_message: str = None,
-                  started_at: datetime = None):
+                  started_at: datetime = None, metadata: dict = None):
         """Записать лог синхронизации в БД"""
         row = {
             "marketplace": marketplace,
@@ -109,6 +109,9 @@ class SyncService:
         if self.user_id:
             row["user_id"] = self.user_id
         self.supabase.table("mp_sync_log").insert(row).execute()
+        # metadata логируем отдельно (колонки в mp_sync_log нет)
+        if metadata:
+            logger.info(f"Sync metadata [{sync_type}]: {metadata}")
 
     def _get_product_id_by_barcode(self, barcode: str) -> Optional[str]:
         """Получить UUID товара по штрихкоду"""
@@ -536,12 +539,31 @@ class SyncService:
             # h) Return result
             total_processed = updated_count + created_count
             status = "success" if not errors else "partial"
-            self._log_sync("all", "products", status, total_processed, started_at=started_at)
+
+            wb_count = sum(1 for p in products_map.values() if p.get("wb_nm_id"))
+            ozon_count = sum(1 for p in products_map.values() if p.get("ozon_product_id"))
+
+            sync_metadata = {
+                "wb_count": wb_count,
+                "ozon_count": ozon_count,
+                "skipped_sku_limit": skipped_sku_limit,
+            }
+            self._log_sync("all", "products", status, total_processed,
+                           started_at=started_at, metadata=sync_metadata)
+
+            if skipped_sku_limit > 0:
+                logger.warning(
+                    f"SKU limit: пропущено {skipped_sku_limit} товаров "
+                    f"(лимит {max_sku}), user={self.user_id}"
+                )
+
             result = {
                 "status": status,
                 "updated": updated_count,
                 "created": created_count,
                 "skipped_sku_limit": skipped_sku_limit,
+                "wb_count": wb_count,
+                "ozon_count": ozon_count,
             }
             if errors:
                 result["errors"] = errors

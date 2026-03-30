@@ -4,6 +4,7 @@ Payment endpoints (YooKassa):
 - POST /subscription/webhook   - webhook от ЮКассы (без auth, проверка IP)
 - POST /subscription/cancel    - отменить автопродление
 """
+import asyncio
 import logging
 from datetime import datetime, timezone, timedelta
 
@@ -208,6 +209,18 @@ async def _handle_payment_succeeded(supabase, payment_record: dict, payment_obj:
     }, on_conflict="user_id").execute()
 
     logger.info(f"Subscription activated: user={user_id}, plan={plan}, expires={expires_at}")
+
+    # Auto sync_products — пересканировать товары с новым лимитом SKU
+    async def _trigger_sync(uid: str):
+        try:
+            from ...services.sync_service import SyncService
+            svc = SyncService(user_id=uid)
+            result = await svc.sync_products()
+            logger.info(f"Auto sync_products after upgrade: user={uid}, result={result}")
+        except Exception as e:
+            logger.warning(f"Auto sync_products after upgrade failed: user={uid}, {e}")
+
+    asyncio.create_task(_trigger_sync(user_id))
 
 
 def _handle_payment_canceled(supabase, payment_record: dict):

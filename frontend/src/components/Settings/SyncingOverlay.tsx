@@ -78,7 +78,30 @@ function SyncingScreen({ startedAt }: { startedAt: number }) {
 
 // ─── Done screen ───
 
+interface SyncStats {
+  productsCount: number;
+  syncTypes: number;
+}
+
 function SyncDoneScreen({ onNavigate }: { onNavigate: () => void }) {
+  const [stats, setStats] = useState<SyncStats | null>(null);
+
+  useEffect(() => {
+    syncApi.getLogs(20).then((res) => {
+      if (!res.logs?.length) return;
+      const productsLog = res.logs.find(
+        (l) => l.sync_type === 'products' && l.status === 'success'
+      );
+      const successTypes = new Set(
+        res.logs.filter((l) => l.status === 'success').map((l) => l.sync_type)
+      );
+      setStats({
+        productsCount: productsLog?.records_count ?? 0,
+        syncTypes: successTypes.size,
+      });
+    }).catch(() => { /* ignore */ });
+  }, []);
+
   return (
     <div className="max-w-lg mx-auto px-4 py-16 text-center">
       <div className="mb-8">
@@ -88,10 +111,19 @@ function SyncDoneScreen({ onNavigate }: { onNavigate: () => void }) {
         <h2 className="text-xl font-bold text-gray-900 mb-2">
           Данные готовы!
         </h2>
-        <p className="text-sm text-gray-500 leading-relaxed">
-          Мы загрузили ваши данные с маркетплейсов.<br />
-          Дашборд, юнит-экономика и отчёты уже доступны.
-        </p>
+        {stats && stats.productsCount > 0 ? (
+          <p className="text-sm text-gray-500 leading-relaxed">
+            Загружено товаров: <span className="font-medium text-gray-700">{stats.productsCount}</span>
+            {stats.syncTypes > 1 && (
+              <> &middot; Синхронизировано {stats.syncTypes} типов данных</>
+            )}
+          </p>
+        ) : (
+          <p className="text-sm text-gray-500 leading-relaxed">
+            Мы загрузили ваши данные с маркетплейсов.<br />
+            Дашборд, юнит-экономика и отчёты уже доступны.
+          </p>
+        )}
       </div>
       <button
         onClick={onNavigate}
