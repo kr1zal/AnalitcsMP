@@ -356,10 +356,12 @@ class SyncService:
                                 ozon_product_ids.append(product_id)
                             logger.info(f"Ozon: updated product {offer_id} -> product_id={product_id}")
                         else:
-                            # INSERT new Ozon product.
-                            # SKU limit НЕ применяется к Ozon: один физический товар
-                            # может иметь разные barcode на WB и offer_id на Ozon.
-                            # Лимит считает уникальные товары, а не строки в mp_products.
+                            # INSERT new product (if within SKU limit)
+                            if not _within_sku_limit():
+                                skipped_sku_limit += 1
+                                logger.info(f"Ozon: skipped {offer_id} — SKU limit reached ({max_sku})")
+                                continue
+
                             new_ozon_offer_ids.append(offer_id)
                             row = {
                                 "barcode": offer_id,

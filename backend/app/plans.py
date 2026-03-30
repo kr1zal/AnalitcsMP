@@ -8,7 +8,7 @@ PLANS = {
     "free": {
         "name": "Free",
         "price_rub": 0,
-        "max_sku": 15,
+        "max_sku": 30,
         "marketplaces": ["wb", "ozon"],
         "auto_sync": False,
         "sync_interval_hours": None,
@@ -40,7 +40,7 @@ PLANS = {
     "pro": {
         "name": "Pro",
         "price_rub": 1490,
-        "max_sku": 60,
+        "max_sku": 120,
         "marketplaces": ["wb", "ozon"],
         "auto_sync": True,
         "sync_interval_hours": 6,
