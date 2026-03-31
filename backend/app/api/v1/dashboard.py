@@ -667,6 +667,12 @@ async def get_unit_economics(
                     if has_per_product_storage and subcat == "Размещение товаров":
                         continue
 
+                    # Account-level operations (order_date=NULL) only SUPPLEMENT existing
+                    # delivery-based data. They must NOT create new entries — otherwise
+                    # storage-only charges route product into delivery branch with wrong payout.
+                    if pid not in ozon_order_date_by_product:
+                        continue
+
                     _accumulate_od_row(pid, amt, cat, ft_val, subcat)
 
                 # Apply per-product daily storage to payout (storage is a NEGATIVE charge)
