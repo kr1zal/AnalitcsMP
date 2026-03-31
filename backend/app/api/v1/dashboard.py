@@ -1175,17 +1175,28 @@ async def get_ad_costs(
         date_to = datetime.now().strftime("%Y-%m-%d")
 
     try:
-        ads_query = supabase.table("mp_ad_costs").select("*").eq("user_id", current_user.id).gte("date", date_from).lte("date", date_to)
-        if marketplace and marketplace != "all":
-            ads_query = ads_query.eq("marketplace", marketplace)
-        ads_result = ads_query.limit(10000).execute()
+        import asyncio
 
-        sales_query = supabase.table("mp_sales").select("*").eq("user_id", current_user.id).gte("date", date_from).lte("date", date_to)
-        if marketplace and marketplace != "all":
-            sales_query = sales_query.eq("marketplace", marketplace)
-        if fulfillment_type:
-            sales_query = sales_query.eq("fulfillment_type", fulfillment_type)
-        sales_result = sales_query.limit(50000).execute()
+        def _fetch_ads():
+            sb = get_supabase_client()
+            q = sb.table("mp_ad_costs").select("*").eq("user_id", current_user.id).gte("date", date_from).lte("date", date_to)
+            if marketplace and marketplace != "all":
+                q = q.eq("marketplace", marketplace)
+            return q.limit(10000).execute()
+
+        def _fetch_sales_for_ads():
+            sb = get_supabase_client()
+            q = sb.table("mp_sales").select("*").eq("user_id", current_user.id).gte("date", date_from).lte("date", date_to)
+            if marketplace and marketplace != "all":
+                q = q.eq("marketplace", marketplace)
+            if fulfillment_type:
+                q = q.eq("fulfillment_type", fulfillment_type)
+            return q.limit(50000).execute()
+
+        ads_result, sales_result = await asyncio.gather(
+            asyncio.to_thread(_fetch_ads),
+            asyncio.to_thread(_fetch_sales_for_ads),
+        )
 
         revenue_by_date = {}
         for sale in sales_result.data:
@@ -1262,17 +1273,26 @@ async def get_ad_costs(
             prev_from = (date_from_dt - timedelta(days=period_length)).strftime("%Y-%m-%d")
             prev_to = (date_from_dt - timedelta(days=1)).strftime("%Y-%m-%d")
 
-            prev_ads_query = supabase.table("mp_ad_costs").select("cost,impressions,clicks,orders_count").eq("user_id", current_user.id).gte("date", prev_from).lte("date", prev_to)
-            if marketplace and marketplace != "all":
-                prev_ads_query = prev_ads_query.eq("marketplace", marketplace)
-            prev_ads_result = prev_ads_query.limit(10000).execute()
+            def _fetch_prev_ads():
+                sb = get_supabase_client()
+                q = sb.table("mp_ad_costs").select("cost,impressions,clicks,orders_count").eq("user_id", current_user.id).gte("date", prev_from).lte("date", prev_to)
+                if marketplace and marketplace != "all":
+                    q = q.eq("marketplace", marketplace)
+                return q.limit(10000).execute()
 
-            prev_sales_query = supabase.table("mp_sales").select("revenue").eq("user_id", current_user.id).gte("date", prev_from).lte("date", prev_to)
-            if marketplace and marketplace != "all":
-                prev_sales_query = prev_sales_query.eq("marketplace", marketplace)
-            if fulfillment_type:
-                prev_sales_query = prev_sales_query.eq("fulfillment_type", fulfillment_type)
-            prev_sales_result = prev_sales_query.limit(50000).execute()
+            def _fetch_prev_sales():
+                sb = get_supabase_client()
+                q = sb.table("mp_sales").select("revenue").eq("user_id", current_user.id).gte("date", prev_from).lte("date", prev_to)
+                if marketplace and marketplace != "all":
+                    q = q.eq("marketplace", marketplace)
+                if fulfillment_type:
+                    q = q.eq("fulfillment_type", fulfillment_type)
+                return q.limit(50000).execute()
+
+            prev_ads_result, prev_sales_result = await asyncio.gather(
+                asyncio.to_thread(_fetch_prev_ads),
+                asyncio.to_thread(_fetch_prev_sales),
+            )
 
             prev_ad_cost = sum(float(ad.get("cost", 0)) for ad in prev_ads_result.data)
             prev_impressions = sum(ad.get("impressions", 0) for ad in prev_ads_result.data)
@@ -1316,17 +1336,26 @@ async def get_ad_campaigns(
         date_to = datetime.now().strftime("%Y-%m-%d")
 
     try:
-        # Получаем рекламные данные за период
-        ads_query = supabase.table("mp_ad_costs").select("*").eq("user_id", current_user.id).gte("date", date_from).lte("date", date_to)
-        if marketplace and marketplace != "all":
-            ads_query = ads_query.eq("marketplace", marketplace)
-        ads_result = ads_query.limit(10000).execute()
+        import asyncio
 
-        # Получаем общую выручку для расчёта ДРР
-        sales_query = supabase.table("mp_sales").select("revenue").eq("user_id", current_user.id).gte("date", date_from).lte("date", date_to)
-        if marketplace and marketplace != "all":
-            sales_query = sales_query.eq("marketplace", marketplace)
-        sales_result = sales_query.limit(50000).execute()
+        def _fetch_campaign_ads():
+            sb = get_supabase_client()
+            q = sb.table("mp_ad_costs").select("*").eq("user_id", current_user.id).gte("date", date_from).lte("date", date_to)
+            if marketplace and marketplace != "all":
+                q = q.eq("marketplace", marketplace)
+            return q.limit(10000).execute()
+
+        def _fetch_campaign_sales():
+            sb = get_supabase_client()
+            q = sb.table("mp_sales").select("revenue").eq("user_id", current_user.id).gte("date", date_from).lte("date", date_to)
+            if marketplace and marketplace != "all":
+                q = q.eq("marketplace", marketplace)
+            return q.limit(50000).execute()
+
+        ads_result, sales_result = await asyncio.gather(
+            asyncio.to_thread(_fetch_campaign_ads),
+            asyncio.to_thread(_fetch_campaign_sales),
+        )
         total_revenue = sum(float(s.get("revenue", 0)) for s in sales_result.data)
 
         # Агрегация по campaign_id + marketplace + campaign_name
