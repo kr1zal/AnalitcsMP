@@ -105,11 +105,16 @@ async def get_sales_plan(
         .limit(500) \
         .execute()
 
-    products_result = supabase.table("mp_products") \
-        .select("id, name, barcode") \
+    products_query = supabase.table("mp_products") \
+        .select("id, name, barcode, wb_nm_id, ozon_product_id") \
         .eq("user_id", current_user.id) \
-        .limit(500) \
-        .execute()
+        .limit(500)
+    # Фильтр по marketplace: WB = товары с wb_nm_id, Ozon = с ozon_product_id
+    if marketplace == "wb":
+        products_query = products_query.not_.is_("wb_nm_id", "null")
+    elif marketplace == "ozon":
+        products_query = products_query.not_.is_("ozon_product_id", "null")
+    products_result = products_query.execute()
 
     plans_map = {p["product_id"]: p["plan_revenue"] for p in plans_result.data}
 
