@@ -655,10 +655,16 @@ export const DashboardPage = () => {
         secondaryValue: formatCurrency(adCostForTile),
       },
       acos: {
-        value: '0%',
+        value: (() => {
+          const adRevenue = (adCostsData?.data ?? []).reduce((s, d) => s + (d.revenue ?? 0), 0);
+          return adRevenue > 0 ? Math.round((adCostForTile / adRevenue) * 1000) / 10 : 0;
+        })(),
       },
       cpo: {
-        value: 0,
+        value: (() => {
+          const adOrders = (adCostsData?.data ?? []).reduce((s, d) => s + (d.orders ?? 0), 0);
+          return adOrders > 0 ? Math.round(adCostForTile / adOrders) : 0;
+        })(),
       },
 
       // ── Stocks ──
