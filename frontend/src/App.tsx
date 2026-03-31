@@ -1,25 +1,36 @@
 /**
  * Главный компонент приложения с роутингом
+ * Code splitting: тяжёлые страницы загружаются лениво
  */
+import { lazy, Suspense } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { Toaster } from 'sonner';
 import { Layout } from './components/Shared/Layout';
 import { ProtectedRoute } from './components/Shared/ProtectedRoute';
 import { DashboardPage } from './pages/DashboardPage';
-import { UnitEconomicsPage } from './pages/UnitEconomicsPage';
-// SyncPage removed — content merged into SettingsPage ConnectionsTab
-import { AdsPage } from './pages/AdsPage';
-import { PrintPage } from './pages/PrintPage';
 import { LoginPage } from './pages/LoginPage';
 import { ResetPasswordPage } from './pages/ResetPasswordPage';
-import { SettingsPage } from './pages/SettingsPage';
 import { LandingPage } from './pages/landing/LandingPage';
 import { LegalPage, PolicyPage, PrivacyPage } from './pages/LegalPages';
-import OrderMonitorPage from './pages/OrderMonitorPage';
-import { DashboardV3PreviewPage } from './pages/DashboardV3PreviewPage';
 import { useAuth } from './hooks/useAuth';
 import { useAuthStore } from './store/useAuthStore';
+
+// Lazy-loaded pages (code splitting)
+const UnitEconomicsPage = lazy(() => import('./pages/UnitEconomicsPage').then(m => ({ default: m.UnitEconomicsPage })));
+const AdsPage = lazy(() => import('./pages/AdsPage').then(m => ({ default: m.AdsPage })));
+const SettingsPage = lazy(() => import('./pages/SettingsPage').then(m => ({ default: m.SettingsPage })));
+const PrintPage = lazy(() => import('./pages/PrintPage').then(m => ({ default: m.PrintPage })));
+const OrderMonitorPage = lazy(() => import('./pages/OrderMonitorPage'));
+const DashboardV3PreviewPage = lazy(() => import('./pages/DashboardV3PreviewPage').then(m => ({ default: m.DashboardV3PreviewPage })));
+
+function LazyFallback() {
+  return (
+    <div className="min-h-[60vh] flex items-center justify-center">
+      <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-indigo-600" />
+    </div>
+  );
+}
 
 // Создаём QueryClient
 const queryClient = new QueryClient({
@@ -69,7 +80,7 @@ function AppRoutes() {
       <Route path="/reset-password" element={<ResetPasswordPage />} />
 
       {/* Print page — без Layout, авторизация через ?token= */}
-      <Route path="/print" element={<PrintPage />} />
+      <Route path="/print" element={<Suspense fallback={<LazyFallback />}><PrintPage /></Suspense>} />
 
       {/* Legal pages — доступны всем */}
       <Route path="/legal" element={<LegalPage />} />
@@ -79,13 +90,13 @@ function AppRoutes() {
       {/* Root: Landing (unauth) / App (auth) */}
       <Route path="/" element={<RootLayout />}>
         <Route index element={<DashboardPage />} />
-        <Route path="dashboard-v3" element={<DashboardV3PreviewPage />} />
-        <Route path="orders" element={<OrderMonitorPage />} />
-        <Route path="unit-economics" element={<UnitEconomicsPage />} />
+        <Route path="dashboard-v3" element={<Suspense fallback={<LazyFallback />}><DashboardV3PreviewPage /></Suspense>} />
+        <Route path="orders" element={<Suspense fallback={<LazyFallback />}><OrderMonitorPage /></Suspense>} />
+        <Route path="unit-economics" element={<Suspense fallback={<LazyFallback />}><UnitEconomicsPage /></Suspense>} />
         <Route path="products" element={<Navigate to="/unit-economics" replace />} />
-        <Route path="ads" element={<AdsPage />} />
+        <Route path="ads" element={<Suspense fallback={<LazyFallback />}><AdsPage /></Suspense>} />
         <Route path="sync" element={<Navigate to="/settings?tab=connections" replace />} />
-        <Route path="settings" element={<SettingsPage />} />
+        <Route path="settings" element={<Suspense fallback={<LazyFallback />}><SettingsPage /></Suspense>} />
       </Route>
     </Routes>
   );
